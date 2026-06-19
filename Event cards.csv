@@ -1,0 +1,41 @@
+Event name,Round Effect,Completion Condition,Completion Reward,Failure Penalty
+Command Requisition,"Generated resources go to the command instead, players can spend command resources",Command has more total resource than players combined,Roll Dice 3 times generate resources = the numbers rolled once per resource,Lose all resources at command
+Forced Contribution,Income +1 if another worker at location,Return 20 resources to supply,Players gain +1 income for each additional player at a location,Players lose -1 income for each additional player at a location
+Crowded Worksite,Income blocked if another worker at location,Donate 10 resources to command,When workers generate resource Add 1 of that resource to command,Only 1 player can donate per turn
+Tax Fault,All income Halved,Return 15 resources to supply,All players gain 1 alien per turn,Increse Alien costs by 2
+Cheap Knockoffs,All income converted to Tech,Return 10 Tech to supply,All players gain 5 Tech,Increse Tech costs of shops by 2
+Food Shortage,All income converted to Organic,Return 10 Organic to supply,All players gain 5 Organics,Increse Organic costs of shops by 2
+Lead by example,Players draw additional missions this turn,Complete Mission of combined rank = Rank total of players,All players gain +1 rank,All players -1 Rank
+Prove your worth,Mission Rank Requirements Removed,Complete missions = number of players,Mission ranks -1,Mission ranks +2
+Silence in no mans land,Friendly units have double HP,Only field 1 unit in reserve for each lane,Scouts reveal additional enemies,Cannot Activate reserve abilities
+Combined Arms Training,Active units are stunned if another active unit matches its type,1 of each unit type,Active Units get +4 Shields for each unique unit type,Active Units Lose +4 Shields for each unique unit type
+Restriction orders,Active Non Infantry are stunned at start of combat,3 Active Infantry,Active Infantry gain +5 Shields for each active Infantry at combat start,Active Infantry Lose +5 Shields for each active Infantry at combat start
+Fuel Shortage,Active Non Infantry are stunned at start of combat,4 Active Infantry,Active Infantry gain +1 Armor for each active Infantry at combat start,Active Infantry Lose +1 Armor for each active Infantry at combat start
+Psychic Tremors,Active Non Mech are stunned at start of combat,2 Active Mech,Active Mech gain +1 armor for each active Mech at combat start,Active Mech Lose +1 armor for each active Mech at combat start
+Hurricane X,Active Non Vehicles are stunned at start of combat,2 Active Vehicles,Active Vehicles gain +1 armor for each active Vehicle at combat start,Active Vehicles Lose +1 armor for each active Vehicle at combat start
+Armor Supply Freeze,Double Armor costs this round,Every lane active unit needs armor equipment,Armor can equip at any time for free,Costs Tech = Rank to equip Armor
+Production Fault,Double Utility costs this round,Every lane active unit needs Utility equipment,Utility can equip at any time for free,Costs Tech = Rank to equip Utility
+Weapons Allocation Freeze,Double Weapon costs this round,Every lane active unit needs Weapon equipment,Weapons can equip at any time for free,Costs Tech = Rank to equip Weapon
+Supply Chain Collapse,Double equipment costs this round,have at least 1 unit fully equipped,"Gear can equip at any time for free, but only to reserve",Costs Tech = Rank to equip
+Armor Recall,Unequip All Armor Equipment when drawing this event,No Armor equiped at end of round,initial shop Armor next round are free,Destroy all Armor
+Utility Recall,Unequip All Utility Equipment when drawing this event,No Utility equiped at end of round,initial shop Utility next round are free,Destroy all Utility
+Weapons Recall,Unequip All Weapon Equipment when drawing this event,No Weapons equiped at end of round,initial shop Weapons next round are free,Destroy all Weapons
+Total Disarmament,Unequip All Equipment when drawing this event,No Equipment equiped at end of round,initial shop items next round are free,Destroy all Equipment
+Emergency Triage,Unlock all med bay slots this round,All players place worker at medbay,Double future Healing,Kill units in med bay
+Medical Focus,Medbay costs organics to heal,Empty/Full Hp med bay,Healing Generates organics,Healing costs organics with cap
+Honorable Discharge,Units Retire on death this round,Retire Between 5 and 10 units this turn,Retired units refund value duplicated to command,Retire costs no longer gives resource
+Forced Disposal,Can clear Disposal for Organics = Rank,Disposal is half total from start of round.,Command gains Alien = units disposed of this round,Command loses Alien = units disposed of this round
+Research drive,"Containment Block cells are emptied and hold 2 units each, Roll dice on when unit falls below half HP odds capture even kill",Capture more than you kill,Containment Block keeps storage stack upgrade,Disable a Containment Block slot
+Garbage Day,"Can Restore cards from recycle for their tech cost, or recycle into deck for their organic cost",Recycle is half total from start of round.,Ongoing effect,Delete items on death
+Chain of Command,All unit HP and Damage = their rank total,Outrank enemies in each lane at start of combat,Promote Lowest rank player,Demote highest rank player
+Kill Contest,All units deal double damage,Single Unit gets 3 kills,Highest rank unit at start of combat gains double damage,Highest rank unit at start of combat Deals Half damage
+Assigned Posts,Roll Dice to select locations,Place worker at location rolled for each player,Roll Dice 3 times generate resources at those location for all players regardless of worker,Effect persists after event
+Saboteur investigation,Roll Dice to select locations,Target Locations Empty,Draw an upgrade for each location (This upgrade is a bonus and not count towards requirments or limits),-1 Location upgrade limit
+Capacity Threshold,Roll Dice to select locations,Target location Full,Draw upgrades until location is full,-1 Location upgrade limit
+Isolation Orders,Roll Dice to select location to disable until active locations = player count,All players at unique locations,Bonuses to resources when alone,Penalty to resources when together at location
+Leadership Crisis,Group blind Votes on next commander,Commander Changes unanimously ,Commander can willingly pass the role to another,Commander must change every turn
+Forced Re-Armament,Equipment costs doubled,Purchase a full set of new gear for a unit,Equip Anytime without the upgrade,Double Equip costs
+Ion Storm,"All enemies gain 5 shields, Move friendly shields to enemies",100 Shields destroyed this round,Scouted units lose shields,enemies enter with 10 shields
+System Lockdown,Return all upgrades to hand,"No upgrades built at end of turn, only passive effects in hand",Remove upgrades anytime,Remove upgrades at end of turn
+Renovations,cannot send workers to locations with upgrades,Play 3 upgrades,+2 Hand size,Half hand size
+Annihilation Clause,All Units Deleted on death,Delete 2x more enemies than Units lost this round,Enemies are deleted when killed by higher rank,Allies are Deleted when killed by higher rank

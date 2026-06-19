@@ -1,0 +1,118 @@
+Name,Player Rank,Requirement,Resource,Instant
+Specialist Intervention,Conscript,Activate an ability,Gain +1 All resources,Refresh target ability
+Mission Success,Conscript,Complete Event,Gain +1 All resources,Prevent the Round Debuff of event this round
+Barracks Detail,Conscript,Deploy your worker to Barracks,Gain +1 All resources,Your 1st worker at barracks counts as 2 each round
+Xenobiology Delivered I,Conscript,Donate 1 Alien to Command,Gain +1 All resources,Each player gains 1 Alien
+Balanced Contribution I,Conscript,Donate 5 of each resource to Command,Gain +1 All resources,Add 1 of each resource to command
+Organic Contribution I,Conscript,Donate 5 Organics to Command,Gain +1 All resources,Each player gains 5 Organics
+Tech Donated I,Conscript,Donate 5 Tech to Command,Gain +1 All resources,Each player gains 5 Tech
+Armed and Ready,Conscript,Equip a unit,Gain +1 All resources,Your next Equip during combat is free
+Mission Failure,Conscript,Fail Event,Gain +1 All resources,Prevent your next event failure
+First Blood,Conscript,Kill 1 enemy,Gain +1 All resources,You may delete a rank 1 unit you own and take a Rank 2 unit from the shop to replace them
+Conscription,Conscript,Own Unit of Rank 1,Gain +1 All resources,Rank 1 units are free for you
+Ability Denial,Conscript,Prevent Enemy ability,Gain +1 All resources,Reset Active cooldown on one unit or item this round
+Xenobiology Export 1,Conscript,Return 1 Alien to supply,Gain +1 Alien,Target player gains 1 Alien
+Full Export 1,Conscript,Return 5 of each resource to supply,Gain +3 All resources,"Gain 5 resources, split any way you choose"
+Organic export 1,Conscript,Return 5 Organics to supply,Gain +5 Organic,Target player gains 5 Organics
+Tech Export 1,Conscript,Return 5 Tech to supply,Gain +5 Tech,Target player gains 5 Tech
+Lane Specialist I,Private,Activate 5 abilities in 1 lane,Gain +3 All resources,Refresh up to 3 abilities this turn
+Stockpiled Reserves,Private,Command has over 40 total resource,Gain +3 All resources,Draw 1 new command card it is free to use
+Armory Detail,Private,Deploy your worker to Armory,Gain +3 All resources,Your 1st worker at Armory counts as 2 each round
+Balanced Contribution II,Private,Donate 10 of each resource to Command,Gain +3 All resources,Add 2 of each resource to command
+Organic Contribution II,Private,Donate 10 Organics to Command,Gain +3 All resources,Add 2 Organics to command
+Tech Donated II,Private,Donate 10 Tech to Command,Gain +3 All resources,Add 2 Tech to command
+Xenobiology Delivered II,Private,Donate 3 Alien to Command,Gain +3 All resources,Each player gains 3 Alien
+Boots on the Ground,Private,Fill a lane with only Infantry,Gain +3 All resources,Your Infantry have +1 Attack and +3 HP per rank
+Fully Armed,Private,Fully Equip a Unit,Gain +3 All resources,1 Free equip per turn
+Armory Complete,Private,Fully upgrade Armory,Gain +3 All resources,Your next Gear item is free
+Barracks Online,Private,Fully upgrade Barracks,Gain +3 All resources,Your next unit is free
+Breach,Private,Have a lane overrun,Gain +3 All resources,Deal 2 less Enemies next turn
+Combat Medic I,Private,Heal 10 damage during combat,Gain +3 All resources,Target Unit gains Shields = Missing Health
+Giant Slayer,Private,Kill 2 units above your rank,Gain +3 All resources,Gain a Rank
+Steel Supremacy,Private,Own more Mechs than infantry & Vehicles,Gain +3 All resources,Mech half price
+Basic Training,Private,Own Unit of Rank 2,Gain +3 All resources,Your next Rank 3 unit is free
+Honorable Discharge,Private,Retire a unit,Gain +3 All resources,"Your next Retire is returned to hand, you can play this unit to any lane at any time"
+Full Export 2,Private,Return 10 of each resource to supply,Gain +5 All resources,"Gain 5 resources, split any way you choose"
+Organic export 2,Private,Return 10 Organics to supply,Gain +5 Organic,Target player gains 5 Organics
+Tech Export 2,Private,Return 10 Tech to supply,Gain +5 Tech,Target player gains 5 Tech
+Xenobiology Export 2,Private,Return 3 Alien to supply,Gain +2 Alien,Target player gains 2 Alien
+Maintain Morale,Sergeant,Be over 5 progress,Gain +5 All resources,Gain 1 Progress
+Containment Block Detail,Sergeant,Deploy your worker to Containment Block,Gain +5 All resources,Your 1st worker at Containment Block counts as 2 each round
+Medical Bay Detail,Sergeant,Deploy your worker to Medical Bay,Gain +5 All resources,Your 1st worker at Medical Bay counts as 2 each round
+Balanced Contribution III,Sergeant,Donate 15 of each resource to Command,Gain +5 All resources,Add 5 of each resource to command
+Organic Contribution III,Sergeant,Donate 15 Organics to Command,Gain +5 All resources,Add 5 Organics to command
+Tech Donated III,Sergeant,Donate 15 Tech to Command,Gain +5 All resources,Add 5 Tech to command
+Xenobiology Delivered III,Sergeant,Donate 5 Alien to Command,Gain +5 All resources,Each player gains 5 Alien
+Enemy Momentum I,Sergeant,Enemies activate 5 abilities,Gain +5 All resources,Block the next enemy ability
+Holding Pattern,Sergeant,Enemy Progress over 5,Gain +5 All resources,Reduce Enemy Progress by 1
+Total Breakdown,Sergeant,Have all Lanes overrun,Gain +5 All resources,Deal 8 less Enemies next turn
+Advanced Training,Sergeant,Own Unit of Rank 3,Gain +5 All resources,Your next Rank 4 unit is free
+Full Export 3,Sergeant,Return 15 of each resource to supply,Gain +8 All resources,"Gain 10 resources, split any way you choose"
+Organic export 3,Sergeant,Return 15 Organics to supply,Gain +10 Organic,Target player gains 10 Organics
+Tech Export 3,Sergeant,Return 15 Tech to supply,Gain +10 Tech,Target player gains 10 Tech
+Xenobiology Export 3,Sergeant,Return 5 Alien to supply,Gain +3 Alien,Target player gains 3 Alien
+Shock and Awe,Sergeant,Stun an enemy,Gain +5 All resources,Stun target enemy
+Assume Command,Sergeant,Take Commander Role,Gain +5 All resources,You count as 1 Rank higher when commander
+Special Operations,Captain,Activate 1 ability in each lane this turn,Gain +8 All resources,Refresh all cooldowns for all lanes
+Lane Specialist II,Captain,Activate 10 abilities in 1 lane,Gain +8 All resources,Refresh up to 5 abilities this turn
+Strategic Surplus,Captain,Command has over 60 total resources,Gain +8 All resources,"Draw 2 new command cards, they are free to use"
+Command Detail,Captain,Deploy your worker to Command,Gain +8 All resources,Your 1st worker at Command counts as 2 each round
+Xenobiology Delivered IV,Captain,Donate 10 Alien to Command,Gain +8 All resources,Add 2 Alien to command
+Balanced Contribution IV,Captain,Donate 20 of each resource to Command,Gain +8 All resources,Add 5 of each resource to command
+Organic Contribution IV,Captain,Donate 20 Organics to Command,Gain +8 All resources,Add 5 Organics to command
+Tech Donated IV,Captain,Donate 20 Tech to Command,Gain +8 All resources,Add 5 Tech to command
+Secure the Specimens,Captain,Fill containment,Gain +8 All resources,Gain Alien per turn = Rank of contained units
+Medical Emergency,Captain,Fill Medbay,Gain +8 All resources,Units can now stack in med bay upto 3 per space
+Double Loadout,Captain,Fully Equip 2 units,Gain +8 All resources,2 Free equips per turn
+Containment Block Sealed,Captain,Fully upgrade Containment Block,Gain +8 All resources,"You can contain bosses, they take up all spaces and cannot be used in lanes"
+Medical Bay Operational,Captain,Fully upgrade Medical Bay,Gain +8 All resources,Heal all units in lanes and in Medical Bay to full health
+Combat Medic II,Captain,Heal 20 damage during combat,Gain +8 All resources,Target Unit gains Shields = Max Health
+Flawless Assault,Captain,Kill 4 enemies without losing a friendly unit,Gain +8 All resources,Units lost this round are returned to the deck
+Infantry Doctrine,Captain,Own more infantry than Mechs & Vehicles,Gain +8 All resources,Recruit all infantry from the store upto 1 rank higher than your current
+Armored Column,Captain,Own more Vehicles than Mechs & infantry,Gain +8 All resources,Vehicles half price
+Elite Asset,Captain,Own Unit of Rank 4,Gain +8 All resources,Your next Rank 5 unit is free
+Total Shutdown,Captain,Prevent 4 abilities in 1 turn,Gain +8 All resources,Deal 4 damage when preventing an ability
+Just a flesh wound,Captain,Retire a unit under half HP,Gain +8 All resources,"Double Retired units stats, return it to the lane it was retired from"
+Xenobiology Export 4,Captain,Return 10 Alien to supply,Gain +5 Alien,Target player gains 5 Alien
+Full Export 4,Captain,Return 20 of each resource to supply,Gain +10 All resources,"Gain 10 resources, split any way you choose"
+Organic export 4,Captain,Return 20 Organics to supply,Gain +10 Organic,Target player gains 10 Organics
+Tech Export 4,Captain,Return 20 Tech to supply,Gain +10 Tech,Target player gains 10 Tech
+Sundering Blow,Captain,Shred 10 armor or shields in 1 turn,Gain +8 All resources,Remove all Armor and shields from target
+Shield Bearer,Captain,Unit with more Shield than HP,Gain +8 All resources,Double Shield on unit
+Momentum Surge,Major,Be over 7 Progress,Gain +10 All resources,All players Promote
+Battlefield Detail,Major,Deploy your worker to Battlefield,Gain +10 All resources,Your 1st worker at Battlefield counts as 2 each round
+Xenobiology Delivered V,Major,Donate 20 Alien to Command,Gain +10 All resources,Add 5 Alien to command
+Balanced Contribution V,Major,Donate 25 of each resource to Command,Gain +10 All resources,Add 10 of each resource to command
+Organic Contribution V,Major,Donate 30 Organics to Command,Gain +10 All resources,Add 15 Organics to command
+Tech Donated V,Major,Donate 30 Tech to Command,Gain +10 All resources,Add 15 Tech to command
+Enemy Momentum II,Major,Enemies activate 10 abilities,Gain +10 All resources,Block the next 3 enemy abilities
+Desperate Stand,Major,Enemy Progress over 7,Gain +10 All resources,Reduce Enemy Progress by 3
+Steel Wall,Major,Fill a lane with only Mech,Gain +10 All resources,Your Mech have +3 Attack per rank
+Armored Convoy,Major,Fill a lane with only Vehicles,Gain +10 All resources,Your Vehicles have +1 armor per rank
+Command Central,Major,Fully upgrade Command,Gain +10 All resources,You can play command cards when not the commander
+Collapse,Major,Have 2 lanes overrun,Gain +10 All resources,Deal 4 less Enemies next turn
+Steady Hand,Major,Hold Commander role for 2 turns,Gain +10 All resources,Prevent the next time you would lose commander role
+Command Vanguard,Major,Own Unit of Rank 5,Gain +10 All resources,Your next Rank 6 unit is free
+Xenobiology Export 5,Major,Return 20 Alien to supply,Gain +5 Alien,Target player gains 5 Alien
+Full Export 5,Major,Return 25 of each resource to supply,Gain +10 All resources,"Gain 20 resources, split any way you choose"
+Organic export 5,Major,Return 30 Organics to supply,Gain +15 Organic,Target player gains 15 Organics
+Tech Export 5,Major,Return 30 Tech to supply,Gain +15 Tech,Target player gains 15 Tech
+Budget on Display,Colonel,Fully Equip 4 units,Gain +10 All resources,4 Free equips per turn
+Combined Arms,Colonel,Have every unit type active,Gain +10 All resources,All units gain +1 armor
+Combat Medic III,Colonel,Heal 40 damage during combat,Gain +10 All resources,Target Unit gains Shields = 2x Max Health
+Battlefield Ace,Colonel,Own Unit of Rank 6,Gain +10 All resources,Your next Rank 7 unit is free
+Impenetrable,Colonel,Prevent all damage with armor,Gain +10 All resources,Reflect Damage = Armor
+War Hero,Colonel,Retire a unit over Rank 4 with 1 HP remaining,Gain +10 All resources,"Your next Retire is returned to hand, you can play this unit to any lane at any time, Fully heal all units when you do"
+Strategic Recall,Colonel,Retire a unit over Rank 4 with full HP,Gain +10 All resources,All deaths next round are retired
+Total Suppression,Colonel,Stun 3 enemies,Gain +10 All resources,Stun all lanes
+Crushing Advance,Colonel,Trample Damage kills,Gain +10 All resources,Trample damage can chain multiple times
+Untouchable,Colonel,Win a round without losing units,Gain +10 All resources,All players Promote
+Balanced Contribution VI,Specialist,Donate 30 of each resource to Command,Gain +15 All resources,Add 15 of each resource to command
+Enemy Momentum III,Specialist,Enemies activate 15 abilities,Gain +15 All resources,Block the next 5 enemy abilities
+Battlefield Dominance,Specialist,Fully upgrade Battlefield,Gain +15 All resources,all of Your attacks hit 1st this round
+Iron Grip,Specialist,Hold commander role for 3 turns,Gain +15 All resources,Losing Command role requires a vote to pass
+Legendary Operative,Specialist,Own Unit of Rank 7,Gain +15 All resources,Your next Rank 8 unit is free
+Full Export 6,Specialist,Return 30 of each resource to supply,Gain +15 All resources,"Gain 20 resources, split any way you choose"
+Combat Medic IV,Brigadier,Heal 80 damage during combat,Gain +20 All resources,Target Unit gains Shields = 3x Max Health
+Apex Commander,Brigadier,Own Unit of Rank 8,Gain +20 All resources,Your next 2 units are free
+Absolute Lockdown,Brigadier,Prevent 10 abilities in 1 turn,Gain +20 All resources,Deal 10 damage when preventing an ability

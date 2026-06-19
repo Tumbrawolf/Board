@@ -1,0 +1,37 @@
+Keywords,Description
+Targeted Damage,Deal X Damage to a target or group
+Revive,Bring a dead unit/enemy back alive
+Heals,Restores HP
+Buff on Kill,Bonuses on Kill
+Buff on Death,Bonuses to allies on death
+Explodes,Damage on Death
+Movement,Change Lanes or move another unit
+Retaliation Effects,Effects when you take damage
+Auras,Always on Effects
+Debuff Enemies,Reduce enemy effects
+On Hit,bonus when dealing damage
+Gear,Interacts with gear
+Splash,Hits multiple targets
+Haste,Act Faster
+Trample,Overkill Damage hits next target
+Spawns,Spawn new units
+Shields,Prevents Damage Total
+Armor,Reduce damage per instance
+Delete,Remove from game
+Damage Over Time,Damage over multiple turns
+Execute,Kill under threshold
+Stun,Skip a turn
+Convert,Change Teams
+Reflect,Return damage and effects to source
+Targeting,Change targets or prevent targets
+Resources,Effects resource pools
+Penetration,Bypass Defences
+Progress,Effects progress track
+Denial,Prevent an effect
+Costs,Effects Costs of unit
+Cooldown,Effects ability timers
+Multistrike,Attack the same target multiple times
+Lifesteal,Heal based on damage dealt
+Charges,Stacking counters that fuel or modify an item's effect
+Sacrifice,Destroy a friendly unit or item for a benefit
+Banish,Remove from combat without killing

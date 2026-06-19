@@ -1,0 +1,33 @@
+Phase,Name,Description
+Planning,Place Worker,Starting from the player adjacent the commander take turns placing your leader token to decide where you will work for resources
+Planning,Generate income,Previous rounds Scout generates resources if alive.
+Planning,Buy Units and Gear,Purchase Units and equipment from appropriate Shops
+Planning,Make Donations,You can Donate Resources towards command for activating upgrades and powers
+Planning Leader,Tech Draft,"Discard Advancement cards to bottom of the deck, draw new cards upto hands size"
+Planning Leader,Cycle Shops,Cycle the Armory and Barracks shops to new options
+Planning Leader,Assign missions,"Draw mission cards = players + Commander Rank, Players Draft missions starting from the reverse side of Commander"
+Planning Leader,New Event,"Draw X event cards, pick 1, place others on bottom of deck"
+Deployment,Heal Units,Heal all units in the medical by X health + X for each player working there.
+Deployment,Assign Scout,"Assign Groups scouts for round, this will have effects based on the scout"
+Deployment,Retreat Units,"You can Retreat units from combat to medical to heal wounds, until slots are full"
+Deployment,Equip Units,Play equipment cards onto active units without paying equip costs
+Deployment,Assign combatants,"You can freely rearrange units on the battlefield, wounded units can only move to medical or another active lane not to the bench, you may also retire units at this time"
+Deployment Leader,Scout Enemy,"Deal out enemy units from the deck = difficulty, draw X cards for Scouting turn them face up and shuffle back into deck before dealing cards into lanes "
+Deployment Leader,Upgrades,Use the Commands Funds to purchase upgrades
+Deployment Leader,Boss Assignment,Draw a boss card and roll to assign lane
+Deployment Leader,Lane Allocation,"Commander assigns players to lanes, highest rank takes command of that lane"
+Combat,Boss Reveal,Boss is revealed and any effects trigger
+Combat,Lane Reveal,"Lane enemies are revealed and effects triggered, if marked for scouting then prevent some effects"
+Combat,Combat Start,"Cycle through the lanes one at a time to resolve the active units combat, if a unit dies shuffle the lane deck and assign new combatant before moving to next lane. Cycle until all lanes are clear or over run"
+Combat,Boss encounter,"Depending on the boss this may trigger during main combat, otherwise place boss onto lanes, bosses count as active in all lanes and roll for target when attacking"
+Aftermath,Bury the dead,"Move dead units and equipment to graveyard. Dead enemies goto the disposal pile, or containment if available. Keep piles in order for some effects"
+Aftermath,Retire Units,Return Units to the unit deck that survive combat instead of healing them or letting die
+Aftermath,Over Run,if any enemies made it through regress the progress track based on the enemy rank.
+Aftermath,Check Event,Resolve the Active Event
+Aftermath,Escalate,Advance the progress track by 1
+Aftermath,Promote,"the Leader can provide +1 rank to a single player who is below the commanders rank, otherwise Commander Promotes, ONLY ON EVENT PASS"
+Anytime,Complete Missions,Complete any missions that are eligible for completion
+Anytime,Activate Gear,you can activate gear on units at any time as listed
+Anytime,Active Abilities,Activate unit abilities at any time
+Anytime,Emergency reinforcements,You can assign gear to active units outside of deployment for the cards cost
+Anytime leader,Activate upgrades,You can play upgrades active form at any time for their cost.

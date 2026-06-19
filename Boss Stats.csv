@@ -1,0 +1,31 @@
+Name,Damage,HP,Targeting,Boss Passive,T1Boss,T2Boss,T3Boss,T4Boss,T5Boss
+Lightning Wisp,5,50,Least Gear,Always Costs to Equip gear this round,Passive is activated,"+5 Attack, Gear costs +1 more to equip this round,","Pay 1 Alien per equiped gear when boss revealed, otherwise unequip that gear","+20 Health, 
+Heals 5 health on kill",Deals +5 damage per equiped item
+Null Engineer,5,50,Roll,Gear effects cost Tech 5 to activate,Passive is activated,"+5 Attack, Gear effects cost +1 Tech more to activate,",Gear also costs +1 Alien to activate,"+20 Health, 
+Heals 5 health on kill",Gear Cannot be activated
+Shadow Fiend,5,50,Low HP,You cannot Scout enemies,Passive is activated,"+5 Attack, +20 health,",Scout dies when generating resource,"+20 Health, 
+Heals 5 health on kill","Reveal Effects trigger additional time, once per lane"
+Plasma Channeler,5,50,Most Shields lost,No Shields for Allies or Enemies,Passive is activated,"+5 Attack, +20 Shields,",Gain Shields = Shield lost from passive,"+20 Shields,
+Heals 5 health on kill",Double Shields
+Rust Elemental,5,50,Most Armor lost,No Armor for Allies or Enemies,Passive is activated,"+5 Attack, +2 Armor,",Gain armor for every unit that loses armor this way (Up to 10),"+3 Armor,
+Heals 5 health on kill",Move armor cap from 10 to 15
+The Balance,5,50,Roll,"Damage is Spread evenly among active units depending on team, When Enemy is Revealed give this boss Shield = that units HP",Passive is activated,"+5 Attack, +20 health,","Every time a unit dies, deal 10 damage to the teams units","+20 Health, 
+Heals 5 health on kill","Combine HP and damage of all units, this number is now their HP and attack"
+The Root,5,50,Tech Cost,Tech income this round turned to Organic,Passive is activated,"+5 Attack, +20 health,",Organic costs doubled,"+20 Health, 
+Heals 5 health on kill",Gains attack = organics owned by players
+Undeath,2,50,High HP,"Enemies Revive on 1 HP after 1st death, they deal half damage",Passive is activated,"+5 Attack, +20 health,",Killed Friendlies revive on enemy lane at 1hp and half damage,"+20 Health, 
+Heals 5 health on kill",Revived units deal full damage
+Aegis Eater,5,50,Highest Shield,Enemies Steal Shields = damage dealt,Passive is activated,"+5 Attack, +20 Shields,",Enemies gain damage = half of shield,"+20 Shields,
+Heals 5 health on kill",Double Shield gain
+Plate Host,5,50,Roll,Enemies +1 armor,Passive is activated,"+5 Attack, +2 Armor,",Enemies gain damage = Double Armor,"+3 Armor,
+Heals 5 health on kill",All enemies gain armor = Rank
+Wreathing Mass,0,50,High Damage,"Take top 5 units of the enemy deck and add half their stats to this boss. When losing enough HP to kill one of the attached units, remove it from the boss losing its stats.",Passive is activated,"+5 Attack, +20 health,",Passive gives full stats,"+20 Health, 
+Heals 5 health on kill",1st enemy to die each lane is merged into this boss
+The Culling,5,50,Lowest Rank,Enemies Delete units of lower Rank,Passive is activated,"+5 Attack, Heal 3 on kill,","Heal 10 kill, gain 5 attack on kill","+20 Health, 
+Heals 5 health on kill",Attacks Twice
+Skinwalkers,5,50,Low HP,"Combat Start, Take Top 5 units of the graveyard and add their stats and abilities to this unit, if 5 units are not available use the Shop deck instead",Passive is activated,"+5 Attack, +20 health,",Passive uses 10 units instead of 5,"+20 Health, 
+Heals 5 health on kill",Killing a unit adds them to the enemy lane with half stats
+Dread Echo,5,50,Roll,Boss hits all Lanes each time an enemy dies,Passive is activated,"+10 Attack,",Also Hits when friendlies die,"+20 Health, 
+Heals 5 health on kill",Death hits deal double damage to units under half HP
+The Thing,5,50,Most Gear,Equipment from killed units get added to this boss,Passive is activated,"+5 Attack, +20 Shields,","Combat Start, Take Top 5 Gear of the Recycling and add their stats and abilities to this unit, if 5 cards are not available use the Shop deck instead","+20 Health, 
+Heals 5 health on kill",Double stat gains from gear

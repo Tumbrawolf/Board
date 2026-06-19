@@ -1,0 +1,102 @@
+Name,Description,Type,Rank,Reveal,Passive,Damage,HP,Organic Cost,Tech Cost,Alien Cost
+Pests,Melee Fodder,Fodder,Fodder,,+1 damage for each other revealed Pest,1,1,2,0,0
+Ticks,Damages Economy,Fodder,Fodder,Each player loses 1 organic,-1 organic income while revealed,1,1,2,0,0
+Wasp,Flying Drone with Stuns,Drones,Grunt,Stun enemies in adjacent lane,Stuns on 1st hit of each combat,3,3,1,0,0
+Lancer,Fodder with laser spears,Infantry,Grunt,Deal 2x attack damage to active and reserve units in this lane,Attacks Pierce upto 2 armor,4,5,5,2,1
+Grunt,Automatic weapons with low accuracy,Infantry,Grunt,Deal 2x attack damage to all lanes,,4,5,5,2,1
+Scorpions,"Stealth Assassin, Targets Scouts",Infantry,Grunt,Deal 2x attack damage to Scout,Damage from this unit hits the scout,4,5,5,2,1
+Cleric,Low ranking healers,Infantry,Grunt,"Move this unit to reserve, Shield active units by 5",Heal Active unit by this units attack,4,5,5,2,1
+Hound,Attack Dogs,Beast,Grunt,Deal 10 damage to lowest HP unit,Attacks Hit twice,5,7,6,1,1
+Gloom,Spy unit prevents effects,Beast,Grunt,,Prevents activation of abilities in lane,5,7,6,1,1
+Lance Turret,"Mounted Gun, Targets Lower HP units directly",Mechanised,Grunt,Swap this unit to the lane with the lowest Damage active unit,Attacks target lowest HP unit,7,8,2,4,2
+Eye Drones,Flying Drone with Laser spear,Drones,Core,"Roll D4, move this unit to that lane",Attacks Pierce upto 2 armor,4,5,4,6,2
+Knights,Ballistic Shields and Laser Spears,Infantry,Core,Gain 20 Shield,Attacks Pierce upto 2 armor,6,8,7,3,2
+War Hound,Hound but armored,Beast,Core,Deal 15 damage to lowest HP unit,"Attacks Hit twice, has 1 armor",8,10,9,2,2
+Space Lions,If Lions were alien and took way too many bullets to take down,Beast,Core,Gain Shields = excess damage on kill,Has 1 armor and 10 Shields,8,10,9,2,2
+Crawler,Transport with mounted Turret,Mechanised,Core,"Roll D4, Swap lanes with the active unit in that lane",,10,13,3,6,3
+Shard Beast,"Launches vollies of sharp spines, explodes on death",Abomination,Core,Attacks hit adjacent lanes for half damage,Explode for 2x damage on death,12,15,6,2,5
+Choke Point,MG mounted Drone,Drones,Advanced,Deal 15 damage to Active units,double this units damage when Humans activate abilities,5,7,5,8,2
+Counter Intel,Targets Scouts,Drones,Advanced,Deal 2x attack damage to Scout,Damage from this unit hits the scout,5,7,5,8,2
+Parasites,Takes over mechanical units on death,Drones,Advanced,Stun all Mechanical units,"On death, Take Vehicle or Mech from the graveyard and place into lane under enemy control",5,7,5,8,2
+Emmiter,Flying Drone that deploys poison gas,Drones,Advanced,Stun all Infantry units,Infantry in all lanes take 2 damage per round of combat. This damage bypasses armor and shields,5,7,5,8,2
+Jack In the Box,Small explosive drone,Drones,Advanced,Deal 20 damage to active unit,on Death Deal 20 damage to active unit,5,7,5,8,2
+Priest,Healer,Infantry,Advanced,"Move this unit to reserve, Shield active units by 10",Heal Active unit by half this units attack on hit,8,10,9,4,2
+Cleric of Steel,Provides Armor,Infantry,Advanced,"Move this unit to reserve, Grant 15 shield to active units",All enemies gain 4 armor,8,10,9,4,2
+Shadow Knight,Teleporting Knight,Infantry,Advanced,Deal 10 damage to Reserve in this lane,"Cannot be targeted by abilities, Targets Reserve",8,10,9,4,2
+Burner,Flamethrower,Infantry,Advanced,Deal 15 damage to active infantry,Deals 5 Bonus damage to Infantry,8,10,9,4,2
+Sniper Squad,Snipers,Infantry,Advanced,Deal 20 damage to Highest health unit,When any units HP falls below this units attack value Kill that unit,8,10,9,4,2
+Demo Squad,Group of Grunts with explosives,Infantry,Advanced,"Deal 2x attack damage to active unit, Deal half that to adjacent lanes",Attacks hit adjacent lanes at half damage,8,10,9,4,2
+Shredder Grunt,Grunt Heavy weapons,Infantry,Advanced,Remove 5 armor from all units,Attacks remove 1 armor each hit,8,10,9,4,2
+Skirmisher,Fast moving infantry with Close range plasma weapons,Infantry,Advanced,"Roll D4, Move to that lane",Always hits 1st,8,10,9,4,2
+Dark Zealot,Untargetable by abilities,Infantry,Advanced,Cannot be target by abilities,Cannot be targeted by abilities,8,10,9,4,2
+Tunnler,Transport,Beast,Advanced,Move this unit to reserve,"If a unit dies in this lane, reduce progress by 1",11,13,11,2,2
+Underminer,Disables base upgrades,Beast,Advanced,Shuffle 1 upgrade back into deck,Base upgrades cannot be triggered while this unit is alive,11,13,11,2,2
+Thorn Hide,Large beast with armor and reflects,Beast,Advanced,Gain 2 armor,"Has 2 armor, Deals damage = Armor when damaged",11,13,11,2,2
+Spitters,Acidic damage at range,Beast,Advanced,Shred 5 armor from all units,Damage Shreds 2 armor on hit,11,13,11,2,2
+Cryo Spitter,Spitter that freezes targets,Beast,Advanced,Stun all reserve units,Stun enemies every 3 attacks,11,13,11,2,2
+Young Ravager,Grizly and a Rino had a Child,Beast,Advanced,Attack every lane once,Attacks hit twice,11,13,11,2,2
+Plasma Artillery,AOE Anti Vehicle,Mechanised,Advanced,Deal 20 damage to each Mech or Vehicle.,"Hits adjacent lanes, Deals double damage to Mech and Vehicles",13,17,3,8,4
+Inferno Artillery,AOE anti infantry,Mechanised,Advanced,Deal 20 damage to each Infantry,"Hits adjacent lanes, Deals double damage to Infantry",13,17,3,8,4
+Shield Battery,Provides Shields,Mechanised,Advanced,"Move this unit to reserve, Grant 15 shield to active units",Gives all enemies 10 Shields before combat,13,17,3,8,4
+Plasma Flac,Disables Abilities,Mechanised,Advanced,Move this unit to reserve,Abilities cannot be activated while this unit is alive,13,17,3,8,4
+Plasma Crab,6 leg walker with plasma cannons,Mechanised,Advanced,Gain 25 Shield,Gains Armor = to shields,13,17,3,8,4
+Light Tank,Decent HP and Armor,Mechanised,Advanced,Double this units HP,Has 20 shields and 3 armor,13,17,3,8,4
+Heavy Tank,High HP and Armor,Mechanised,Advanced,Double this units HP,Has 25 shields and 5 armor,13,17,3,8,4
+Tank Killer,Kills Vehicles,Mechanised,Advanced,"If active unit is a Vehicle or Mech, Kill it.",Deals Double damage to Mechs and Vehicles,13,17,3,8,4
+Marker,Damage boosts Allies,Mechanised,Advanced,Move this unit to reserve,Add this units damage to All active Enemies,13,17,3,8,4
+Crawling Forge,Bonuses to armor on enemies,Mechanised,Advanced,Grant all enemies 4 Armor,Armor blocks an additional 50% rounded down,13,17,3,8,4
+Annihilator Tank,Siege Tank that deletes units,Mechanised,Advanced,Deal 40 damage to active unit,"Deletes units on Kill, Splash damage to reserve on kill",13,17,3,8,4
+Necromancer,Revives Killed Infantry,Abomination,Advanced,"Move this unit to reserve, Revive the top 4 infantry in graveyard to the lanes.",Infantry that die while this is alive are added to the enemy active slot,14,20,7,2,6
+Manipulator,Can recruit human infantry,Abomination,Advanced,Place the strongest Infantry in shop onto this unit granting it stats and abilities,Half of Damage targeting this unit is moved onto reserve 1st,14,20,7,2,6
+Reanimator,Revives units killed last round,Abomination,Advanced,Return enemies that died last round into this lane,Loses health = rank of units revived this way capped at 1hp remaining,14,20,7,2,6
+Hive Mind,Bonus Stats to allies,Abomination,Advanced,"Move to reserve, this cannot be prevented",All enemies gain 10 attack and 10 max HP,14,20,7,2,6
+God Rod,Single Use suicide attack,Drones,Elite,Deals 60 damage to highest rank unit. Excess damage splashes,Kills Self to deal 40 damage to active unit,8,10,7,12,3
+Elite Knight,Elite Infantry,Infantry,Elite,Double this units attack,Has 30 shields and 6 armor,12,15,13,6,3
+Puppeteer,Makes Friendly Units attack eachother,Infantry,Elite,All Allies Splash friendlies once,Player units splash a random ally,12,15,13,6,3
+Storm Claw,"Giant Tiger beast, Hits additional enemy for x damage",Beast,Elite,Hit all units 4 times,"each attack - Roll 2 D4, Hit Those lanes",14,20,16,3,3
+Ravager,Grizly and a Rino had a Child,Beast,Elite,Execute units under 1/4 health,"Has 20 shields and 5 armor, Has Lifesteal",14,20,16,3,3
+Dragon,Alien Dragon that breaths acid,Beast,Elite,"Shred all armor from units, gain that much Damage",Shred all Armor on hit,14,20,16,3,3
+Bastion,Shield Projector that regenerates Shield,Mechanised,Elite,"Move all Shields from allies to enemies, enemies gain Shield = 5xRank",Enemies gain 5 shield on hit,16,25,4,12,6
+Juggernaut Tank,Fortress on wheels,Mechanised,Elite,Gain 30 shields and 5 armor,Takes Half damage,16,25,4,12,6
+Black Rail,Dark Matter Railgun,Mechanised,Elite,Delete highest rank unit,"Deletes units on kill, Damage hits all active or all reserve, follows highest rank",16,25,4,12,6
+Mobile Temple,Heals Enemies,Mechanised,Elite,"Give all enemies 30 shield and restore all HP, move this unit to reserve",Enemies Heal 10 on hit,16,25,4,12,6
+Nightmare,Can only attack units in Medical,Abomination,Elite,Stun all units,"Hits units in Medical, Highest Rank 1st",18,30,10,3,9
+Super Grunt,Grunt on Steroids with big gun,Experimental,Elite,Gain 10 armor,Missing health is added to damage,18,35,4,9,9
+Death Cloak,Enemies are Immortal on 1HP while this unit is alive,Experimental,Elite,"Move to reserve, this cannot be prevented","Double this units HP, Enemy HP cannot fall below 1, blocked damage is dealt to this unit instead",18,35,4,9,9
+Shatter Cannon,AOE Stuns on kills. Shreds Armor and Shields,Experimental,Elite,"Stun all units, shred half their shields and armor","Shred 4 armor and 5 shield on hit, Stun all units on kill.",18,35,4,9,9
+Oracle,Prevents any Targeting prevention,Drones,General,Prevent the next 20 damage delt to enemies,Enemies cannot have their abilities prevented,11,13,9,16,4
+High Praetor,Knight unit that gainst stacking armor when hit,Infantry,General,Gain 5 armor.,Gains 2 armor on hit. reset on kill.,14,20,17,8,4
+Tactician,Reduces progress,Infantry,General,Reduce the progress by 3,Lose 2 progress on death,14,20,17,8,4
+Grand Saboteur,"Roll dice to select location, Disables all building upgrades while alive",Infantry,General,"Roll a D6, disable the upgrades at this location until the end of next turn",Gain 10 damage and health for each upgrade disabled,14,20,17,8,4
+Crown Splitter,Elite Sniper General,Infantry,General,Half HP of all infantry,Enemies deal 15 bonus damage to infantry,14,20,17,8,4
+Alpha Thorn Hide,Reflects damage until Shields broken,Beast,General,Gain 40 shield,"Reflects damage while unit has shields, starts with 40 shields",16,27,21,4,4
+Alpha Storm Claw,"Chain attacks hit all lanes, stacks",Beast,General,Attack 6 times,"Hit all lanes, hits an additional time for each attack on the same target",16,27,21,4,4
+Alpha Ravager,"Grizly and a Rino had a Child, Changes lanes to target weakest target",Beast,General,Gain 3 Multistrike,"Has 30 shields and 6 armor, Has Lifesteal, changes lane to target lowest HP unit",16,27,21,4,4
+Black Rain,"Artillery unit, hits whole board",Mechanised,General,Hit all units 4 times,Attacks Hit all units,20,33,5,16,8
+Equivilence,Retaliates with copy of any abilities used while in reserve,Mechanised,General,Move to reserve,Mimics abilites cast by players,20,33,5,16,8
+Titan,Walking armory,Mechanised,General,Deal 15 damage to active units 3 times,"Shreds shields and armor, hits all active, Stuns units on ability activation.",20,33,5,16,8
+Oblivion Walker,"3 legged walker, Deletes units on kill",Mechanised,General,Gains 30 attack,"Delets on Kill, Gains 15 attack on hit",20,33,5,16,8
+Totem of Decay,Non mechanical units take DoT,Mechanised,General,Stun all units,Deals 5 damage to all non mechanical units whenever an enemy attacks,20,33,5,16,8
+Scarab Tank,Armor Piercing,Mechanised,General,Deal 50 damage to unit,Ignores Armor,20,33,5,16,8
+Icon of Fear,Roll to stun units on every action,Abomination,Conqueror,Stun all units,"whenever an enemy attacks, Roll D8, Stun that unit",22,40,13,4,12
+Soul eater,"When any unit dies, add half of its stats to this unit",Experimental,General,Gain the stats of top 4 cards in graveyard and disposal,"When any unit dies, add half of its stats to this unit",22,47,5,12,12
+Plague,"Prevents Heals, deals damage based on missing HP",Experimental,General,Deal damage to units = missing HP,player Units cannot heal while this enemy is alive,22,47,5,12,12
+Ruin,Melts Armor and Shields,Experimental,General,"Remove armor and shields from units, deal damage = amount removed",Removes all Armor and shields on hit,22,47,5,12,12
+Shadow Sower,Prevents all scouting effects and targeted effects,Drones,Conqueror,Kill active scout,Prevents all scouting effects and targeted effects,13,17,11,20,5
+High Priest,"Heals Enemies, Grants Shields",Infantry,Conqueror,"Heal all units enemy to full, grant them 50 shields","when enemies attack, Heal all enemies by 5 and gain shields = amount healed",20,25,21,10,5
+High General,Buffs all enemies,Infantry,Conqueror,Move this unit to reserve,"Give all enemies 20 damage, Shields and HP",20,25,21,10,5
+Blood Hunter,Snake like creature that frenzies on kill,Beast,Conqueror,Kill Lowest HP unit,"Attacks an additional time per kill, moves to lowest HP unit on kill",22,33,26,5,5
+Machine Mind,Steals Abilities of units it kills,Mechanised,Conqueror,Kill highest rank unit with an targeted ability,Gain the abilities of units this kills,22,42,6,20,10
+Siege Ender,bonus damage based on progress,Mechanised,Conqueror,all units Gain 10 damage and shields per progress,Gains 10 attack per progress,22,42,6,20,10
+Hydra,Every 25% HP missing Hydra gains a multi attack,Abomination,Conqueror,Gain Shields = Health,"Doubled attack for every 25% missing HP,
+/
+Gain Shield = current Health every time it loses 25% of max HP,",22,50,16,5,15
+Amalgamation,combines the top 3 organic units of both graveyards,Abomination,Conqueror,Kill the highest ranked unit,"Take the last 3 enemies and allies to have died, combined their abilities and stats onto this unit",22,50,16,5,15
+Zeus,"Stuns Mechanical, Hits all lanes",Experimental,Conqueror,Stun all Mechanical units for 2 rounds,"Hits all lanes, double damage to vehicles and Mechs",22,58,6,15,15
+Cerberus,Different effects per lane,Experimental,Conqueror,Half the HP of all units,"Roll 2 dice to assign abilities: 
+/
+1 - Double Damage 2 - 20 attack on kill 
+/
+3 - Gains 2 armor on kill 4 - heal 20 on kill
+/
+5 - Hits all lanes on attack 6 - Double HP",22,58,6,15,15
