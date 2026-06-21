@@ -35,3 +35,5 @@ Lifesteal,Heal based on damage dealt
 Charges,Stacking counters that fuel or modify an item's effect
 Sacrifice,Destroy a friendly unit or item for a benefit
 Banish,Remove from combat without killing
+Long Range,Can target any lane when attacking
+Mobile,Can move between lanes while in reserve

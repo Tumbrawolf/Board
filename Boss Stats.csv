@@ -17,7 +17,7 @@ Undeath,2,50,High HP,"Enemies Revive on 1 HP after 1st death, they deal half dam
 Heals 5 health on kill",Revived units deal full damage
 Aegis Eater,5,50,Highest Shield,Enemies Steal Shields = damage dealt,Passive is activated,"+5 Attack, +20 Shields,",Enemies gain damage = half of shield,"+20 Shields,
 Heals 5 health on kill",Double Shield gain
-Plate Host,5,50,Roll,Enemies +1 armor,Passive is activated,"+5 Attack, +2 Armor,",Enemies gain damage = Double Armor,"+3 Armor,
+Plate Host,5,50,Roll,"Boss gains +1 Armor (self only, not other enemies)",Passive is activated,"+5 Attack, +2 Armor,",Enemies gain damage = Double Armor,"+3 Armor,
 Heals 5 health on kill",All enemies gain armor = Rank
 Wreathing Mass,0,50,High Damage,"Take top 5 units of the enemy deck and add half their stats to this boss. When losing enough HP to kill one of the attached units, remove it from the boss losing its stats.",Passive is activated,"+5 Attack, +20 health,",Passive gives full stats,"+20 Health, 
 Heals 5 health on kill",1st enemy to die each lane is merged into this boss

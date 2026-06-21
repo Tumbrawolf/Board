@@ -15,7 +15,7 @@ Armory,Ethics Committee,"Experimental Equipment banned from game, Remove Alien c
 Containment Block,Containment Protocol,Unlocks the Containment cells,Add target enemy to your reserves,15,5,5
 Containment Block,Garrison,"Allows Units to be Garrisoned in the Containment center instead of enemies, allowing them to assist in combat while not being damaged. Units deal bonus damage = attack on garrisoned units for 1st attack","Recruit units from top of deck into each lane, return them to bottom of deck after combat",15,5,5
 Containment Block,Tag Team,Reserve units deal damage when active units attack,Swap your Reserve and Active units in all lanes,15,5,5
-Containment Block,Combat Stims,Abilities from Contained units can be used once per turn,Deal your choice of damage to a friendly to give double the damage deal as bonus Attack for this round,15,5,5
+Containment Block,Combat Stims,Once per turn: Abilities from Contained units can be used,Deal your choice of damage to a friendly to give double the damage deal as bonus Attack for this round,15,5,5
 Containment Block,Extraction,"Units here can no longer be used, instead Generate their cost/Reward each turn",Gain resources for the last 2 enemies or friendlies to die,15,5,5
 Containment Block,Countermeasures,"Roll Dice at start of round, prevent active abilities number of times in target lane = dice roll, on a 6",Prevent all enemy abilities in a target lane,15,5,5
 Containment Block,Exploitation,,"Triple Damage on next attack, die after attacking",15,5,5
@@ -25,7 +25,7 @@ Medical Bay,Ashes to Ashes,,Sacrifice a unit to refund its Organics cost,15,5,5
 Medical Bay,Share Rooms,Expand Capacity of Medical bay,Heal All units in med bay,15,5,5
 Medical Bay,We can Rebuild them,All units can be healed for their Tech cost to get them back in a single round.,Heal all units under half HP Back to Full,15,5,5
 Medical Bay,Increased Budget,Workers heal additional unit when in med bay,"Heal Half of all damage on units, rounded down",15,5,5
-Medical Bay,Battle Medics,Active units can be healed to full once per lane,Heal all units on battlefield at end of round,15,5,5
+Medical Bay,Battle Medics,Once per lane: Active units can be healed to full,Heal all units on battlefield at end of round,15,5,5
 Command,Work Order,,All active Units generate supply for the command supply,5,10,10
 Command,Orders from Above,,"Draw 3 cards, Discard 2 cards and gain their cost in resources.",5,10,10
 Command,Income Tax,,Half of player income is taken by the command pool this round.,5,10,10
