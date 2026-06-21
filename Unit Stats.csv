@@ -1,7 +1,7 @@
-Type,Rank,Name,Main Effect,Bonus Effects,Damage,HP,Organic Cost,Tech Cost,Alien Cost,Organic Scout,Tech Scout,Alien Scout,Armor,Shields
+﻿Type,Rank,Name,Main Effect,Bonus Effects,Damage,HP,Organic Cost,Tech Cost,Alien Cost,Organic Scout,Tech Scout,Alien Scout,Armor,Shields
 Infantry,Conscript,Conscript,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,,1,1,1,0,0,1,0,0,0,0
-Scout,Conscript,Civilian Scout,Can Move between lanes when in reserve,Cannot equip gear,1,1,1,0,0,2,1,1,0,0
-Scout,Conscript,Civilian Survivalist,Scouts +1 enemy.,,1,1,1,0,0,2,1,1,0,0
+Infantry Scout,Conscript,Civilian Scout,Can Move between lanes when in reserve,Cannot equip gear,1,1,1,0,0,2,1,1,0,0
+Infantry Scout,Conscript,Civilian Survivalist,Scouts +1 enemy.,,1,1,1,0,0,2,1,1,0,0
 Infantry,Private,Recruit,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,,2,2,3,1,0,3,0,0,0,0
 Infantry,Private,Stubborn Recruit,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,,2,2,3,1,0,3,0,0,1,0
 Infantry,Private,Lazy Recruit,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,Attacks every 2nd round,2,2,3,1,0,3,0,0,0,0
@@ -9,8 +9,8 @@ Infantry,Private,Pack Mule,Can Move equipment from this unit to any other when d
 Infantry,Private,Rookie Marksman,Long Range,,2,2,3,1,0,3,0,0,0,0
 Infantry,Private,Rookie Technician,Active Vehicles and Mechs in same lane heal by 1 each attack,,2,2,3,1,0,3,0,0,0,0
 Infantry,Private,Rookie Gunner,Increase Damage by 1 for consecutive hits on target,,2,2,3,1,0,3,0,0,0,0
-Scout,Private,Recruit Prodigy,Sacrifice unit to reduce cost of next Recruitment by this units cost + 2,,2,2,3,1,0,6,1,1,0,0
-Scout,Private,Rookie Scout,Mobile,,2,2,3,1,0,6,1,1,0,0
+Infantry Scout,Private,Recruit Prodigy,Sacrifice unit to reduce cost of next Recruitment by this units cost + 2,,2,2,3,1,0,6,1,1,0,0
+Infantry Scout,Private,Rookie Scout,Mobile,,2,2,3,1,0,6,1,1,0,0
 Mech Scout,Sergeant,"RDMP ""Spotter""",Mobile,"Prevents reveal effects in this lane, lose 1 HP each time this triggers",3,3,2,6,0,4,4,2,0,0
 Infantry,Sergeant,Gunner,Increase Damage by 2 for consecutive hits on target,,3,3,6,2,0,6,0,0,0,0
 Infantry,Sergeant,Technician,Active Vehicles and Mechs in same lane heal by 2 each attack,,3,3,6,2,0,6,0,0,0,0
@@ -35,7 +35,7 @@ Vehicle,Sergeant,Supply Truck,"Destroy this unit, Give target player resources o
 Vehicle,Sergeant,Siege Tank,Attacks Hit Target Adjacent Lane for half Damage and prevents movement and abilities of active target,,3,3,4,4,0,4,0,0,4,10
 Vehicle,Sergeant,Flac Truck,Attacks before enemies,Enemies cannot move while this unit is active,3,3,4,4,0,4,0,0,0,0
 Vehicle,Sergeant,Ambulance,"While in reserve, Infantry restore half of missing HP between fights",,3,3,4,4,0,4,0,0,1,5
-Scout,Sergeant,Scout,Mobile,,3,3,6,2,0,0,3,2,0,0
+Infantry Scout,Sergeant,Scout,Mobile,,3,3,6,2,0,0,3,2,0,0
 Vehicle Scout,Sergeant,Automated Recon Drone,Mobile,"On Death Return unit to Shop, Reveal any 1 enemy from each lane",3,3,4,4,0,8,5,2,0,0
 Mech Scout,Captain,"AMP ""Surveyor""","Cannot Scout enemies, Generates 2x resources",Cannot be targeted by enemy effects,5,5,3,9,1,6,10,3,0,0
 Infantry,Captain,Hunter Unit,Gain 20 Shields when no reserves in Lane,Gain 5 attack when no reserves in Lane,5,5,9,3,1,9,0,0,0,0
@@ -59,9 +59,9 @@ Gain 1 dice if Reserve 2 Dice if in active slot","Rolls:
 Vehicle,Captain,Tank Killer,"If target has over double the this units current HP, Deal double damage on hit and with abilities, Ignores Armor and Shields",Once per turn: Deal 3x damage to target,5,5,6,6,1,6,0,0,5,15
 Vehicle,Captain,Toxin Tank,"Enemies damaged by this unit cannot active abilities, Delete units killed while under this effect",,5,5,6,6,1,6,0,0,3,10
 Vehicle,Captain,Light Tank,,,5,5,6,6,1,6,0,0,2,15
-Scout,Captain,Researcher,Once per turn: Reduce Alien cost of next Purchase by 2,Grants +1 Progress when killed,5,5,9,3,1,18,0,3,0,0
-Scout,Captain,Special Forces,"Can deploy into active slot from scout slot at any time, active unit is moved to top of reserve keeping gear equiped.",Stun enemy when deployed from scout,5,5,9,3,1,18,4,3,0,0
-Scout,Captain,Covert Operation,Mobile,Stuns all enemies when killed,5,5,9,3,1,18,3,3,0,0
+Infantry Scout,Captain,Researcher,Once per turn: Reduce Alien cost of next Purchase by 2,Grants +1 Progress when killed,5,5,9,3,1,18,0,3,0,0
+Infantry Scout,Captain,Special Forces,"Can deploy into active slot from scout slot at any time, active unit is moved to top of reserve keeping gear equiped.",Stun enemy when deployed from scout,5,5,9,3,1,18,4,3,0,0
+Infantry Scout,Captain,Covert Operation,Mobile,Stuns all enemies when killed,5,5,9,3,1,18,3,3,0,0
 Vehicle Scout,Captain,Stealth Buggy,Mobile,"Cannot be targeted by abilities, Cancel 1st enemy ability per round",5,5,6,6,1,12,6,3,0,0
 Mech Scout,Major,"MCP B1 ""Spotter""",Mobile,"Allows units to deal damage to enemy reserves when active Scout, you still take damage from the active enemy",8,8,4,12,2,8,0,4,0,0
 Infantry,Major,Demolitions,Attacks Hit Target Adjacent Lane for half Damage,2x Damage to Armored Enemies,8,8,12,4,2,12,0,0,0,0
@@ -81,7 +81,7 @@ Vehicle,Major,Heavy APC,,Once per turn: swap the active unit from 2 lanes. Grant
 Vehicle Scout,Major,Recon Bike,Mobile,"Once per turn: deploy the lowest rank unit from the shop into active slot of your lane, destroy unit at end of combat",8,8,8,8,2,16,7,4,0,0
 Vehicle Scout,Major,ATV,Mobile,Once per turn (when in scout slot): swap the active unit from 2 lanes. the swapped units deal a free attack on enemy in these lanes,8,8,8,8,2,16,7,4,0,0
 Mech Scout,Colonel,"AMP2 ""Ghost""","Can Move between Lanes when Reserve, if this unit would die when in active position and you have reserve units alive, move it to bottom of reserve","When this units main effect triggers, deal an additional attack to enemy before moving unit",10,10,5,15,4,10,2,5,0,0
-Scout,Colonel,Remote Drop Soldier,"Deploy into any lane from scout role, allow equipping of gear when deploying this way,","Deals Damage = unit damage to enemies in lane when deployed from scout (includes gear bonuses),",10,10,15,5,4,30,3,5,0,0
+Infantry Scout,Colonel,Remote Drop Soldier,"Deploy into any lane from scout role, allow equipping of gear when deploying this way,","Deals Damage = unit damage to enemies in lane when deployed from scout (includes gear bonuses),",10,10,15,5,4,30,3,5,0,0
 Infantry,Colonel,Elite Marksman,Long Range,,10,10,15,5,4,15,0,0,0,0
 Infantry,Colonel,Elite Sniper,"Ignores armor and shields, can target any lane when attacking",,10,10,15,5,4,15,0,0,0,0
 Infantry,Colonel,Elite Gunner,Increase Damage by 3 for consecutive hits on target,Remove 3 Armor on hit,10,10,15,5,4,15,0,0,0,0
@@ -92,7 +92,7 @@ Mech,Colonel,"AMP2 ""Gladiator""",Stun 1st enemy to Damage Gladiator each round,
 Mech,Colonel,"AMP2 ""Firesale""",Target enemy lane Takes 10 damage per round of combat,"Gain +1 Damage on hits against same target, Explodes for 3x damage to all enemies on death",10,10,5,15,4,5,0,0,0,0
 Mech,Colonel,"AMP2 ""Warthog""",Gain +1 Damage on hits against same target,"Once per round: If enemy activates ability during this units combat step, Stun unit and negate the ability",10,10,5,15,4,5,0,0,0,0
 Mech,Colonel,"AMP2 ""Overwatch""",Ignores Armor and Shields on attack,"When not active in combat, Deny abilities targeting other lanes",10,10,5,15,4,5,0,0,0,0
-Scout,Colonel,Field Researcher,Gain Alien = 1st enemy killed,Grants +1 Progress when killed,10,10,15,5,4,30,2,5,0,0
+Infantry Scout,Colonel,Field Researcher,Gain Alien = 1st enemy killed,Grants +1 Progress when killed,10,10,15,5,4,30,2,5,0,0
 Vehicle,Colonel,Mammoth Tank,"Negate abilities on 1st enemy hit, Stun all enemies when entering active slot, Hits Twice",,10,10,10,10,4,10,0,0,7,40
 Vehicle,Colonel,Stealth Tank,can target reserve,"Cannot be targeted by abilities, Cancel 1st enemy ability per round",10,10,10,10,4,10,0,0,2,25
 Vehicle,Colonel,Demo Truck,Delete gear from this unit on death,"On death Explodes dealing 4x damage to all enemies, after attacking sacrifice this unit",10,10,10,10,4,10,0,0,0,10
@@ -105,7 +105,7 @@ Vehicle,Specialist,Tesla Tank,"Has 40 Shields, Deal damage = Shields to all enem
 Vehicle,Specialist,Scorpion Tank,Attacks and abilities ignore armor and shields,Once per turn: Deal 2x attack damage to a target,12,12,12,12,6,12,0,0,5,30
 Vehicle,Specialist,Overlord Tank,Friendly Units get +10 damage and +5 armor while this unit is in active slot,,12,12,12,12,6,12,0,0,5,40
 Mech Scout,Brigadier,"TRM ""Shadow""",Deals this units attack damage to enemy units when triggering non reveal abilities,Units killed by this effect Delete,15,15,7,21,7,14,6,7,0,0
-Scout,Brigadier,"""Python""","Reveals 2x units when scouting, Kill the 3 lowest rank units that are scouted by this unit
+Infantry Scout,Brigadier,"""Python""","Reveals 2x units when scouting, Kill the 3 lowest rank units that are scouted by this unit
 /
 ",On death kill the enemy that killed this,15,15,21,7,7,42,0,7,0,0
 Infantry,Brigadier,Paladin,Attacks 1st when attacking a unit,"Gain 6 Power and 7 Health on Kill, Stun Enemies when targeted by abilities.",15,15,21,7,7,21,0,0,5,25

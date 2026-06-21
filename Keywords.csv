@@ -1,4 +1,4 @@
-Keywords,Description
+﻿Keywords,Description
 Targeted Damage,Deal X Damage to a target or group
 Revive,Bring a dead unit/enemy back alive
 Heals,Restores HP
@@ -16,7 +16,7 @@ Haste,Act Faster
 Trample,Overkill Damage hits next target
 Spawns,Spawn new units
 Shields,Prevents Damage Total
-Armor,Reduce damage per instance
+Armor,Reduce damage per instance (minimum 1 damage always gets through)
 Delete,Remove from game
 Damage Over Time,Damage over multiple turns
 Execute,Kill under threshold
