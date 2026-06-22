@@ -1,52 +1,52 @@
 ﻿Type,Rank,Name,Main Effect,Bonus Effects,Damage,HP,Organic Cost,Tech Cost,Alien Cost,Organic Scout,Tech Scout,Alien Scout,Armor,Shields
-Infantry,Conscript,Conscript,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,,1,1,1,0,0,1,0,0,0,0
-Infantry Scout,Conscript,Civilian Scout,Can Move between lanes when in reserve,Cannot equip gear,1,1,1,0,0,2,1,1,0,0
-Infantry Scout,Conscript,Civilian Survivalist,Scouts +1 enemy.,,1,1,1,0,0,2,1,1,0,0
-Infantry,Private,Recruit,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,,2,2,3,1,0,3,0,0,0,0
-Infantry,Private,Stubborn Recruit,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,,2,2,3,1,0,3,0,0,1,0
-Infantry,Private,Lazy Recruit,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,Attacks every 2nd round,2,2,3,1,0,3,0,0,0,0
-Infantry,Private,Pack Mule,Can Move equipment from this unit to any other when deploying new active unit,,2,2,3,1,0,3,0,0,0,0
+Infantry,Conscript,Conscript,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,,1,1,1,0,0,1,0,0,0,1
+Infantry Scout,Conscript,Civilian Scout,Can Move between lanes when in reserve,Cannot equip gear,1,1,1,0,0,4,1,1,0,1
+Infantry Scout,Conscript,Civilian Survivalist,Scouts +1 enemy.,,1,1,1,0,0,4,1,1,0,1
+Infantry,Private,Recruit,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,,2,2,3,1,0,3,0,0,0,2
+Infantry,Private,Stubborn Recruit,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,,2,2,3,1,0,3,0,0,1,7
+Infantry,Private,Lazy Recruit,Sacrifice unit to reduce cost of next Recruitment by this units cost + 1,Attacks every 2nd round,2,2,3,1,0,3,0,0,0,2
+Infantry,Private,Pack Mule,Can Move equipment from this unit to any other when deploying new active unit,,2,2,3,1,0,3,0,0,0,4
 Infantry,Private,Rookie Marksman,Long Range,,2,2,3,1,0,3,0,0,0,0
-Infantry,Private,Rookie Technician,Active Vehicles and Mechs in same lane heal by 1 each attack,,2,2,3,1,0,3,0,0,0,0
+Infantry,Private,Rookie Technician,Active Vehicles and Mechs in same lane heal by 1 each attack,,2,2,3,1,0,3,0,0,0,4
 Infantry,Private,Rookie Gunner,Increase Damage by 1 for consecutive hits on target,,2,2,3,1,0,3,0,0,0,0
-Infantry Scout,Private,Recruit Prodigy,Sacrifice unit to reduce cost of next Recruitment by this units cost + 2,,2,2,3,1,0,6,1,1,0,0
-Infantry Scout,Private,Rookie Scout,Mobile,,2,2,3,1,0,6,1,1,0,0
-Mech Scout,Sergeant,"RDMP ""Spotter""",Mobile,"Prevents reveal effects in this lane, lose 1 HP each time this triggers",3,3,2,6,0,4,4,2,0,0
+Infantry Scout,Private,Recruit Prodigy,Sacrifice unit to reduce cost of next Recruitment by this units cost + 2,,2,2,3,1,0,4,1,1,0,2
+Infantry Scout,Private,Rookie Scout,Mobile,,2,2,3,1,0,8,1,1,0,1
+Mech Scout,Sergeant,"RDMP ""Spotter""",Mobile,"Prevents reveal effects in this lane, lose 1 HP each time this triggers",3,3,2,6,0,6,6,2,0,2
 Infantry,Sergeant,Gunner,Increase Damage by 2 for consecutive hits on target,,3,3,6,2,0,6,0,0,0,0
-Infantry,Sergeant,Technician,Active Vehicles and Mechs in same lane heal by 2 each attack,,3,3,6,2,0,6,0,0,0,0
+Infantry,Sergeant,Technician,Active Vehicles and Mechs in same lane heal by 2 each attack,,3,3,6,2,0,6,0,0,1,5
 Infantry,Sergeant,Marksman,Long Range,,3,3,6,2,0,6,0,0,0,0
 Infantry,Sergeant,Breacher,Stun when attacking full HP enemies,,3,3,6,2,0,6,0,0,0,0
 Infantry,Sergeant,Flamethrower,Attacks Hit Target Adjacent Lane for half Damage but still applies Debuff at full,Reduce Armor by 1 per attack,3,3,6,2,0,6,0,0,0,0
-Mech,Sergeant,"RDMP ""Wall""",reflects half damage when hit,,3,3,2,6,0,2,0,0,3,6
-Mech,Sergeant,"RDMP ""Crater""",Explodes on Death Dealing 15 to enemy in lane,"Move this unit to Medical Bay to deal 10 damage to Active Enemy and Allied Reserve in Lane, Only usable from Active",3,3,2,6,0,2,0,0,0,15
-Mech,Sergeant,"RDMP ""Glass""",Long Range,Ignores Armor/Shields and deal excess damage to next unit in lane,3,3,0,6,0,0,0,0,0,0
+Mech,Sergeant,"RDMP ""Wall""",reflects half damage when hit,,3,3,2,6,0,2,0,0,2,10
+Mech,Sergeant,"RDMP ""Crater""",Explodes on Death Dealing 15 to enemy in lane,"Move this unit to Medical Bay to deal 10 damage to Active Enemy and Allied Reserve in Lane, Only usable from Active",3,3,2,6,0,2,0,0,1,5
+Mech,Sergeant,"RDMP ""Glass""",Long Range,Ignores Armor/Shields and deal excess damage to next unit in lane,3,3,2,6,0,2,0,0,0,0
 Mech,Sergeant,"RDMP ""Howitzer""",Attacks Hit Target Adjacent Lane for half Damage,Once per turn: Stun Target Enemy,3,3,2,6,0,2,0,0,0,0
 Mech,Sergeant,"RDMP ""Impailer""",Long Range,Ignores Armor/Shields and deal excess damage to next unit in lane,3,3,2,6,0,2,0,0,0,0
 Mech,Sergeant,"RDMP ""Mother""",Generates Resources when in reserve,"Cannot be targeted by enemy abilities, 
 /
-Active Vehicles and Mechs in same lane heal by 3 each attack",3,3,2,6,0,2,0,0,0,0
-Vehicle,Sergeant,Hovercraft,Can change Lanes before and During combat,,3,3,4,4,0,4,0,0,0,0
-Vehicle,Sergeant,Hover Tank,Can change Lanes before and During combat,,3,3,4,4,0,4,0,0,2,5
+Active Vehicles and Mechs in same lane heal by 3 each attack",3,3,2,6,0,2,0,0,1,3
+Vehicle,Sergeant,Hovercraft,Can change Lanes before and During combat,,3,3,4,4,0,4,0,0,0,2
+Vehicle,Sergeant,Hover Tank,Can change Lanes before and During combat,,3,3,4,4,0,4,0,0,0,2
 Vehicle,Sergeant,Flame Tank,Gain +1 Damage on hits against same target and enemy loses 1 Armor,"Gain +1 Damage on hits against same target, Explodes for 10 damage to all enemies on death",3,3,4,4,0,4,0,0,0,0
 Vehicle,Sergeant,Mobile Rockets,"Deals Half damage to lanes next to target, Can only target adjacent lanes when attacking","Once per turn: Can Move between Lanes when Reserve, Deal 5 damage to Active enemy when moving",3,3,4,4,0,4,0,0,0,0
 Vehicle,Sergeant,Mobile Artillery,"Once per turn: Stun Target Enemy, Can only target adjacent lanes when attacking","Once per turn: Can Move between Lanes when Reserve, Deal 5 damage to Active enemy when moving",3,3,4,4,0,4,0,0,0,0
-Vehicle,Sergeant,Automated Combat Drone,"On Death Return unit to Shop, Deal attack damage to enemy",Mobile,3,3,4,4,0,4,0,0,0,0
-Vehicle,Sergeant,Supply Truck,"Destroy this unit, Give target player resources of your chosing from your personal supply",When destroyed return to deck,3,3,4,4,0,4,0,0,0,0
-Vehicle,Sergeant,Siege Tank,Attacks Hit Target Adjacent Lane for half Damage and prevents movement and abilities of active target,,3,3,4,4,0,4,0,0,4,10
-Vehicle,Sergeant,Flac Truck,Attacks before enemies,Enemies cannot move while this unit is active,3,3,4,4,0,4,0,0,0,0
+Vehicle,Sergeant,Automated Combat Drone,"On Death Return unit to Shop, Deal attack damage to enemy",Mobile,3,3,4,4,0,4,0,0,0,2
+Vehicle,Sergeant,Supply Truck,"Destroy this unit, Give target player resources of your chosing from your personal supply",When destroyed return to deck,3,3,4,4,0,4,0,0,1,5
+Vehicle,Sergeant,Siege Tank,Attacks Hit Target Adjacent Lane for half Damage and prevents movement and abilities of active target,,3,3,4,4,0,4,0,0,2,10
+Vehicle,Sergeant,Flac Truck,Attacks before enemies,Enemies cannot move while this unit is active,3,3,4,4,0,4,0,0,0,2
 Vehicle,Sergeant,Ambulance,"While in reserve, Infantry restore half of missing HP between fights",,3,3,4,4,0,4,0,0,1,5
-Infantry Scout,Sergeant,Scout,Mobile,,3,3,6,2,0,0,3,2,0,0
-Vehicle Scout,Sergeant,Automated Recon Drone,Mobile,"On Death Return unit to Shop, Reveal any 1 enemy from each lane",3,3,4,4,0,8,5,2,0,0
-Mech Scout,Captain,"AMP ""Surveyor""","Cannot Scout enemies, Generates 2x resources",Cannot be targeted by enemy effects,5,5,3,9,1,6,10,3,0,0
-Infantry,Captain,Hunter Unit,Gain 20 Shields when no reserves in Lane,Gain 5 attack when no reserves in Lane,5,5,9,3,1,9,0,0,0,0
-Infantry,Captain,Rambo,Gain 20 Shields when no reserves in Lane,Revive once without Gear if no reserves in lane,5,5,9,3,1,9,0,0,0,0
-Infantry,Captain,Field Intelligence,Reduce Enemy Ability damage by half when this unit is in reserve,,5,5,9,3,1,9,0,0,0,0
-Infantry,Captain,Combat Medic,"Once per combat: Heal Target Infantry by 10, Deal this much damage to target",,5,5,9,3,1,9,0,0,0,0
-Mech,Captain,"AMP ""Volt""","Reflect half of damage back to attackers, Stuns all enemies when falling below half HP","Attacks 1st, attacks an additional time after enemy attacks",5,5,3,9,1,3,0,0,0,0
-Mech,Captain,"AMP ""Tripwire""",Deal 5x damage to all enemies on death,Sacrifice unit in response to enemy ability to deal 4x damage to them,5,5,3,9,1,3,0,0,0,0
-Mech,Captain,"AMP ""Wolf""",Attacks 1st when attacking a unit,"Once per turn: on Kill Heal Missing Health, Gain that much damage for next attack",5,5,3,9,1,3,0,0,5,15
-Mech,Captain,"AMP ""Marker""","Once per turn: target enemy unit, allowing all units to attack them regardless of lane",Reset cooldown on kill,5,5,3,9,1,3,0,0,0,0
-Vehicle,Captain,Plasma Tank,Gain Shields when destroying enemy shields,Delete Units killed by this unit,5,5,6,6,1,6,0,0,0,0
+Infantry Scout,Sergeant,Scout,Mobile,,3,3,6,2,0,0,5,2,0,2
+Vehicle Scout,Sergeant,Automated Recon Drone,Mobile,"On Death Return unit to Shop, Reveal any 1 enemy from each lane",3,3,4,4,0,11,7,2,0,2
+Mech Scout,Captain,"AMP ""Surveyor""","Cannot Scout enemies, Generates 2x resources",Cannot be targeted by enemy effects,5,4,3,8,1,8,14,3,1,3
+Infantry,Captain,Hunter Unit,Gain 20 Shields when no reserves in Lane,Gain 5 attack when no reserves in Lane,5,5,9,3,1,9,0,0,1,5
+Infantry,Captain,Rambo,Gain 20 Shields when no reserves in Lane,Revive once without Gear if no reserves in lane,5,5,9,3,1,9,0,0,1,5
+Infantry,Captain,Field Intelligence,Reduce Enemy Ability damage by half when this unit is in reserve,,5,5,9,3,1,9,0,0,1,5
+Infantry,Captain,Combat Medic,"Once per combat: Heal Target Infantry by 10, Deal this much damage to target",,4,6,9,3,1,9,0,0,2,8
+Mech,Captain,"AMP ""Volt""","Reflect half of damage back to attackers, Stuns all enemies when falling below half HP","Attacks 1st, attacks an additional time after enemy attacks",5,5,3,9,1,3,0,0,1,5
+Mech,Captain,"AMP ""Tripwire""",Deal 5x damage to all enemies on death,Sacrifice unit in response to enemy ability to deal 4x damage to them,5,5,3,9,1,3,0,0,1,5
+Mech,Captain,"AMP ""Wolf""",Attacks 1st when attacking a unit,"Once per turn: on Kill Heal Missing Health, Gain that much damage for next attack",4,6,3,9,1,3,0,0,3,17
+Mech,Captain,"AMP ""Marker""","Once per turn: target enemy unit, allowing all units to attack them regardless of lane",Reset cooldown on kill,5,5,3,9,1,3,0,0,1,5
+Vehicle,Captain,Plasma Tank,Gain Shields when destroying enemy shields,Delete Units killed by this unit,4,6,6,6,1,6,0,0,3,17
 Vehicle,Captain,Mobile Command vehicle,"Roll Dice to generate resource on this card at start of each turn, these resources can be claimed any time outside of combat by any player
 
 Gain 1 dice if Reserve 2 Dice if in active slot","Rolls:
@@ -55,61 +55,61 @@ Gain 1 dice if Reserve 2 Dice if in active slot","Rolls:
 3 x Tech
 4 x Alien
 5 x Organic and Tech
-6 x Organic Tech and Alien",5,5,6,6,1,6,0,0,0,0
-Vehicle,Captain,Tank Killer,"If target has over double the this units current HP, Deal double damage on hit and with abilities, Ignores Armor and Shields",Once per turn: Deal 3x damage to target,5,5,6,6,1,6,0,0,5,15
-Vehicle,Captain,Toxin Tank,"Enemies damaged by this unit cannot active abilities, Delete units killed while under this effect",,5,5,6,6,1,6,0,0,3,10
-Vehicle,Captain,Light Tank,,,5,5,6,6,1,6,0,0,2,15
-Infantry Scout,Captain,Researcher,Once per turn: Reduce Alien cost of next Purchase by 2,Grants +1 Progress when killed,5,5,9,3,1,18,0,3,0,0
-Infantry Scout,Captain,Special Forces,"Can deploy into active slot from scout slot at any time, active unit is moved to top of reserve keeping gear equiped.",Stun enemy when deployed from scout,5,5,9,3,1,18,4,3,0,0
-Infantry Scout,Captain,Covert Operation,Mobile,Stuns all enemies when killed,5,5,9,3,1,18,3,3,0,0
-Vehicle Scout,Captain,Stealth Buggy,Mobile,"Cannot be targeted by abilities, Cancel 1st enemy ability per round",5,5,6,6,1,12,6,3,0,0
-Mech Scout,Major,"MCP B1 ""Spotter""",Mobile,"Allows units to deal damage to enemy reserves when active Scout, you still take damage from the active enemy",8,8,4,12,2,8,0,4,0,0
-Infantry,Major,Demolitions,Attacks Hit Target Adjacent Lane for half Damage,2x Damage to Armored Enemies,8,8,12,4,2,12,0,0,0,0
-Infantry,Major,Attack Dogs,Kills Enemies Under 1/4 Health if Same or Lower Rank,Does not effect Bosses,8,8,12,4,2,12,0,0,0,0
-Infantry,Major,Field Medic,Once per combat: Heal Target Infantry by 2x attack,"Once per turn: When in reserve and Active unit would Die, if space is available at the medbay move the active unit there instead of graveyard",8,8,12,4,2,12,0,0,0,0
-Infantry,Major,Mortar Squad,Attacks Hit Target Adjacent Lane for half Damage,Explodes on Death Dealing 3x damage to enemy in lane,8,8,12,4,2,12,0,0,0,0
-Infantry,Major,Sniper,"Ignores armor, can target any lane",,8,8,12,4,2,12,0,0,0,0
-Mech,Major,"MCP B2 ""Balista""","Ignores armor and shields, can target any lane when attacking",,8,8,4,12,2,4,0,0,0,0
-Mech,Major,"MCP ""Slapper""",Target Enemy cannot trigger activated abilities this round,,8,8,4,12,2,4,0,0,0,0
-Mech,Major,"MCP ""Doc""","Once per combat: Heal Target Infantry by 30, Grant half that amount as bonus shield",,8,8,4,12,2,4,0,0,0,0
-Mech,Major,"MCP ""Hound""","Attacks 1st when attacking a unit, Execute if Lower Rank and under half HP",On Kill Stun the incoming Enemy and prevent reveal effects on reserve,8,8,4,12,2,4,0,0,5,20
-Vehicle,Major,Heavy Tank,Negate abilities on 1st enemy hit,Has X Shields and Armor,8,8,8,8,2,8,0,0,0,0
-Vehicle,Major,Battle Buggy,Attacks before enemies,Once per turn: swap the active unit from 2 lanes.,8,8,8,8,2,8,0,0,0,0
-Vehicle,Major,MG Quad,Attacks before enemies,Once per turn: swap the active unit from 2 lanes. Deal 2x your damage to enemy in these lanes,8,8,8,8,2,8,0,0,0,0
-Vehicle,Major,APC,,Once per turn: swap the active unit from 2 lanes. Grant them 10 shields when moved,8,8,8,8,2,8,0,0,3,10
-Vehicle,Major,Heavy APC,,Once per turn: swap the active unit from 2 lanes. Grant them 15 shields when moved,8,8,8,8,2,8,0,0,4,30
-Vehicle Scout,Major,Recon Bike,Mobile,"Once per turn: deploy the lowest rank unit from the shop into active slot of your lane, destroy unit at end of combat",8,8,8,8,2,16,7,4,0,0
-Vehicle Scout,Major,ATV,Mobile,Once per turn (when in scout slot): swap the active unit from 2 lanes. the swapped units deal a free attack on enemy in these lanes,8,8,8,8,2,16,7,4,0,0
-Mech Scout,Colonel,"AMP2 ""Ghost""","Can Move between Lanes when Reserve, if this unit would die when in active position and you have reserve units alive, move it to bottom of reserve","When this units main effect triggers, deal an additional attack to enemy before moving unit",10,10,5,15,4,10,2,5,0,0
-Infantry Scout,Colonel,Remote Drop Soldier,"Deploy into any lane from scout role, allow equipping of gear when deploying this way,","Deals Damage = unit damage to enemies in lane when deployed from scout (includes gear bonuses),",10,10,15,5,4,30,3,5,0,0
-Infantry,Colonel,Elite Marksman,Long Range,,10,10,15,5,4,15,0,0,0,0
-Infantry,Colonel,Elite Sniper,"Ignores armor and shields, can target any lane when attacking",,10,10,15,5,4,15,0,0,0,0
-Infantry,Colonel,Elite Gunner,Increase Damage by 3 for consecutive hits on target,Remove 3 Armor on hit,10,10,15,5,4,15,0,0,0,0
-Infantry,Colonel,Elite Technician,Heals Vehicles and Mechs in same lane by 5 each attack,Apply 25 Shields to target Vehicle for this turn,10,10,15,5,4,15,0,0,0,0
-Infantry,Colonel,Front Line Commander,Boosts Damage of other units by this units attack when Active,Mobile,10,10,15,5,4,15,0,0,0,0
-Mech,Colonel,"AMP2 ""Ronin""",Attacks 1st when attacking a unit,if enemy HP is lower than 1/4 Execute the target (does not effect bosses). Deal attack damage to enemies targeting Ronin with abilities,10,10,5,15,4,5,0,0,5,30
-Mech,Colonel,"AMP2 ""Gladiator""",Stun 1st enemy to Damage Gladiator each round,Gain +1 Damage on hits against same target,10,10,5,15,4,5,0,0,5,30
-Mech,Colonel,"AMP2 ""Firesale""",Target enemy lane Takes 10 damage per round of combat,"Gain +1 Damage on hits against same target, Explodes for 3x damage to all enemies on death",10,10,5,15,4,5,0,0,0,0
-Mech,Colonel,"AMP2 ""Warthog""",Gain +1 Damage on hits against same target,"Once per round: If enemy activates ability during this units combat step, Stun unit and negate the ability",10,10,5,15,4,5,0,0,0,0
-Mech,Colonel,"AMP2 ""Overwatch""",Ignores Armor and Shields on attack,"When not active in combat, Deny abilities targeting other lanes",10,10,5,15,4,5,0,0,0,0
-Infantry Scout,Colonel,Field Researcher,Gain Alien = 1st enemy killed,Grants +1 Progress when killed,10,10,15,5,4,30,2,5,0,0
-Vehicle,Colonel,Mammoth Tank,"Negate abilities on 1st enemy hit, Stun all enemies when entering active slot, Hits Twice",,10,10,10,10,4,10,0,0,7,40
-Vehicle,Colonel,Stealth Tank,can target reserve,"Cannot be targeted by abilities, Cancel 1st enemy ability per round",10,10,10,10,4,10,0,0,2,25
-Vehicle,Colonel,Demo Truck,Delete gear from this unit on death,"On death Explodes dealing 4x damage to all enemies, after attacking sacrifice this unit",10,10,10,10,4,10,0,0,0,10
-Vehicle Scout,Colonel,"ARV ""Advanced Recon Vehicle""","Can Move between Lanes when Reserve, if this unit would die when in active position and you have reserve units alive, move it to bottom of reserve",Cannot be targeted by enemy abilities,10,10,10,10,4,20,4,5,0,0
-Mech Scout,Specialist,"EMP ""Phantom""","Can Deploy into combat from scouting slot to the enemy active slot after an enemy dies, treat the enemy reserve as active while this unit is on the field",Can move between lanes when enemy unit dies in that lane. prevent reveals while this unit is deployed to the enemy active slot,12,12,6,18,6,12,4,6,0,0
-Infantry,Specialist,Knight,Attacks 1st when attacking a unit,"Gain 4 Power and heal 5 Health on Kill, Stun Enemies when targeted by abilities",12,12,18,6,6,18,0,0,4,20
-Mech,Specialist,"EMP ""Behemoth""",Gain Shields on kill = Rank of killed enemy,"Starts with Huge Shields and HP pools, Cannot be healed or moved",12,12,6,18,6,6,0,0,0,0
-Vehicle,Specialist,TMRG (Truck Mounted Rail Gun),"Attacks every 2nd turn, Executes units under X rank. Attacks Trample through all reserve units if able. Delete enemies on kill","After each Combat in reserve gain a Charge, after Charging for 3 rounds deal X damage to target lane (Hits all reserves and bosses at same time)",12,12,12,12,6,12,0,0,0,0
-Vehicle,Specialist,Tesla Tank,"Has 40 Shields, Deal damage = Shields to all enemies in lane when damaged, Has Attack = Shields - Health","On combat start if active slot, Stun all enemies",12,12,12,12,6,12,0,0,0,40
-Vehicle,Specialist,Scorpion Tank,Attacks and abilities ignore armor and shields,Once per turn: Deal 2x attack damage to a target,12,12,12,12,6,12,0,0,5,30
-Vehicle,Specialist,Overlord Tank,Friendly Units get +10 damage and +5 armor while this unit is in active slot,,12,12,12,12,6,12,0,0,5,40
-Mech Scout,Brigadier,"TRM ""Shadow""",Deals this units attack damage to enemy units when triggering non reveal abilities,Units killed by this effect Delete,15,15,7,21,7,14,6,7,0,0
+6 x Organic Tech and Alien",5,4,5,6,1,5,0,0,1,3
+Vehicle,Captain,Tank Killer,"If target has over double the this units current HP, Deal double damage on hit and with abilities, Ignores Armor and Shields",Once per turn: Deal 3x damage to target,6,4,6,6,1,6,0,0,0,0
+Vehicle,Captain,Toxin Tank,"Enemies damaged by this unit cannot active abilities, Delete units killed while under this effect",,4,6,6,6,1,6,0,0,3,17
+Vehicle,Captain,Light Tank,,,4,6,6,6,1,6,0,0,3,17
+Infantry Scout,Captain,Researcher,Once per turn: Reduce Alien cost of next Purchase by 2,Grants +1 Progress when killed,4,6,9,3,1,18,0,3,2,8
+Infantry Scout,Captain,Special Forces,"Can deploy into active slot from scout slot at any time, active unit is moved to top of reserve keeping gear equiped.",Stun enemy when deployed from scout,5,4,8,3,1,24,6,3,1,3
+Infantry Scout,Captain,Covert Operation,Mobile,Stuns all enemies when killed,5,4,8,3,1,22,5,5,1,3
+Vehicle Scout,Captain,Stealth Buggy,Mobile,"Cannot be targeted by abilities, Cancel 1st enemy ability per round",5,4,5,6,1,16,8,4,1,3
+Mech Scout,Major,"MCP B1 ""Spotter""",Mobile,"Allows units to deal damage to enemy reserves when active Scout, you still take damage from the active enemy",8,7,4,11,2,10,0,6,1,5
+Infantry,Major,Demolitions,Attacks Hit Target Adjacent Lane for half Damage,2x Damage to Armored Enemies,8,8,12,4,2,12,0,0,2,8
+Infantry,Major,Attack Dogs,Kills Enemies Under 1/4 Health if Same or Lower Rank,Does not effect Bosses,8,8,12,4,2,12,0,0,2,8
+Infantry,Major,Field Medic,Once per combat: Heal Target Infantry by 2x attack,"Once per turn: When in reserve and Active unit would Die, if space is available at the medbay move the active unit there instead of graveyard",7,9,12,4,2,12,0,0,2,14
+Infantry,Major,Mortar Squad,Attacks Hit Target Adjacent Lane for half Damage,Explodes on Death Dealing 3x damage to enemy in lane,9,7,12,4,2,12,0,0,0,0
+Infantry,Major,Sniper,"Ignores armor, can target any lane",,9,7,12,4,2,12,0,0,0,0
+Mech,Major,"MCP B2 ""Balista""","Ignores armor and shields, can target any lane when attacking",,9,7,4,12,2,4,0,0,0,0
+Mech,Major,"MCP ""Slapper""",Target Enemy cannot trigger activated abilities this round,,8,8,4,12,2,4,0,0,2,8
+Mech,Major,"MCP ""Doc""","Once per combat: Heal Target Infantry by 30, Grant half that amount as bonus shield",,8,8,4,12,2,4,0,0,2,8
+Mech,Major,"MCP ""Hound""","Attacks 1st when attacking a unit, Execute if Lower Rank and under half HP",On Kill Stun the incoming Enemy and prevent reveal effects on reserve,7,9,4,12,2,4,0,0,5,27
+Vehicle,Major,Heavy Tank,Negate abilities on 1st enemy hit,Has X Shields and Armor,7,9,8,8,2,8,0,0,5,27
+Vehicle,Major,Battle Buggy,Attacks before enemies,Once per turn: swap the active unit from 2 lanes.,8,7,7,8,2,7,0,0,1,5
+Vehicle,Major,MG Quad,Attacks before enemies,Once per turn: swap the active unit from 2 lanes. Deal 2x your damage to enemy in these lanes,8,7,7,8,2,7,0,0,1,5
+Vehicle,Major,APC,,Once per turn: swap the active unit from 2 lanes. Grant them 10 shields when moved,7,9,8,8,2,8,0,0,5,27
+Vehicle,Major,Heavy APC,,Once per turn: swap the active unit from 2 lanes. Grant them 15 shields when moved,7,9,8,8,2,8,0,0,5,27
+Vehicle Scout,Major,Recon Bike,Mobile,"Once per turn: deploy the lowest rank unit from the shop into active slot of your lane, destroy unit at end of combat",8,7,7,8,2,21,9,6,1,5
+Vehicle Scout,Major,ATV,Mobile,Once per turn (when in scout slot): swap the active unit from 2 lanes. the swapped units deal a free attack on enemy in these lanes,8,7,7,8,2,21,9,6,1,5
+Mech Scout,Colonel,"AMP2 ""Ghost""","Can Move between Lanes when Reserve, if this unit would die when in active position and you have reserve units alive, move it to bottom of reserve","When this units main effect triggers, deal an additional attack to enemy before moving unit",10,10,5,15,4,8,2,4,2,10
+Infantry Scout,Colonel,Remote Drop Soldier,"Deploy into any lane from scout role, allow equipping of gear when deploying this way,","Deals Damage = unit damage to enemies in lane when deployed from scout (includes gear bonuses),",10,9,14,5,4,41,3,7,1,7
+Infantry,Colonel,Elite Marksman,Long Range,,12,8,15,5,4,15,0,0,0,0
+Infantry,Colonel,Elite Sniper,"Ignores armor and shields, can target any lane when attacking",,12,8,15,5,4,15,0,0,0,0
+Infantry,Colonel,Elite Gunner,Increase Damage by 3 for consecutive hits on target,Remove 3 Armor on hit,12,8,15,5,4,15,0,0,0,0
+Infantry,Colonel,Elite Technician,Heals Vehicles and Mechs in same lane by 5 each attack,Apply 25 Shields to target Vehicle for this turn,9,11,15,5,4,15,0,0,4,16
+Infantry,Colonel,Front Line Commander,Boosts Damage of other units by this units attack when Active,Mobile,10,9,14,5,4,14,0,0,1,7
+Mech,Colonel,"AMP2 ""Ronin""",Attacks 1st when attacking a unit,if enemy HP is lower than 1/4 Execute the target (does not effect bosses). Deal attack damage to enemies targeting Ronin with abilities,8,12,5,15,4,5,0,0,7,33
+Mech,Colonel,"AMP2 ""Gladiator""",Stun 1st enemy to Damage Gladiator each round,Gain +1 Damage on hits against same target,8,12,5,15,4,5,0,0,7,33
+Mech,Colonel,"AMP2 ""Firesale""",Target enemy lane Takes 10 damage per round of combat,"Gain +1 Damage on hits against same target, Explodes for 3x damage to all enemies on death",10,10,5,15,4,5,0,0,2,10
+Mech,Colonel,"AMP2 ""Warthog""",Gain +1 Damage on hits against same target,"Once per round: If enemy activates ability during this units combat step, Stun unit and negate the ability",10,10,5,15,4,5,0,0,2,10
+Mech,Colonel,"AMP2 ""Overwatch""",Ignores Armor and Shields on attack,"When not active in combat, Deny abilities targeting other lanes",12,8,5,15,4,5,0,0,0,0
+Infantry Scout,Colonel,Field Researcher,Gain Alien = 1st enemy killed,Grants +1 Progress when killed,9,11,15,5,4,30,2,5,4,16
+Vehicle,Colonel,Mammoth Tank,"Negate abilities on 1st enemy hit, Stun all enemies when entering active slot, Hits Twice",,8,12,10,10,4,10,0,0,7,33
+Vehicle,Colonel,Stealth Tank,can target reserve,"Cannot be targeted by abilities, Cancel 1st enemy ability per round",10,9,9,10,4,9,0,0,1,7
+Vehicle,Colonel,Demo Truck,Delete gear from this unit on death,"On death Explodes dealing 4x damage to all enemies, after attacking sacrifice this unit",8,12,10,10,4,10,0,0,7,33
+Vehicle Scout,Colonel,"ARV ""Advanced Recon Vehicle""","Can Move between Lanes when Reserve, if this unit would die when in active position and you have reserve units alive, move it to bottom of reserve",Cannot be targeted by enemy abilities,10,9,9,10,4,25,6,7,1,7
+Mech Scout,Specialist,"EMP ""Phantom""","Can Deploy into combat from scouting slot to the enemy active slot after an enemy dies, treat the enemy reserve as active while this unit is on the field",Can move between lanes when enemy unit dies in that lane. prevent reveals while this unit is deployed to the enemy active slot,14,10,6,18,6,12,4,6,0,0
+Infantry,Specialist,Knight,Attacks 1st when attacking a unit,"Gain 4 Power and heal 5 Health on Kill, Stun Enemies when targeted by abilities",10,14,18,6,6,18,0,0,8,40
+Mech,Specialist,"EMP ""Behemoth""",Gain Shields on kill = Rank of killed enemy,"Starts with Huge Shields and HP pools, Cannot be healed or moved",10,14,6,18,6,6,0,0,8,40
+Vehicle,Specialist,TMRG (Truck Mounted Rail Gun),"Attacks every 2nd turn, Executes units under X rank. Attacks Trample through all reserve units if able. Delete enemies on kill","After each Combat in reserve gain a Charge, after Charging for 3 rounds deal X damage to target lane (Hits all reserves and bosses at same time)",14,10,12,12,6,12,0,0,0,0
+Vehicle,Specialist,Tesla Tank,"Has 40 Shields, Deal damage = Shields to all enemies in lane when damaged, Has Attack = Shields - Health","On combat start if active slot, Stun all enemies",10,14,12,12,6,12,0,0,8,40
+Vehicle,Specialist,Scorpion Tank,Attacks and abilities ignore armor and shields,Once per turn: Deal 2x attack damage to a target,10,14,12,12,6,12,0,0,8,40
+Vehicle,Specialist,Overlord Tank,Friendly Units get +10 damage and +5 armor while this unit is in active slot,,10,14,12,12,6,12,0,0,8,40
+Mech Scout,Brigadier,"TRM ""Shadow""",Deals this units attack damage to enemy units when triggering non reveal abilities,Units killed by this effect Delete,15,15,7,21,7,11,5,6,3,15
 Infantry Scout,Brigadier,"""Python""","Reveals 2x units when scouting, Kill the 3 lowest rank units that are scouted by this unit
 /
-",On death kill the enemy that killed this,15,15,21,7,7,42,0,7,0,0
-Infantry,Brigadier,Paladin,Attacks 1st when attacking a unit,"Gain 6 Power and 7 Health on Kill, Stun Enemies when targeted by abilities.",15,15,21,7,7,21,0,0,5,25
-Mech,Brigadier,"EMP ""Slayer""","All enemy abilities must target this unit when deployed, Immune to conversion effects","Retaliate with 1/2 damage against any abilities targeting this unit, Heals HP = Attack on kill.",15,15,7,21,7,7,0,0,0,0
-Vehicle,Brigadier,Leviathan,"Attacks all lanes simultaneously, Deletes enemies on kill, Execute units Under rank 3 when entering lane",,15,15,14,14,7,14,0,0,8,50
-Vehicle,Brigadier,Bastion,Cannot be converted,"Other units cannot be attacked or targeted while this unit is active, can be targeted from other lanes.",15,15,14,14,7,14,0,0,10,50
-Vehicle Scout,Brigadier,Nemesis,Can be deployed to any lane from scouting. Stun any enemies with reveal effects and active units in adjacent lanes when deployed this way,"If Nemesis has more damage than target, prevent all abilities on target",15,15,14,14,7,28,6,7,0,0
+",On death kill the enemy that killed this,16,14,21,7,7,55,0,9,2,10
+Infantry,Brigadier,Paladin,Attacks 1st when attacking a unit,"Gain 6 Power and 7 Health on Kill, Stun Enemies when targeted by abilities.",13,17,21,7,7,21,0,0,10,50
+Mech,Brigadier,"EMP ""Slayer""","All enemy abilities must target this unit when deployed, Immune to conversion effects","Retaliate with 1/2 damage against any abilities targeting this unit, Heals HP = Attack on kill.",15,15,7,21,7,7,0,0,3,15
+Vehicle,Brigadier,Leviathan,"Attacks all lanes simultaneously, Deletes enemies on kill, Execute units Under rank 3 when entering lane",,13,17,14,14,7,14,0,0,10,50
+Vehicle,Brigadier,Bastion,Cannot be converted,"Other units cannot be attacked or targeted while this unit is active, can be targeted from other lanes.",13,17,14,14,7,14,0,0,10,50
+Vehicle Scout,Brigadier,Nemesis,Can be deployed to any lane from scouting. Stun any enemies with reveal effects and active units in adjacent lanes when deployed this way,"If Nemesis has more damage than target, prevent all abilities on target",16,14,14,14,7,37,8,9,2,10

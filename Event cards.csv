@@ -1,4 +1,4 @@
-Event name,Round Effect,Completion Condition,Completion Reward,Failure Penalty
+﻿Event name,Round Effect,Completion Condition,Completion Reward,Failure Penalty
 Command Requisition,"Generated resources go to the command instead, players can spend command resources",Command has more total resource than players combined,Roll Dice 3 times generate resources = the numbers rolled once per resource,Lose all resources at command
 Forced Contribution,Income +1 if another worker at location,Return 20 resources to supply,Players gain +1 income for each additional player at a location,Players lose -1 income for each additional player at a location
 Crowded Worksite,Income blocked if another worker at location,Donate 10 resources to command,When workers generate resource Add 1 of that resource to command,Only 1 player can donate per turn
@@ -13,10 +13,10 @@ Restriction orders,Active Non Infantry are stunned at start of combat,3 Active I
 Fuel Shortage,Active Non Infantry are stunned at start of combat,4 Active Infantry,Active Infantry gain +1 Armor for each active Infantry at combat start,Active Infantry Lose +1 Armor for each active Infantry at combat start
 Psychic Tremors,Active Non Mech are stunned at start of combat,2 Active Mech,Active Mech gain +1 armor for each active Mech at combat start,Active Mech Lose +1 armor for each active Mech at combat start
 Hurricane X,Active Non Vehicles are stunned at start of combat,2 Active Vehicles,Active Vehicles gain +1 armor for each active Vehicle at combat start,Active Vehicles Lose +1 armor for each active Vehicle at combat start
-Armor Supply Freeze,Double Armor costs this round,Every lane active unit needs armor equipment,Armor can equip at any time for free,Costs Tech = Rank to equip Armor
-Production Fault,Double Utility costs this round,Every lane active unit needs Utility equipment,Utility can equip at any time for free,Costs Tech = Rank to equip Utility
-Weapons Allocation Freeze,Double Weapon costs this round,Every lane active unit needs Weapon equipment,Weapons can equip at any time for free,Costs Tech = Rank to equip Weapon
-Supply Chain Collapse,Double equipment costs this round,have at least 1 unit fully equipped,"Gear can equip at any time for free, but only to reserve",Costs Tech = Rank to equip
+Armor Supply Freeze,Double the activation cost of Armor Active effects this round,Every lane active unit needs armor equipment,Armor's Active effects can be activated for free this round,Costs Tech = Rank to activate Armor's Active effects
+Production Fault,Double the activation cost of Utility Active effects this round,Every lane active unit needs Utility equipment,Utility's Active effects can be activated for free this round,Costs Tech = Rank to activate Utility's Active effects
+Weapons Allocation Freeze,Double the activation cost of Weapon Active effects this round,Every lane active unit needs Weapon equipment,Weapon's Active effects can be activated for free this round,Costs Tech = Rank to activate Weapon's Active effects
+Supply Chain Collapse,Double the activation cost of all Gear Active effects this round,have at least 1 unit fully equipped,Gear's Active effects can be activated for free this round,Costs Tech = Rank to activate any Gear's Active effects
 Armor Recall,Unequip All Armor Equipment when drawing this event,No Armor equiped at end of round,initial shop Armor next round are free,Destroy all Armor
 Utility Recall,Unequip All Utility Equipment when drawing this event,No Utility equiped at end of round,initial shop Utility next round are free,Destroy all Utility
 Weapons Recall,Unequip All Weapon Equipment when drawing this event,No Weapons equiped at end of round,initial shop Weapons next round are free,Destroy all Weapons

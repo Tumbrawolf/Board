@@ -1,67 +1,67 @@
-Name,Rank Name,Type,Passive,Active,Organic Cost,Tech Cost,Alien Cost,Damage,HP,Restrictions,Armor,Shields
-Ammo Pouches,Conscript,Armor,Allows additional utility equipment,,1,2,0,0.0,3.0,Infantry only,0,0
-Budget Armor,Conscript,Armor,,,1,2,0,0.0,3.0,Any,1,0
+﻿Name,Rank Name,Type,Passive,Active,Organic Cost,Tech Cost,Alien Cost,Damage,HP,Restrictions,Armor,Shields
+Ammo Pouches,Conscript,Armor,Allows additional utility equipment,,1,2,0,0.0,3,Infantry only,0,0
+Budget Armor,Conscript,Armor,,,1,2,0,0.0,3,Any,1,0
 Combat Stims,Conscript,Consumable,,Deal up to 10 damage to friendly infantry to give them 2 Attack per HP lost this way,1,2,0,,,Infantry only,0,0
-Extra Holster,Conscript,Armor,Allows additional Weapon equipment,,1,2,0,0.0,3.0,Infantry only,0,0
-Grenade Launcher,Conscript,Utility,Deal 1/2 attack damage before combat,Stun target enemy,1,2,0,1.0,1.0,Infantry only,0,0
-Grenades,Conscript,Weapon,,Deal 2x Damage to target lane,1,2,0,3.0,2.0,Infantry only,0,0
-Reinforced Barrels,Conscript,Weapon,,,1,2,0,3.0,2.0,Infantry only,0,0
-Scoped Weapons,Conscript,Weapon,Can target reserve,Deal units damage to another lane,1,2,0,3.0,2.0,Infantry only,0,0
+Extra Holster,Conscript,Armor,Allows additional Weapon equipment,,1,2,0,0.0,3,Infantry only,0,0
+Grenade Launcher,Conscript,Utility,Deal 1/2 attack damage before combat,Stun target enemy,1,2,0,1,1,Infantry only,0,0
+Grenades,Conscript,Weapon,,Deal 2x Damage to target lane,1,2,0,3,2,Infantry only,0,0
+Reinforced Barrels,Conscript,Weapon,,,1,2,0,3,2,Infantry only,0,0
+Scoped Weapons,Conscript,Weapon,Can target reserve,Deal units damage to another lane,1,2,0,3,2,Infantry only,0,0
 Scouting Drones,Conscript,Consumable,,Scout 5 units,1,2,0,,,Any,0,0
-Smoke Pack,Conscript,Utility,When under Half HP cannot be targeted by abilities,,1,2,0,1.0,1.0,Vehicles and Mech only,0,0
-Airburst Rounds,Private,Weapon,Attacks splash onto adjacent lanes,,2,3,0,6.0,3.0,Any,0,0
-Basic Armor,Private,Armor,,,2,3,0,0.0,6.0,Infantry only,2,0
-Basic Camo,Private,Armor,Cannot be targeted directly by effects,,2,3,0,0.0,6.0,Any,0,0
-Basic Exo,Private,Utility,"Can equip a 2nd weapon, 2nd equiped weapon provides no HP",Move to another lanes reserve,2,4,0,1.0,2.0,Infantry only,0,0
-Basic Medkit,Private,Utility,"When in reserve, Heals Active unit 2 damage per round of combat",Heal Target Infantry 1/4 HP,2,4,0,1.0,2.0,Infantry only,0,0
-Expanded Backpack,Private,Utility,,Reset the cooldown of another equiped item,2,4,0,1.0,2.0,Infantry only,0,0
+Smoke Pack,Conscript,Utility,When under Half HP cannot be targeted by abilities,,1,2,0,1,1,Vehicles and Mech only,0,0
+Airburst Rounds,Private,Weapon,Attacks splash onto adjacent lanes,,2,4,0,7,3,Any,0,0
+Basic Armor,Private,Armor,,,2,4,0,0.0,7,Infantry only,2,0
+Basic Camo,Private,Armor,Cannot be targeted directly by effects,,2,3,0,0.0,6,Any,0,0
+Basic Exo,Private,Utility,"Can equip a 2nd weapon, 2nd equiped weapon provides no HP",Move to another lanes reserve,2,4,0,1,2,Infantry only,0,0
+Basic Medkit,Private,Utility,"When in reserve, Heals Active unit 2 damage per round of combat",Heal Target Infantry 1/4 HP,2,4,0,1,2,Infantry only,0,0
+Expanded Backpack,Private,Utility,,Reset the cooldown of another equiped item,2,4,0,1,2,Infantry only,0,0
 Landmines,Private,Consumable,,"Deal 5 damage to enemies any time they move this round, includes moving to active from reserve",2,4,0,,,Infantry only,0,0
-Toxin Rounds,Private,Weapon,"Deals Rank damage to enemies, this effect ignores defence",Deal Rank damage to all enemies.,2,3,0,6.0,3.0,Any,0,0
-Advanced Armor,Sergeant,Armor,,,2,5,1,0.0,9.0,Infantry only,3,0
+Toxin Rounds,Private,Weapon,"Deals Rank damage to enemies, this effect ignores defence",Deal Rank damage to all enemies.,2,4,0,7,3,Any,0,0
+Advanced Armor,Sergeant,Armor,,,2,6,1,0.0,10,Infantry only,3,0
 Artillery Strike,Sergeant,Consumable,,Deal 10 damage to Active enemies,3,6,1,,,Any,0,0
-Deployable Shield,Sergeant,Utility,,,3,6,1,2.0,3.0,Infantry only,3,0
-Prototype Weapons,Sergeant,Weapon,This item stats * (2x rank of commander),,2,5,1,9.0,5.0,Infantry only,0,0
-Reinforced Plates,Sergeant,Armor,,,2,5,1,0.0,9.0,Vehicles and Mech only,3,0
+Deployable Shield,Sergeant,Utility,,,3,6,1,2,3,Infantry only,0,10
+Prototype Weapons,Sergeant,Weapon,This item stats * (2x rank of commander),,2,5,1,9,5,Infantry only,0,0
+Reinforced Plates,Sergeant,Armor,,,2,6,1,0.0,10,Vehicles and Mech only,3,0
 Resupply Drone,Sergeant,Consumable,,Refresh the active effects of each lane.,3,6,1,,,Infantry only,0,0
-Shield Pack,Sergeant,Utility,,Gain 20 Shields and destroy this item,3,6,1,2.0,3.0,Vehicles and Mech only,0,10
-Uranium Rounds,Sergeant,Weapon,Unit gains +2 damage for consecutive hits,,2,5,1,9.0,5.0,Vehicles and Mech only,0,0
-Carbon Plating,Captain,Armor,,,3,6,2,0.0,12.0,Vehicles and Mech only,4,0
+Shield Pack,Sergeant,Utility,,Gain 20 Shields and destroy this item,3,6,1,2,3,Vehicles and Mech only,0,10
+Uranium Rounds,Sergeant,Weapon,Unit gains +2 damage for consecutive hits,,2,5,1,10,4,Vehicles and Mech only,0,0
+Carbon Plating,Captain,Armor,,,4,7,2,0.0,14,Vehicles and Mech only,4,0
 Chem Strike,Captain,Consumable,,"Shred upto 5 armor from enemies, Deal 2 damage for each armor shred this way",4,8,2,,,Any,0,0
 Entrenchment,Captain,Consumable,,Target Lane Gains 5 armor for this combat,4,8,2,,,Infantry only,0,0
-Explosive Rounds,Captain,Weapon,Shreds armor on hit,,3,6,2,12.0,6.0,Any,0,0
-Medkit,Captain,Utility,"When in reserve, Heals Active unit 3 damage per round of combat",Heal Target Infantry half HP,4,8,2,2.0,4.0,Infantry only,0,0
-Plasma Weapons,Captain,Weapon,"Double Damage to shields, Stun when shields break",,3,6,2,12.0,6.0,Any,0,0
-Smoke Launcher,Captain,Utility,Units in this lane cannot be targeted by abilities,Move this effect to target lane,4,8,2,2.0,4.0,Vehicles and Mech only,0,0
-Specialist Armor,Captain,Armor,,,3,6,2,0.0,12.0,Infantry only,4,0
-Stun Grenades,Captain,Utility,,"Stun target lane, prevent active abilities until end of combat",4,8,2,2.0,4.0,Infantry only,0,0
+Explosive Rounds,Captain,Weapon,Shreds armor on hit,,3,7,2,14,5,Any,0,0
+Medkit,Captain,Utility,"When in reserve, Heals Active unit 3 damage per round of combat",Heal Target Infantry half HP,4,8,2,2,4,Infantry only,0,0
+Plasma Weapons,Captain,Weapon,"Double Damage to shields, Stun when shields break",,3,5,2,10,7,Any,0,0
+Smoke Launcher,Captain,Utility,Units in this lane cannot be targeted by abilities,Move this effect to target lane,4,8,2,2,4,Vehicles and Mech only,0,0
+Specialist Armor,Captain,Armor,,,4,7,2,0.0,14,Infantry only,4,0
+Stun Grenades,Captain,Utility,,"Stun target lane, prevent active abilities until end of combat",4,8,2,2,4,Infantry only,0,0
 Bomber Drone,Major,Consumable,,Deal 15 damage to target enemy in support,5,10,2,,,Any,0,0
 Deployable Sentry,Major,Consumable,,Lane gains 5 attack for this round,5,10,2,,,Any,0,0
-Ion Weapons,Major,Weapon,Ignores Armor,,4,8,2,15.0,8.0,Any,0,0
-Juggernaut Armor,Major,Armor,,,4,8,2,0.0,15.0,Infantry only,6,0
-Laser Designator,Major,Utility,Other units can target your lane when attacking,,5,10,2,3.0,5.0,Any,0,0
-Magnetized Barrels,Major,Weapon,Damage cannot be prevented,,4,8,2,15.0,8.0,Vehicles and Mech only,0,0
-Night Vision,Major,Utility,Unit gets a free attack against Revealed enemies,"Roll D6, Reveal that many enemies",5,10,2,3.0,5.0,Any,0,0
-Reactive Plating,Major,Armor,Imune to AOE,Disable passive to deal 15 damage to enemies,4,8,2,0.0,15.0,Vehicles and Mech only,0,0
-Field Medkit,Colonel,Utility,"When in reserve, Heals Active unit 4 damage per round of combat",Heal Target Infantry 2/3 HP,6,12,3,3.0,6.0,Infantry only,0,0
-Isolation Field,Colonel,Experimental,"Cannot be targeted by effects, Enemy fighting this unit loses all bonuses",1v1 Target enemy in any lane,9,18,4,18.0,18.0,Any,0,0
-Railgun Tech,Colonel,Weapon,Deals Half damage to reserve,Deal Units Damage to all lanes.,5,9,3,18.0,9.0,Any,0,0
-Regen Plates,Colonel,Armor,Restores 4 HP before each combat round,"Restore unit to full HP, disable passive for this Combat.",5,9,3,0.0,18.0,Vehicles and Mech only,0,0
-Repair Kit,Colonel,Utility,Repair any lost armor at end of round. Restore 3 HP between attacks,Heal Target Vehicle or Mech 1/2 HP,9,18,3,3.0,18.0,Vehicles and Mech only,0,0
-Stasis Suit,Colonel,Armor,Gear is Deleted on Death to return unit to hand,"Destroy this item, Target Friendly is returned to hand",5,9,3,0.0,18.0,Infantry only,0,0
-XVL3,Colonel,Experimental,"Units Gain 4 damage per charge on this Item, Unit takes 2 damage when attacking per charge on this item","Roll D6, Place that many charges on this item",9,18,4,18.0,18.0,Infantry only,0,0
-Apocalypse Rounds,Specialist,Weapon,Delete enemies on kill,Double damage for next hit,5,11,3,21.0,11.0,Vehicles and Mech only,0,0
-Chronostasis,Specialist,Experimental,"If unit would die, destroy this item to full restore unit and then remove unit and its equipment from game until end of round",,11,21,6,21.0,21.0,Any,0,0
-Emergency Extractor,Specialist,Utility,When HP is under half you can use the active of this item,Return this unit and any equipment to hand,7,14,3,4.0,7.0,Infantry only,0,0
+Ion Weapons,Major,Weapon,Ignores Armor,,4,9,2,17,7,Any,0,0
+Juggernaut Armor,Major,Armor,,,5,9,2,0.0,17,Infantry only,6,0
+Laser Designator,Major,Utility,Other units can target your lane when attacking,,5,10,2,3,5,Any,0,0
+Magnetized Barrels,Major,Weapon,Damage cannot be prevented,,4,8,2,15,8,Vehicles and Mech only,0,0
+Night Vision,Major,Utility,Unit gets a free attack against Revealed enemies,"Roll D6, Reveal that many enemies",5,10,2,3,5,Any,0,0
+Reactive Plating,Major,Armor,Imune to AOE,Disable passive to deal 15 damage to enemies,5,9,2,0.0,17,Vehicles and Mech only,0,0
+Field Medkit,Colonel,Utility,"When in reserve, Heals Active unit 4 damage per round of combat",Heal Target Infantry 2/3 HP,7,13,3,3,7,Infantry only,0,0
+Isolation Field,Colonel,Experimental,"Cannot be targeted by effects, Enemy fighting this unit loses all bonuses",1v1 Target enemy in any lane,9,18,4,18,18,Any,0,0
+Railgun Tech,Colonel,Weapon,Deals Half damage to reserve,Deal Units Damage to all lanes.,5,9,3,18,9,Any,0,0
+Regen Plates,Colonel,Armor,Restores 4 HP before each combat round,"Restore unit to full HP, disable passive for this Combat.",6,10,4,0.0,21,Vehicles and Mech only,0,0
+Repair Kit,Colonel,Utility,Repair any lost armor at end of round. Restore 3 HP between attacks,Heal Target Vehicle or Mech 1/2 HP,10,20,3,3,20,Vehicles and Mech only,0,0
+Stasis Suit,Colonel,Armor,Gear is Deleted on Death to return unit to hand,"Destroy this item, Target Friendly is returned to hand",6,10,4,0.0,21,Infantry only,0,0
+XVL3,Colonel,Experimental,"Units Gain 4 damage per charge on this Item, Unit takes 2 damage when attacking per charge on this item","Roll D6, Place that many charges on this item",9,18,4,18,18,Infantry only,0,0
+Apocalypse Rounds,Specialist,Weapon,Delete enemies on kill,Double damage for next hit,5,12,3,24,10,Vehicles and Mech only,0,0
+Chronostasis,Specialist,Experimental,"If unit would die, destroy this item to full restore unit and then remove unit and its equipment from game until end of round",,11,21,6,18,24,Any,0,0
+Emergency Extractor,Specialist,Utility,When HP is under half you can use the active of this item,Return this unit and any equipment to hand,8,15,3,4,8,Infantry only,0,0
 Heavy Sentry,Specialist,Consumable,,Lane gains 7 attack for this round,7,14,3,,,Any,0,0
-Holographic Decoys,Specialist,Experimental,"Roll D6 before combat phase, Gain that many charges",Consume 1 charge to prevent instance of damage,11,21,6,21.0,21.0,Any,0,0
-Nanite Tech,Specialist,Weapon,Attacks ignore all Defense,Equip to another unit at any time,5,11,3,21.0,11.0,Any,0,0
-Reanimator,Specialist,Experimental,"Can be played at any time, Return last killed enemy to combat under your control with this item equiped",Remove status effects from this unit,11,21,6,21.0,21.0,Enemy,0,0
-Shield Generator,Specialist,Armor,Unit gains 5 Shields before each combat round,Grant target ally 20 shields,5,11,3,0.0,20.0,Any,0,0
-Slayer Suit,Specialist,Armor,"Cannot Equip Utility, Cannot leave Active slot. Gains Shields = 1/4 of damage dealt","Execute target enemy under 1/4 HP and is under rank 6, move this unit to that lane",5,11,3,10.0,20.0,Infantry only,0,0
-Triage Pack,Specialist,Utility,"When in reserve, Heals Active unit 5 damage per round of combat",Heal Target unit to full HP,7,14,3,4.0,7.0,Any,0,0
-XVL33,Specialist,Experimental,"Units Gain 10 damage per charge on this Item, Unit takes 5 damage when attacking per charge on this item","Roll D6, Place that many charges on this item",11,21,6,21.0,21.0,Vehicles and Mech only,0,0
-Black Iron,Brigadier,Weapon,,Destroy this to kill target,6,12,4,24.0,12.0,Infantry only,0,0
-Exosuit,Brigadier,Armor,"When attacked Roll 2D6, on 10+ Take Half damage, On 12 you ignore the damage and your next attack bypasses Armor and shields",Swap Lanes with Friendly Unit that is in combat,6,12,4,10.0,30.0,Any,0,0
-Quantum Plates,Brigadier,Experimental,"Roll D6 at start of combat phase, 1 Nothing happens, 2-3 Take double Damage, 4-5 Take Half damage, 6 Kill this unit and active enemy",Reroll Effect,12,24,8,24.0,24.0,Vehicles and Mech only,0,0
-Shadow Tech,Brigadier,Utility,Ignores 1st instance of damage each combat,Banish target enemy to bottom of reserve,8,16,4,4.0,8.0,Any,0,0
-Shield Projector,Brigadier,Experimental,"Project a shared Shield Pool over all active units totaling to 60 Shield, damage taken is removed from this pool before hitting the unit",,12,24,8,24.0,24.0,Any,0,0
+Holographic Decoys,Specialist,Experimental,"Roll D6 before combat phase, Gain that many charges",Consume 1 charge to prevent instance of damage,11,21,6,21,21,Any,0,0
+Nanite Tech,Specialist,Weapon,Attacks ignore all Defense,Equip to another unit at any time,5,11,3,21,11,Any,0,0
+Reanimator,Specialist,Experimental,"Can be played at any time, Return last killed enemy to combat under your control with this item equiped",Remove status effects from this unit,11,21,6,21,21,Enemy,0,0
+Shield Generator,Specialist,Armor,Unit gains 5 Shields before each combat round,Grant target ally 20 shields,6,13,3,0.0,23,Any,0,30
+Slayer Suit,Specialist,Armor,"Cannot Equip Utility, Cannot leave Active slot. Gains Shields = 1/4 of damage dealt","Execute target enemy under 1/4 HP and is under rank 6, move this unit to that lane",5,12,3,8,23,Infantry only,0,0
+Triage Pack,Specialist,Utility,"When in reserve, Heals Active unit 5 damage per round of combat",Heal Target unit to full HP,8,15,3,4,8,Any,0,0
+XVL33,Specialist,Experimental,"Units Gain 10 damage per charge on this Item, Unit takes 5 damage when attacking per charge on this item","Roll D6, Place that many charges on this item",11,21,6,21,21,Vehicles and Mech only,0,0
+Black Iron,Brigadier,Weapon,,Destroy this to kill target,6,12,4,24,12,Infantry only,0,0
+Exosuit,Brigadier,Armor,"When attacked Roll 2D6, on 10+ Take Half damage, On 12 you ignore the damage and your next attack bypasses Armor and shields",Swap Lanes with Friendly Unit that is in combat,6,11,4,12,27,Any,0,0
+Quantum Plates,Brigadier,Experimental,"Roll D6 at start of combat phase, 1 Nothing happens, 2-3 Take double Damage, 4-5 Take Half damage, 6 Kill this unit and active enemy",Reroll Effect,12,24,8,20,28,Vehicles and Mech only,0,0
+Shadow Tech,Brigadier,Utility,Ignores 1st instance of damage each combat,Banish target enemy to bottom of reserve,8,16,4,4,8,Any,0,0
+Shield Projector,Brigadier,Experimental,"Project a shared Shield Pool over all active units totaling to 60 Shield, damage taken is removed from this pool before hitting the unit",,12,24,8,20,28,Any,0,40
