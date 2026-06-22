@@ -1,4 +1,4 @@
-Building,Name,Passive Effect,Active Effect,Organic,Tech,Alien
+﻿Building,Name,Passive Effect,Active Effect,Organic,Tech,Alien
 Barracks,Mech Station,Mechs added to deck,Next Mech Purchased this round is Free upto your rank,10,10,5
 Barracks,Vehicle Bay,Vehicles Added to deck,Next Vehicle Purchased this round is Free upto your rank,10,10,5
 Barracks,Additional Bedding,Unlocks Shop Slots,Recruit 1 unit for free upto your rank,10,10,5
@@ -42,7 +42,7 @@ Command,Perfect information,,You can look at the monster stacks and rearrange th
 Command,Field Testing,You can Purchase Gear directly onto units,"Equip item from shop to target unit, if it survives it keeps the item",5,10,10
 Command,Collaboration,Players can assist with others missions,Players can use the command pool to cover mission costs this round,5,10,10
 Command,Scouting update,your scouts produce additional resources,generate Scout resources immediately,5,10,10
-Command,Forward Command,Reserve units are immune,"Reserve units are immune this round, Take half progress damage this round",5,10,10
+Command,Forward Command,Reserve units are immune,"Reserve units are immune this round, Take half Overrun Tracker damage this round",5,10,10
 Command,Eradicator Cannon,"Players can spend 2 Alien to deal 5 Damage to Boss, Double Alien cost each time this is used Ignores damage Prevention and Immunities","Discard this card, Draw 2 new cards, Kill target non boss enemy",5,10,10
 Battlefield,Ammo Stockpiles,Ability Tech costs reduced,Ability Tech costs removed this turn,10,10,10
 Battlefield,Air Strike,,Deal 10 damage to active enemies,10,10,10
