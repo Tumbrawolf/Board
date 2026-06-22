@@ -1,10 +1,10 @@
-Board,,,
+﻿Board,,,
 Medical Bay,,,
 ,Medical,4,Heals Units Wounded in Combat
 ,Resource,X,Gives Organic resources based on number of injured slots taken
 Containment Block,,,
 ,Cell,2,"Can Hold defeated enemies to give resources and other effects, last kill of round can be stored here for bonuses"
-,Resource,X,Consume 1 stored enemy to gain Alien = its rank
+,Resource,X,Gain Alien = combined Rank of all currently contained enemies
 Armory,,,
 ,Deck,1,Holds Deck of Shop items
 ,Experimental Deck,NA,Add these to deck when upgrade enabled for Experimental Items
@@ -19,21 +19,22 @@ Barracks,,,
 Command,,,
 ,Event Deck,1,Deck of Events
 ,Event Stack,1,Active and complete Events
-,Expansion Deck,1,Deck for upgrade cards
-,Recycling,1,"Dead Units and Gear placed here,"
+,Commander Deck,1,Commander card deck
+,Recycling,1,Lost equipment goes here
+,Graveyard,1,Dead Units go here
 ,Enemy Disposal,1,Dead Enemies go here
 ,Mission Deck,1,Mission Cards to be assigned
 ,Resource,X,"+1 resource of your choice per Rank, Take Commander slot"
-,Donations,X,Players can skip taking resources or commander slot in order to donate resources to the command for use in upgrade cards and events
+,Donations,X,"Players with a worker here may also donate resources to the command stockpile for use in upgrade cards and events, in addition to their normal resource/commander-slot benefit"
 Battlefield,,,
 ,Enemy Lane,4,"Active Enemy Units, these will attack the base"
 ,Enemy Reserve,4,"Reserve Enemy Units, Scouted units are face up"
 ,Enemy Deck,1,Enemy unit Deck
 ,Boss Deck,1,Boss unit deck
 ,Scout Slot,1,Team Scout unit
-,Active Expansions,1,Active expansion cards
+,Exhausted Commands,1,Command cards that have been used
 ,Player Reserve,4,"Reserve units for players, only 1 per lane can be ""Active"" at a time"
-,Player Lanes,4,"Combat units for the player, these defend the base"
+,Player Active,4,"Active combat units for the player, one per lane, these defend the base"
 ,Progress Track,10,"Progress gained through missions, lost through damage to base and events"
-,Resource,X,+1 All Resources to command stockpile per commander rank
+,Resource,X,+1 All Resources to command stockpile per worker
 ,Take Lead,X,Players getting resources here also Scout an additional Enemy
