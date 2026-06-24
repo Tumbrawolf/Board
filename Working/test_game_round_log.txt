@@ -1,0 +1,224 @@
+Leader: Bree (starts at Rank 2 / Private)
+Difficulty: Normal | Overrun Tracker starts at 10/20
+
+=== SETUP COMPLETE ===
+Alex: Rank Conscript
+Bree: Rank Private
+Cole: Rank Conscript
+Dana: Rank Conscript
+
+=== BEGINNING GAME ===
+
+
+========== ROUND 1 | Commander: Bree (Rk2) | PlayerProg 0/10 | EnemyProg 0/10 | Overrun 10/20 ==========
+  [Boss check] Rolled 8 > EnemyProg 0 -> no boss this round.
+  [Event] Active this round: Forced Contribution -- Income +1 if another worker at location
+  Bree equips Landmines (Dmg+0 HP+0 Arm+0 Shd+0)
+  Cole equips Extra Holster (Dmg+0 HP+3 Arm+0 Shd+0)
+  [Active Effect] Barracks: Bree activates Combined Arms for free (commander) -> Can be used to upgrade the Mech station or Vehicle bay
+  [Active Effect] Medical Bay: Bree activates Increased Budget for free (commander) -> Heal Half of all damage on units, rounded down
+  [Active Effect] Command: Bree activates Priority Operations for free (commander) -> Half the price of activating commands
+  [Active Effect] Armory: Alex (non-commander) activates Flash Sale -> Half Costs rounded up for one round, Double costs on following round
+  Placements: {'Alex': ['Battlefield', 'Containment Block'], 'Bree': ['Barracks', 'Medical Bay', 'Barracks'], 'Cole': ['Containment Block', 'Armory'], 'Dana': ['Barracks', 'Command']}
+  Command pool: {'Organic': 0, 'Tech': 0, 'Alien': 0}
+  Enemy hoard this round: 3x Fodder per lane
+  [Active Effect] Battlefield: Bree activates Punch Through for free (commander) -> your excess damage on kill is applied to the boss, does nothing if no boss present
+  Alex's lane OVERRUN (3 enemies still standing)
+  Bree activates Lazy Recruit's Landmines (consumable)
+  Bree's lane CLEARED (2 units survived)
+  Cole's lane CLEARED (1 units survived)
+  Dana's lane OVERRUN (3 enemies still standing)
+  [Redeploy] Bree's lane won -- sends Lazy Recruit to reinforce Alex
+  Overrun Tracker -2 -> 8/20
+  Event FAILED (Forced Contribution)
+  Mission complete: Bree finishes 'Maintain Morale' -> Rank Sergeant
+  Mission complete: Dana finishes 'Lane Specialist I' -> Rank Private
+  After Escalate: PlayerProg 0/10, EnemyProg 0/10
+
+========== ROUND 2 | Commander: Cole (Rk1) | PlayerProg 0/10 | EnemyProg 0/10 | Overrun 8/20 ==========
+  [Boss check] Rolled 9 > EnemyProg 0 -> no boss this round.
+  [Event] Active this round: Cheap Knockoffs -- All income converted to Tech
+  [Catch-up Resupply] Alex (overrun last round) gets +3 Organic +3 Tech +2 Alien
+  [Catch-up Resupply] Dana (overrun last round) gets +3 Organic +3 Tech +2 Alien
+  Alex equips Scoped Weapons (Dmg+3 HP+2 Arm+0 Shd+0)
+  Dana equips Basic Medkit (Dmg+1 HP+2 Arm+0 Shd+0)
+  [Active Effect] Command: Cole activates Income Tax for free (commander) -> Half of player income is taken by the command pool this round.
+  [Upgrade built] Containment Block: Garrison (from Cole's hand)
+  [Active Effect] Command: Bree (non-commander) activates Scouting update -> generate Scout resources immediately
+  Placements: {'Alex': ['Medical Bay', 'Containment Block'], 'Bree': ['Containment Block', 'Command'], 'Cole': ['Barracks', 'Command', 'Battlefield'], 'Dana': ['Barracks', 'Armory']}
+  Command pool: {'Organic': 0, 'Tech': 41, 'Alien': 1}
+  Enemy hoard this round: 3x Fodder per lane
+  Alex's lane CLEARED (2 units survived)
+  Bree's lane CLEARED (0 units survived)
+  Cole's lane OVERRUN (1 enemies still standing)
+  Dana activates Recruit's Basic Medkit (paid again)
+  Dana's lane CLEARED (2 units survived)
+  [Redeploy] Dana's lane won -- sends Rookie Gunner to reinforce Bree
+  [Redeploy] Alex's lane won -- sends Civilian Scout to reinforce Cole
+  Overrun Tracker -1 -> 7/20
+  Event FAILED (Cheap Knockoffs)
+  Mission complete: Alex finishes 'Armed and Ready' -> Rank Private
+  Mission complete: Bree finishes 'Organic Contribution IV' -> Rank Captain
+  Mission complete: Cole finishes 'Organic export 1' -> Rank Private
+  Mission complete: Dana finishes 'Tech Donated III' -> Rank Sergeant
+  After Escalate: PlayerProg 0/10, EnemyProg 1/10
+
+========== ROUND 3 | Commander: Dana (Rk3) | PlayerProg 0/10 | EnemyProg 1/10 | Overrun 7/20 ==========
+  [Boss check] Rolled 5 > EnemyProg 1 -> no boss this round.
+  [Event] Active this round: Weapons Recall -- Unequip All Weapon Equipment when drawing this event
+  Dana heals Recruit at Medical Bay (+1 HP)
+  [Catch-up Resupply] Cole (overrun last round) gets +3 Organic +3 Tech +2 Alien
+  Bree equips Reinforced Plates (Dmg+0 HP+10 Arm+3 Shd+0)
+  Bree equips Specialist Armor (Dmg+0 HP+14 Arm+4 Shd+0)
+  Cole equips Basic Armor (Dmg+0 HP+7 Arm+2 Shd+0)
+  [Upgrade built] Barracks: AI advancements (from Dana's hand)
+  [Active Effect] Containment Block: Alex (non-commander) activates Combat Stims -> Deal your choice of damage to a friendly to give double the damage deal as bonus Attack for this round
+  [Active Effect] Armory: Alex (non-commander) activates Mad Science -> Equipment Alien costs halved for one round
+  Placements: {'Alex': ['Command', 'Containment Block'], 'Bree': ['Barracks', 'Barracks', 'Containment Block'], 'Cole': ['Armory', 'Barracks'], 'Dana': ['Battlefield', 'Medical Bay', 'Medical Bay']}
+  Command pool: {'Organic': 6, 'Tech': 47, 'Alien': 14}
+  Enemy hoard this round: 3x Fodder per lane
+  [Active Effect] Battlefield: Dana activates Chemical Warfare for free (commander) -> Reduce All active non boss enemies to 1HP, double their attack
+  Alex's lane CLEARED (3 units survived)
+  Bree's lane CLEARED (3 units survived)
+  Cole's lane CLEARED (3 units survived)
+  Dana's lane CLEARED (3 units survived)
+  [Redeploy] Bree's lane won -- sends Special Forces to reinforce Cole
+  [Redeploy] Alex's lane won -- sends Recruit to reinforce Dana
+  [Redeploy] Dana's lane won -- sends Breacher to reinforce Alex
+  [Redeploy] Cole's lane won -- sends Rookie Gunner to reinforce Dana
+  Event FAILED (Weapons Recall)
+  Mission complete: Alex finishes 'Holding Pattern' -> Rank Sergeant
+  Mission complete: Cole finishes 'Organic Contribution II' -> Rank Sergeant
+  After Escalate: PlayerProg 1/10, EnemyProg 2/10
+
+========== ROUND 4 | Commander: Alex (Rk3) | PlayerProg 1/10 | EnemyProg 2/10 | Overrun 7/20 ==========
+  [Boss check] Rolled 7 > EnemyProg 2 -> no boss this round.
+  [Event] Active this round: Psychic Tremors -- Active Non Mech are stunned at start of combat
+  Alex heals Lazy Recruit at Medical Bay (+1 HP)
+  Cole equips Deployable Shield (Dmg+2 HP+3 Arm+0 Shd+10)
+  Cole equips Deployable Shield (Dmg+2 HP+3 Arm+0 Shd+10)
+  [Active Effect] Medical Bay: Alex activates Donor Organs for free (commander) -> Pay a infantry units organic cost to heal them
+  [Active Effect] Command: Cole (non-commander) activates Work Order -> All active Units generate supply for the command supply
+  [Active Effect] Command: Cole (non-commander) activates Priority Construction -> Half the price of building upgrades
+  [Active Effect] Medical Bay: Dana (non-commander) activates Battle Medics -> Heal all units on battlefield at end of round
+  Placements: {'Alex': ['Battlefield', 'Medical Bay', 'Barracks'], 'Bree': ['Barracks', 'Containment Block', 'Battlefield'], 'Cole': ['Command', 'Armory'], 'Dana': ['Barracks', 'Battlefield']}
+  Command pool: {'Organic': 2, 'Tech': 66, 'Alien': 22}
+  Enemy hoard this round: 3x Grunt per lane
+  [Active Effect] Battlefield: Alex activates Final Stand for free (commander) -> Target Active Unit cannot die this round
+  [Active Effect] Battlefield: Bree (non-commander) activates Whites of their eyes -> You deal and take double damage on 1st attack of combat
+  [Active Effect] Battlefield: Bree (non-commander) activates Barrier Systems -> Prevent the next 10 damage to target lane
+  Alex activates Lazy Recruit's Scoped Weapons (paid again)
+  Alex's lane OVERRUN (2 enemies still standing)
+  Bree's lane CLEARED (4 units survived)
+  Cole's lane CLEARED (5 units survived)
+  Dana's lane CLEARED (0 units survived)
+  [Redeploy] Bree's lane won -- sends Rambo to reinforce Alex
+  [Redeploy] Cole's lane won -- sends Recruit Prodigy to reinforce Alex
+  Overrun Tracker -1 -> 6/20
+  Event PASSED (Psychic Tremors)
+  Mission complete: Cole finishes 'Sundering Blow' -> Rank Captain
+  Mission complete: Dana finishes 'Xenobiology Export 3' -> Rank Captain
+  After Escalate: PlayerProg 1/10, EnemyProg 3/10
+
+========== ROUND 5 | Commander: Bree (Rk4) | PlayerProg 1/10 | EnemyProg 3/10 | Overrun 6/20 ==========
+  [Boss check] Rolled 5 > EnemyProg 3 -> no boss this round.
+  [Event] Active this round: Supply Chain Collapse -- Double the activation cost of all Gear Active effects this round
+  Dana heals Scout at Medical Bay (+2 HP)
+  Cole heals Civilian Scout at Medical Bay (+6 HP)
+  [Catch-up Resupply] Alex (overrun last round) gets +3 Organic +3 Tech +2 Alien
+  Cole equips Entrenchment (Dmg+0 HP+0 Arm+0 Shd+0)
+  Dana equips Plasma Weapons (Dmg+10 HP+7 Arm+0 Shd+0)
+  Dana equips Shield Pack (Dmg+2 HP+3 Arm+0 Shd+10)
+  [Active Effect] Barracks: Bree activates Vehicle Bay for free (commander) -> Next Vehicle Purchased this round is Free upto your rank
+  Placements: {'Alex': ['Containment Block', 'Command'], 'Bree': ['Barracks', 'Command', 'Battlefield', 'Containment Block'], 'Cole': ['Armory', 'Containment Block', 'Medical Bay'], 'Dana': ['Barracks', 'Armory', 'Medical Bay']}
+  Command pool: {'Organic': 2, 'Tech': 64, 'Alien': 22}
+  Enemy hoard this round: 3x Grunt per lane
+  [Active Effect] Battlefield: Bree activates Suppression for free (commander) -> Prevent activated effects of a target lane
+  Alex's lane OVERRUN (2 enemies still standing)
+  Bree's lane CLEARED (5 units survived)
+  Cole activates Civilian Scout's Entrenchment (consumable)
+  Cole's lane CLEARED (5 units survived)
+  Dana's lane CLEARED (3 units survived)
+  [Redeploy] Bree's lane won -- sends Rookie Gunner to reinforce Alex
+  [Redeploy] Cole's lane won -- sends Gunner to reinforce Alex
+  [Redeploy] Dana's lane won -- sends Rookie Gunner to reinforce Alex
+  Overrun Tracker -1 -> 5/20
+  Event PASSED (Supply Chain Collapse)
+  Promotion: Alex -> Rank Captain
+  Mission complete: Alex finishes 'Just a flesh wound' -> Rank Major
+  Mission complete: Bree finishes 'Tech Export 5' -> Rank Major
+  After Escalate: PlayerProg 1/10, EnemyProg 4/10
+
+========== ROUND 6 | Commander: Cole (Rk4) | PlayerProg 1/10 | EnemyProg 4/10 | Overrun 5/20 ==========
+  [Boss check] Rolled 8 > EnemyProg 4 -> no boss this round.
+  [Event] Active this round: Saboteur investigation -- Roll Dice to select locations
+  Dana heals Scout at Medical Bay (+12 HP)
+  [Catch-up Resupply] Alex (overrun last round) gets +3 Organic +3 Tech +2 Alien
+  Alex retires Gunner (Rank Sergeant) for a partial refund
+  Alex retires Rookie Gunner (Rank Private) for a partial refund
+  Bree retires RDMP "Wall" (Rank Sergeant) for a partial refund
+  Alex equips Reinforced Barrels (Dmg+3 HP+2 Arm+0 Shd+0)
+  Bree equips Chem Strike (Dmg+0 HP+0 Arm+0 Shd+0)
+  Bree equips Basic Exo (Dmg+1 HP+2 Arm+0 Shd+0)
+  Cole equips Scouting Drones (Dmg+0 HP+0 Arm+0 Shd+0)
+  Cole equips Grenades (Dmg+3 HP+2 Arm+0 Shd+0)
+  [Active Effect] Barracks: Alex (non-commander) activates Advanced Mechanized -> reduce -2 Tech costs of mechs, -3 Tech cost of Vehicles for this turn only
+  Placements: {'Alex': ['Command', 'Containment Block', 'Command'], 'Bree': ['Barracks', 'Armory', 'Barracks'], 'Cole': ['Battlefield', 'Barracks', 'Armory', 'Armory'], 'Dana': ['Barracks', 'Medical Bay', 'Barracks']}
+  Command pool: {'Organic': 0, 'Tech': 72, 'Alien': 32}
+  Enemy hoard this round: 3x Core per lane
+  [Active Effect] Battlefield: Cole activates Ammo Stockpiles for free (commander) -> Ability Tech costs removed this turn
+  [Active Effect] Battlefield: Cole activates Bunkers for free (commander) -> The 1st Damage ability per lane is prevented
+  Alex's lane OVERRUN (3 enemies still standing)
+  Bree activates Rookie Gunner's Chem Strike (consumable)
+  Bree activates Rookie Gunner's Basic Exo (paid again)
+  Bree's lane OVERRUN (3 enemies still standing)
+  Cole activates Special Forces's Scouting Drones (consumable)
+  Cole activates Special Forces's Grenades (paid again)
+  Cole's lane OVERRUN (3 enemies still standing)
+  Dana's lane OVERRUN (1 enemies still standing)
+  Overrun Tracker -4 -> 1/20
+  Event PASSED (Saboteur investigation)
+  Mission complete: Cole finishes 'Xenobiology Export 4' -> Rank Major
+  After Escalate: PlayerProg 1/10, EnemyProg 5/10
+
+========== ROUND 7 | Commander: Dana (Rk4) | PlayerProg 1/10 | EnemyProg 5/10 | Overrun 1/20 ==========
+  [Boss check] Rolled 7 > EnemyProg 5 -> no boss this round.
+  [Event] Active this round: Forced Disposal -- Can clear Disposal for Organics = Rank
+  [Catch-up Resupply] Alex (overrun last round) gets +3 Organic +3 Tech +2 Alien
+  [Catch-up Resupply] Bree (overrun last round) gets +3 Organic +3 Tech +2 Alien
+  [Catch-up Resupply] Cole (overrun last round) gets +3 Organic +3 Tech +2 Alien
+  [Catch-up Resupply] Dana (overrun last round) gets +3 Organic +3 Tech +2 Alien
+  Alex retires Rookie Gunner (Rank Private) for a partial refund, 3 gear item(s) returned to hand
+  Alex re-equips Basic Exo from hand (free)
+  Alex re-equips Specialist Armor from hand (free)
+  Alex re-equips Reinforced Plates from hand (free)
+  Bree equips Juggernaut Armor (Dmg+0 HP+17 Arm+6 Shd+0)
+  Cole equips Specialist Armor (Dmg+0 HP+14 Arm+4 Shd+0)
+  [Upgrade built] Armory: Ethics Committee (from Dana's hand)
+  [Active Effect] Medical Bay: Dana activates Ashes to Ashes for free (commander) -> Sacrifice a unit to refund its Organics cost
+  Placements: {'Alex': ['Barracks', 'Battlefield', 'Barracks'], 'Bree': ['Barracks', 'Medical Bay', 'Containment Block'], 'Cole': ['Armory', 'Medical Bay', 'Command'], 'Dana': ['Command', 'Containment Block', 'Medical Bay', 'Command']}
+  Command pool: {'Organic': 0, 'Tech': 75, 'Alien': 40}
+  Enemy hoard this round: 3x Core per lane
+  [Saboteur Cell] Alex reduces Enemy Progress by 1 -> 4/10 (use 1/3)
+  Alex's lane CLEARED (2 units survived)
+  Bree's lane OVERRUN (3 enemies still standing)
+  Cole's lane OVERRUN (2 enemies still standing)
+  Dana's lane OVERRUN (3 enemies still standing)
+  [Redeploy] Alex's lane won -- sends Covert Operation to reinforce Bree
+  Overrun Tracker -3 -> -2/20
+  Event PASSED (Forced Disposal)
+  After Escalate: PlayerProg 1/10, EnemyProg 5/10
+
+#### PLAYERS LOSE on Round 7. Overrun Tracker hit 0. ####
+
+=== GAME OVER ===
+Final: Round 7 | PlayerProg 1/10 | EnemyProg 5/10 | Overrun -2/20
+  Alex: Rank Major, missions held 3
+  Bree: Rank Major, missions held 3
+  Cole: Rank Major, missions held 3
+  Dana: Rank Captain, missions held 3
+
+=== Secret Objectives ===
+  Alex completes [Neutral] Chef
+  Bree completes [Saboteur] Slacker
+  Dana completes [Allied] Enforcer
