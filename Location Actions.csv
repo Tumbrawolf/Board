@@ -1,10 +1,10 @@
 ﻿Board,,,
 Medical Bay,,,
 ,Medical,4,Heals Units Wounded in Combat
-,Resource,X,Gives Organic resources based on number of injured slots taken
+,Resource,X,"Gives 2 Organic per injured slot healed, plus 1 Organic per worker regardless"
 Containment Block,,,
 ,Cell,2,"Can Hold defeated enemies to give resources and other effects, last kill of round can be stored here for bonuses"
-,Resource,X,Gain Alien = combined Rank of all currently contained enemies
+,Resource,X,"Gain Alien = combined Rank of all currently contained enemies, plus 1 Alien per worker regardless"
 Armory,,,
 ,Deck,1,Holds Deck of Shop items
 ,Experimental Deck,NA,Add these to deck when upgrade enabled for Experimental Items
