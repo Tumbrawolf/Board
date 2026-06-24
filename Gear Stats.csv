@@ -65,3 +65,5 @@ Exosuit,Brigadier,Armor,"When attacked Roll 2D6, on 10+ Take Half damage, On 12 
 Quantum Plates,Brigadier,Experimental,"Roll D6 at start of combat phase, 1 Nothing happens, 2-3 Take double Damage, 4-5 Take Half damage, 6 Kill this unit and active enemy",Reroll Effect,12,24,8,20,28,Vehicles and Mech only,0,0
 Shadow Tech,Brigadier,Utility,Ignores 1st instance of damage each combat,Banish target enemy to bottom of reserve,8,16,4,4,8,Any,0,0
 Shield Projector,Brigadier,Experimental,"Project a shared Shield Pool over all active units totaling to 60 Shield, damage taken is removed from this pool before hitting the unit",,12,24,8,20,28,Any,0,40
+Recon Satellite,Major,Utility,"This effect can trigger at most 3 times per game: whenever you complete a Mission, Reduce Enemy Progress by 1",,5,10,2,3,5,,0,0
+Last Stand Beacon,Specialist,Consumable,,"Usable only while Enemy Progress is 8 or higher: Sacrifice 2 Player Progress, restore 5 Overrun Tracker",7,14,3,,,,0,0

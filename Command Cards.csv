@@ -59,3 +59,4 @@ Battlefield,Punch Through,,"your excess damage on kill is applied to the boss, d
 Battlefield,Tranq rounds,Reduce enemy damage by 2 per rank of the unit,reduce enemy damage by half this round,10,10,10
 Battlefield,Bunkers,Units can only be damaged by units in their lanes active slot,The 1st Damage ability per lane is prevented,10,10,10
 Battlefield,Security Drones,If a lane has no units deployed to the active slot at combat start you can produce 1/1 drones for that lane = commander rank,Add 8 1/1 Drones split evenly to bottom of your reserve piles,10,10,10
+Command,Strategic Withdrawal,,"Once per game: Reduce Enemy Progress by 3, but lose 1 Player Progress this round",5,10,10

@@ -56,24 +56,24 @@ Each round runs through four stages, plus actions players can take anytime:
 
 | Card Set | Total |
 |---|---|
-| Unit Stats | 102 |
+| Unit Stats | 103 |
 | Enemy Stats | 93 |
-| Gear Stats | 66 |
+| Gear Stats | 68 |
 | Mission Cards | 117 |
-| Command Cards | 60 |
+| Command Cards | 61 |
 | Event Cards | 40 |
 | Secret Objective Cards | 41 |
 | Tactician Cards | 18 |
 | Boss Stats | 15 bosses (each scaling across 5 tiers) |
 
-**Units by rank:** Conscript 3, Private 9, Sergeant 24, Captain 18, Major 17, Colonel 17, Specialist 7, Brigadier 7
-**Units by type:** Infantry 29, Vehicle 29, Mech 21, Infantry Scout 11, Mech Scout 6, Vehicle Scout 6
+**Units by rank:** Conscript 3, Private 9, Sergeant 24, Captain 18, Major 18, Colonel 17, Specialist 7, Brigadier 7
+**Units by type:** Infantry 29, Vehicle 29, Mech 21, Infantry Scout 12, Mech Scout 6, Vehicle Scout 6
 
 **Enemies by rank:** Fodder 2, Grunt 8, Core 6, Advanced 35, Elite 14, General 17, Conqueror 11
 **Enemies by type:** Mechanised 25, Infantry 22, Beast 17, Drones 10, Abomination 9, Experimental 8, Fodder 2
 
-**Gear by rank:** Conscript 10, Specialist 11, Private 8, Sergeant 8, Captain 9, Major 8, Colonel 7, Brigadier 5
-**Gear by type:** Utility 17, Armor 16, Weapon 15, Consumable 10, Experimental 8
+**Gear by rank:** Conscript 10, Specialist 12, Private 8, Sergeant 8, Captain 9, Major 9, Colonel 7, Brigadier 5
+**Gear by type:** Utility 18, Armor 16, Weapon 15, Consumable 11, Experimental 8
 
 **Secret Objectives by alignment:** Allied 13, Neutral 13, Saboteur 11, Chaos 4
 
@@ -143,3 +143,9 @@ None of these block playtesting as-is — the ruleset is in a genuinely playable
     - **Default combat turn order was never stated.** Several unit abilities say "Attacks 1st," implying normal combat has no inherent first-actor — but nothing said who actually goes first by default. Now explicit: the enemy's Active card deals damage first each exchange by default, the player's Active unit responds, unless an ability grants the player's unit priority instead.
     - **Scout pool empty edge case** — if no Scout-type unit has ever been donated, Assign Scouts is now explicitly skipped that round rather than left ambiguous.
     - **A follow-up sweep of every CSV (not just the ones already checked) for "progress"/"overrun" turned up two more broken enemy cards and a stale component description.** `Tunnler`'s Passive ("reduce progress by 1") and `Tactician`'s Reveal/Passive ("Reduce the progress by 3" / "Lose 2 progress on death") both described reducing Player Progress directly, which is no longer possible — redirected both to the Overrun Tracker, the same fix as the Secret Objectives. `Location Actions.csv`'s Progress Track description ("lost through damage to base") was also still describing the old single-track model — updated to make clear Player Progress is gain-only now and the Overrun Tracker is what actually takes damage. (`Siege Ender`'s "10 damage per progress" was left alone — it's a scaling reference, not an action, and works fine pointing at either Progress Track, so it's ambiguous but not actually broken.)
+
+29. **Four new cards added to give players direct counterplay against Enemy Progress and the Overrun Tracker** (previously the only levers on either were a couple of Mission rewards). All deliberately capped to avoid letting any one card indefinitely suppress the difficulty curve ("stalling"):
+    - **`Recon Satellite`** (Gear, Utility, Major): "This effect can trigger at most 3 times per game: whenever you complete a Mission, Reduce Enemy Progress by 1." A flat per-game cap rather than a per-round one — an earlier draft capped the *cadence* instead (once per round), which doesn't actually bound the total suppression over a long game.
+    - **`Saboteur Cell`** (Unit, Infantry Scout, Major): "This effect can trigger at most 3 times per game: when used as the active scout, Reduce Enemy Progress by 1." Same per-game cap, for the same reason.
+    - **`Strategic Withdrawal`** (Command Card, Command): "Once per game: Reduce Enemy Progress by 3, but lose 1 Player Progress this round." A deliberate Player Progress cost on a card *effect* — distinct from the now-removed automatic overrun-costs-Player-Progress rule; effects can still cost Player Progress, only the passive overrun mechanic can't.
+    - **`Last Stand Beacon`** (Gear, Consumable, Specialist): "Usable only while Enemy Progress is 8 or higher: Sacrifice 2 Player Progress, restore 5 Overrun Tracker." The first and only way to restore the Overrun Tracker at all — deliberately rare (Consumable, single use), expensive (costs the team's own win-condition progress), and gated to the late-game danger window so it can't be used as routine maintenance.

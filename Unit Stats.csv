@@ -113,3 +113,4 @@ Mech,Brigadier,"EMP ""Slayer""","All enemy abilities must target this unit when 
 Vehicle,Brigadier,Leviathan,"Attacks all lanes simultaneously, Deletes enemies on kill, Execute units Under rank 3 when entering lane",,13,17,14,14,7,14,0,0,10,50
 Vehicle,Brigadier,Bastion,Cannot be converted,"Other units cannot be attacked or targeted while this unit is active, can be targeted from other lanes.",13,17,14,14,7,14,0,0,10,50
 Vehicle Scout,Brigadier,Nemesis,Can be deployed to any lane from scouting. Stun any enemies with reveal effects and active units in adjacent lanes when deployed this way,"If Nemesis has more damage than target, prevent all abilities on target",16,14,14,14,7,37,8,9,2,10
+Infantry Scout,Major,Saboteur Cell,Mobile,"This effect can trigger at most 3 times per game: when used as the active scout, Reduce Enemy Progress by 1",8,7,12,4,2,10,2,4,0,0
