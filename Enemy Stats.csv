@@ -29,7 +29,7 @@ Demo Squad,Group of Grunts with explosives,Infantry,Advanced,"Deal 2x attack dam
 Shredder Grunt,Grunt Heavy weapons,Infantry,Advanced,Remove 5 armor from all units,Attacks remove 1 armor each hit,7,12,10,4,2,4,20
 Skirmisher,Fast moving infantry with Close range plasma weapons,Infantry,Advanced,"Roll D4, Move to that lane",Always hits 1st,8,10,9,4,2,1,6
 Dark Zealot,Untargetable by abilities,Infantry,Advanced,Cannot be target by abilities,Cannot be targeted by abilities,8,10,9,4,2,1,6
-Tunnler,Transport,Beast,Advanced,Move this unit to reserve,"If a unit dies in this lane, reduce progress by 1",11,13,11,2,2,1,6
+Tunnler,Transport,Beast,Advanced,Move this unit to reserve,"If a unit dies in this lane, reduce the Overrun Tracker by 1",11,13,11,2,2,1,6
 Underminer,Disables base upgrades,Beast,Advanced,Shuffle 1 upgrade back into deck,Base upgrades cannot be triggered while this unit is alive,13,11,11,2,2,0,0
 Thorn Hide,Large beast with armor and reflects,Beast,Advanced,Gain 2 armor,Deals damage = Armor when damaged,9,15,11,2,2,4,20
 Spitters,Acidic damage at range,Beast,Advanced,Shred 5 armor from all units,Damage Shreds 2 armor on hit,11,13,11,2,2,1,6
@@ -66,7 +66,7 @@ Death Cloak,Enemies are Immortal on 1HP while this unit is alive,Experimental,El
 Shatter Cannon,AOE Stuns on kills. Shreds Armor and Shields,Experimental,Elite,"Stun all units, shred half their shields and armor","Shred 4 armor and 5 shield on hit, Stun all units on kill.",18,35,4,9,9,2,9
 Oracle,Prevents any Targeting prevention,Drones,General,Prevent the next 20 damage delt to enemies,Enemies cannot have their abilities prevented,11,13,9,16,4,2,12
 High Praetor,Knight unit that gainst stacking armor when hit,Infantry,General,Gain 5 armor.,Gains 2 armor on hit. reset on kill.,12,23,18,8,4,7,40
-Tactician,Reduces progress,Infantry,General,Reduce the progress by 3,Lose 2 progress on death,14,20,17,8,4,2,12
+Tactician,Reduces the Overrun Tracker,Infantry,General,Reduce the Overrun Tracker by 3,Reduce the Overrun Tracker by 2 on death,14,20,17,8,4,2,12
 Grand Saboteur,"Roll dice to select location, Disables all building upgrades while alive",Infantry,General,"Roll a D6, disable the upgrades at this location until the end of next turn",Gain 10 damage and health for each upgrade disabled,14,20,17,8,4,2,12
 Crown Splitter,Elite Sniper General,Infantry,General,Half HP of all infantry,Enemies deal 15 bonus damage to infantry,16,17,16,8,4,0,0
 Alpha Thorn Hide,Reflects damage until Shields broken,Beast,General,Gain 40 shield,Reflects damage while unit has shields,14,31,22,4,4,7,40
