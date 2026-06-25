@@ -3,6 +3,9 @@
   import { socket, clientId, loadOrCreateName, saveName } from "./socket";
   import BoardView from "./BoardView.svelte";
   import PlanningPanel from "./PlanningPanel.svelte";
+  import RulesPage from "./RulesPage.svelte";
+
+  let showRules = $state(false);
   import {
     DEFAULT_SETTINGS,
     MAX_SEATS,
@@ -173,9 +176,13 @@
   );
 </script>
 
+{#if showRules}
+  <RulesPage onBack={() => (showRules = false)} />
+{:else}
 <div class="wrap">
   <header>
     <h1>Board — Web Sim</h1>
+    <button class="rules-link" onclick={() => (showRules = true)}>Rules &amp; How to Play</button>
     <span class="status" class:online={connected} class:offline={!connected}>
       {connected ? "connected" : "disconnected"}
     </span>
@@ -360,6 +367,7 @@
     </section>
   {/if}
 </div>
+{/if}
 
 <style>
   .wrap {
@@ -372,6 +380,14 @@
     display: flex;
     align-items: baseline;
     justify-content: space-between;
+  }
+  .rules-link {
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 0.25rem 0.6rem;
+    cursor: pointer;
+    font-size: 0.85em;
   }
   .status.online {
     color: #2a8f4e;
