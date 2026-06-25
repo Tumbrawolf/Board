@@ -2,7 +2,7 @@
 
 A cooperative (with hidden-traitor potential), tactical resource-management board game for the tabletop, currently in active design. Players defend against waves of enemies across multiple combat lanes while managing a shared economy, recruiting and upgrading units, and completing missions — all while one or more players may secretly be working against the group.
 
-> **Status:** Design in progress, with a full balance-and-rules playtest pass complete. `Rules.docx` reflects every change below; a second, reader-friendly edition (`Board_Rules_Reorganized.docx`, not in this repo's CSV/docx set but generated alongside it) restructures the same content for teaching new players and table-side lookup.
+> **Status:** Design in progress, with a full balance-and-rules playtest pass complete, plus 5 full manual playtest games (see `Playtest Game 1-5.md`) validating the ruleset end to end. `Rules.docx` reflects every change below; a second, reader-friendly edition (`Board_Rules_Reorganized.docx`) restructures the same content for teaching new players and table-side lookup — both docs are kept in sync by hand, since there's no automatic link between them.
 
 ## Overview
 
@@ -23,6 +23,7 @@ Players act as commanders defending against escalating threats (fodder, infantry
 | File / Folder | Description |
 |---|---|
 | `Rules.docx` | Primary rules document |
+| `Board_Rules_Reorganized.docx` | Same rules as `Rules.docx`, restructured for teaching a new player and for table-side lookup. No automatic sync between the two — kept in step by hand. |
 | `Unit Stats.csv` | Recruitable unit stat lines and abilities, by type and rank. Now includes `Armor`/`Shields` columns for the 25 units that have a base value in either. |
 | `Enemy Stats.csv` | Enemy stat lines and abilities, by type and rank. Now includes `Armor`/`Shields` columns for the 9 enemies that have a base value in either. |
 | `Gear Stats.csv` | Equipment stats, costs, and restrictions. Now includes `Armor`/`Shields` columns for the 9 items that grant a bonus in either. |
@@ -35,6 +36,8 @@ Players act as commanders defending against escalating threats (fodder, infantry
 | `Keywords.csv` | Glossary of recurring ability terms, verified at 38 entries — added **Long Range** and **Mobile**, two new keywords created to replace repeated full-sentence ability text on 16 units (see Feedback #17) |
 | `Location Actions.csv` | Slot counts and effects per board location, exported from `Data for cards.xlsx`'s `Location Actions` sheet. Cross-checked word-for-word against `Rules.docx`'s Locations section this round and corrected where they'd drifted apart (see Feedback #21). |
 | `Boards/` | Board section mockups (Battlefield, Barracks, Armory, Medical Bay, Containment Block, Command) |
+| `Playtest Game 1.md` – `Playtest Game 5.md` | 5 full manual playtest games (2026-06-25), played start-to-finish to genuine win/loss: Games 1-3 are a baseline batch (no antagonist / guaranteed Saboteur / guaranteed Chaos) that surfaced the Feedback #31-40 revision; Games 4-5 validate that revision plus the follow-on Rank Trickle (#41) and Reveal-damage (#42) fixes. |
+| `Playtest Log - Full Game Walkthrough.md` | Running log of rules gaps/ambiguities found across the 5 playtest games, with an explicit disposition (adopted / adopted-with-modification / deferred / superseded) for each — see its "Resolution" section. |
 
 ## Playtesting
 
@@ -60,7 +63,7 @@ Each round runs through four stages, plus actions players can take anytime:
 | Enemy Stats | 93 |
 | Gear Stats | 68 |
 | Mission Cards | 117 |
-| Command Cards | 61 |
+| Command Cards | 62 |
 | Event Cards | 40 |
 | Secret Objective Cards | 41 |
 | Tactician Cards | 18 |
