@@ -42,10 +42,49 @@
     room = state;
   }
 
+  interface GameStateSnapshot {
+    roundNum: number;
+    status: string;
+    playerProgress: number;
+    enemyProgress: number;
+    overrunTracker: number;
+    overrunTrackerMax: number;
+    players: {
+      seatIndex: number;
+      name: string;
+      rank: number;
+      res: { Organic: number; Tech: number; Alien: number };
+      active: { name: string; hp: number; maxHp: number; shields: number } | null;
+      reserveCount: number;
+    }[];
+  }
+
+  let gameLog = $state<string[]>([]);
+  let gameSnapshot = $state<GameStateSnapshot | null>(null);
+  let gameOver = $state<{ status: string; round: number } | null>(null);
+  let logEl: HTMLDivElement | undefined = $state();
+
+  function onGameLog({ text }: { text: string }) {
+    gameLog.push(text);
+    if (gameLog.length > 500) gameLog = gameLog.slice(-500);
+    queueMicrotask(() => {
+      if (logEl) logEl.scrollTop = logEl.scrollHeight;
+    });
+  }
+  function onGameState(snapshot: GameStateSnapshot) {
+    gameSnapshot = snapshot;
+  }
+  function onGameOver(payload: { status: string; round: number }) {
+    gameOver = payload;
+  }
+
   onMount(() => {
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("room:state", onRoomState);
+    socket.on("game:log", onGameLog);
+    socket.on("game:state", onGameState);
+    socket.on("game:over", onGameOver);
     connected = socket.connected;
   });
 
@@ -53,6 +92,9 @@
     socket.off("connect", onConnect);
     socket.off("disconnect", onDisconnect);
     socket.off("room:state", onRoomState);
+    socket.off("game:log", onGameLog);
+    socket.off("game:state", onGameState);
+    socket.off("game:over", onGameOver);
   });
 
   function persistName() {
@@ -258,14 +300,48 @@
         {/if}
       </div>
       <p class="hint">
-        Stage 1: the engine isn't wired up yet — "Start Game" just records the room to
-        the server's game history for now.
+        Stage 2: every seat plays itself (bot-controlled) once the game starts — there's no
+        human input wired in yet. Watch it play out below once you hit Start.
       </p>
     </section>
   {:else}
     <section class="card">
-      <h2>Game started!</h2>
-      <p>Room {room.code} is now "in game". The real engine arrives in Stage 2.</p>
+      <h2>
+        Room <span class="code">{room.code}</span> — in game
+        {#if gameOver}
+          <span class="result" class:won={gameOver.status === "won"} class:lost={gameOver.status === "lost"}>
+            {gameOver.status === "won" ? "WON" : "LOST"} (Round {gameOver.round})
+          </span>
+        {/if}
+      </h2>
+
+      {#if gameSnapshot}
+        <div class="trackers">
+          <span>Round {gameSnapshot.roundNum}</span>
+          <span>Player Progress {gameSnapshot.playerProgress}/10</span>
+          <span>Enemy Progress {gameSnapshot.enemyProgress}/10</span>
+          <span>Overrun {gameSnapshot.overrunTracker}/{gameSnapshot.overrunTrackerMax}</span>
+        </div>
+        <ul class="players">
+          {#each gameSnapshot.players as p}
+            <li>
+              <strong>{p.name}</strong> (Rk{p.rank}) —
+              {#if p.active}
+                {p.active.name} {p.active.hp}/{p.active.maxHp} HP{p.active.shields ? ` +${p.active.shields} Shd` : ""}
+              {:else}
+                <em>no active unit</em>
+              {/if}
+              {#if p.reserveCount}<span class="muted"> (+{p.reserveCount} reserve)</span>{/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      <div class="log" bind:this={logEl}>
+        {#each gameLog as line}
+          <div class="log-line">{line}</div>
+        {/each}
+      </div>
     </section>
   {/if}
 </div>
@@ -375,5 +451,52 @@
   }
   .muted {
     color: #aaa;
+  }
+  .result {
+    font-size: 0.7em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+  }
+  .result.won {
+    background: #d8f3dc;
+    color: #1b4332;
+  }
+  .result.lost {
+    background: #ffd6d6;
+    color: #7a1f1f;
+  }
+  .trackers {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    font-size: 0.9em;
+    color: #444;
+    margin: 0.5rem 0;
+  }
+  .players {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0;
+    font-size: 0.9em;
+  }
+  .players li {
+    padding: 0.2rem 0;
+  }
+  .log {
+    margin-top: 0.75rem;
+    height: 320px;
+    overflow-y: auto;
+    background: #111;
+    color: #ddd;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.78em;
+    padding: 0.6rem;
+    border-radius: 6px;
+    white-space: pre-wrap;
+  }
+  .log-line {
+    line-height: 1.4;
   }
 </style>
