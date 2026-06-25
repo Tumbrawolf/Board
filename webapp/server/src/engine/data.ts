@@ -69,11 +69,58 @@ export interface CommandCard {
   Alien: string;
 }
 
+export interface MissionCard {
+  Name: string;
+  "Player Rank": string;
+  Requirement: string;
+  Resource: string;
+  Instant: string;
+}
+
+export interface EventCard {
+  "Event name": string;
+  "Round Effect": string;
+  "Completion Condition": string;
+  "Completion Reward": string;
+  "Failure Penalty": string;
+}
+
+export interface SecretObjectiveCard {
+  Alignment: string;
+  Name: string;
+  "Bonus Objective": string;
+}
+
+export interface TacticianCard {
+  Name: string;
+  Passives: string;
+  Active: string;
+  Resource: string;
+}
+
+export interface BossCard {
+  Name: string;
+  Damage: string;
+  HP: string;
+  Targeting: string;
+  "Boss Passive": string;
+  T1Boss: string;
+  T2Boss: string;
+  T3Boss: string;
+  T4Boss: string;
+  T5Boss: string;
+}
+
 export interface GameData {
   units: UnitCard[];
   enemies: EnemyCard[];
   gear: GearCard[];
   commandCards: CommandCard[];
+  missions: MissionCard[];
+  events: EventCard[];
+  secretObjectives: SecretObjectiveCard[];
+  tacticians: TacticianCard[];
+  bosses: BossCard[];
 }
 
 let cached: GameData | null = null;
@@ -85,6 +132,11 @@ export function loadGameData(): GameData {
     enemies: loadCsv("Enemy Stats.csv") as unknown as EnemyCard[],
     gear: loadCsv("Gear Stats.csv") as unknown as GearCard[],
     commandCards: loadCsv("Command Cards.csv") as unknown as CommandCard[],
+    missions: loadCsv("Mission Cards.csv") as unknown as MissionCard[],
+    events: loadCsv("Event cards.csv") as unknown as EventCard[],
+    secretObjectives: loadCsv("Secret Objective Cards.csv") as unknown as SecretObjectiveCard[],
+    tacticians: loadCsv("Tactician Cards.csv") as unknown as TacticianCard[],
+    bosses: loadCsv("Boss Stats.csv") as unknown as BossCard[],
   };
   return cached;
 }

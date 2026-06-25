@@ -7,13 +7,14 @@ import {
   RANK_NUM,
   RANK_ORDER,
   UPGRADE_SLOT_CAP,
+  bossTierFromProgress,
   enemyRankFromProgress,
   hoardCount,
   type Difficulty,
   type EnemyRank,
   type Location,
 } from "./constants.js";
-import { loadGameData, toInt, type CommandCard, type EnemyCard, type UnitCard } from "./data.js";
+import { loadGameData, toInt, type CommandCard, type EnemyCard, type EventCard, type UnitCard } from "./data.js";
 import {
   combatantFromUnit,
   equippedBonus,
@@ -24,6 +25,11 @@ import { applyBattlefieldActive, applyCommandActive } from "./commandCards.js";
 import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, tryReviveOnce } from "./units.js";
 import { applyEnemyCombatMods } from "./enemies.js";
 import { applyGearCombatMods, applyPrecombatGear, tryChronostasisSave } from "./gear.js";
+import { applyBossTier, resolveBossExchange } from "./bosses.js";
+import { applyEventResolution, applyEventRoundEffect } from "./events.js";
+import { applyMissionReward, missionRequirementMet } from "./missions.js";
+import { checkSecretObjectives } from "./secretObjectives.js";
+import { tacticianDiscountedCost } from "./tactician.js";
 import { type BotDecisionProvider, type DecisionProvider } from "./decisions.js";
 import { ensureLowestRankGear, ensureLowestRankUnit, refillShopGear, refillShopUnit } from "./shop.js";
 import {
@@ -89,6 +95,10 @@ export class GameEngine {
     this.onLog = onLog;
     this.locationUpgradesBuilt = Object.fromEntries(LOCATIONS.map((l) => [l, []])) as any;
 
+    const missionDeck = shuffle(data.missions);
+    const secretObjectiveDeck = shuffle(data.secretObjectives);
+    const tacticianDeck = shuffle(data.tacticians);
+
     const players: GamePlayer[] = seats.map((s) => ({
       seatIndex: s.seatIndex,
       name: s.name,
@@ -102,7 +112,26 @@ export class GameEngine {
       gearHand: [],
       graveyard: [],
       overrunLastRound: false,
-      stats: { kills: 0, deaths: 0, overrunsSuffered: 0, promotionsReceived: 0 },
+      missions: [],
+      secretObjectives: secretObjectiveDeck.length >= 2 ? [secretObjectiveDeck.pop()!, secretObjectiveDeck.pop()!] : [],
+      tactician: tacticianDeck.pop() ?? null,
+      hasReconSatellite: false,
+      hasLastStandBeacon: false,
+      stats: {
+        kills: 0,
+        deaths: 0,
+        overrunsSuffered: 0,
+        promotionsReceived: 0,
+        donationsMade: 0,
+        healsGiven: 0,
+        gearEquipped: 0,
+        missionsCompleted: 0,
+        eventsPassed: 0,
+        eventsFailed: 0,
+        commanderRounds: 0,
+        unitsRetired: 0,
+        secretObjectiveComplete: null,
+      },
     }));
 
     const leaderIdx = Math.floor(Math.random() * players.length);
@@ -115,7 +144,9 @@ export class GameEngine {
       playerProgress: 0,
       enemyProgress: 0,
       overrunTracker: OVERRUN_START[difficulty],
-      overrunTrackerMax: OVERRUN_START[difficulty],
+      overrunTrackerMax: 20, // the tracker's true physical component cap (0-20), independent of the difficulty-specific starting value below
+      overrunTrackerMin: OVERRUN_START[difficulty],
+      overrunDropsBySeat: new Map(),
       settings: { difficulty },
       commandPool: { Organic: 0, Tech: 0, Alien: 0 },
       shopUnits: [],
@@ -123,6 +154,13 @@ export class GameEngine {
       unitDeck: this.unitDeckFull,
       gearDeck: this.gearDeckFull as any,
       commandDeck: this.commandDeckFull,
+      missionDeck,
+      eventDeck: shuffle(data.events),
+      secretObjectiveDeck,
+      tacticianDeck,
+      bossDeck: shuffle(data.bosses),
+      bossActive: null,
+      bossDiedLastRound: false,
       locationUpgradesBuilt: this.locationUpgradesBuilt,
       teamScoutPool: [],
       status: "running",
@@ -140,6 +178,12 @@ export class GameEngine {
 
     this.log(`Leader: ${players[leaderIdx].name} (starts at Rank 2 / Private)`);
     this.log(`Difficulty: ${difficulty} | Overrun Tracker starts at ${this.game.overrunTracker}/20`);
+  }
+
+  /** Call once after the round loop ends (won/lost) -- prints which of each player's 2 hidden
+   * Secret Objectives were actually completed over the course of the game. */
+  reportSecretObjectives() {
+    checkSecretObjectives(this.game, (t) => this.log(t));
   }
 
   private dealCommandCards(n: number): CommandCard[] {
@@ -180,6 +224,57 @@ export class GameEngine {
     }
 
     // ---------------- PLANNING ----------------
+    if (isPrepRound) {
+      // README #32: no Boss check on Round 0 -- nothing for it to act on yet.
+    } else if (game.bossActive === null) {
+      if (game.bossDiedLastRound) {
+        game.bossDiedLastRound = false;
+        this.log("  [Boss check] Grace period -- a Boss died last round, none can spawn this round.");
+      } else {
+        const roll = 1 + Math.floor(Math.random() * 10);
+        if (roll <= game.enemyProgress) {
+          if (!game.bossDeck.length) game.bossDeck = shuffle(loadGameData().bosses);
+          const card = game.bossDeck.pop()!;
+          game.bossActive = { card, hpCur: toInt(card.HP), tierReached: 0, dmgBonus: 0, shieldBonus: 0, armorBonus: 0, healsOnKill: 0 };
+          this.log(`  [BOSS SPAWN] Rolled ${roll} <= EnemyProg ${game.enemyProgress} -> ${card.Name} appears!`);
+        } else {
+          this.log(`  [Boss check] Rolled ${roll} > EnemyProg ${game.enemyProgress} -> no boss this round.`);
+        }
+      }
+    } else {
+      const tier = bossTierFromProgress(game.enemyProgress);
+      applyBossTier(game.bossActive, tier);
+      this.log(`  [Boss active] ${game.bossActive.card.Name} at T${tier}, HP ${game.bossActive.hpCur}/${game.bossActive.card.HP}`);
+    }
+
+    for (const p of game.players) {
+      if (p.missions.length < 3 && game.missionDeck.length) {
+        const candidates = game.missionDeck.filter((m) => RANK_NUM[m["Player Rank"]] <= p.rank + 1);
+        if (candidates.length) {
+          const m = candidates[Math.floor(Math.random() * candidates.length)];
+          game.missionDeck.splice(game.missionDeck.indexOf(m), 1);
+          p.missions.push(m);
+        }
+      }
+    }
+
+    // Commander draws 2 Events and chooses 1 to be active this round (README #32: skipped on
+    // Round 0 -- there's no Combat Stage for a Round Effect to apply to, nothing to resolve later).
+    let activeEvent: EventCard | null = null;
+    if (!isPrepRound) {
+      if (!game.eventDeck.length) game.eventDeck = shuffle(loadGameData().events);
+      const drawn = [];
+      for (let i = 0; i < Math.min(2, game.eventDeck.length); i++) drawn.push(game.eventDeck.pop()!);
+      activeEvent = drawn.length ? drawn[Math.floor(Math.random() * drawn.length)] : null;
+      for (const e of drawn) {
+        if (e !== activeEvent) game.eventDeck.unshift(e);
+      }
+      if (activeEvent) {
+        this.log(`  [Event] Active this round: ${activeEvent["Event name"]} -- ${activeEvent["Round Effect"]}`);
+        applyEventRoundEffect(game, activeEvent);
+      }
+    }
+
     this.placementsThisRound = Object.fromEntries(game.players.map((p) => [p.seatIndex, []]));
     await this.runWorkerPlacementAndIncome(commander, diffCount);
 
@@ -200,12 +295,14 @@ export class GameEngine {
       await this.runPurchasing(p);
     }
 
+    commander.stats.commanderRounds += 1;
     for (const p of game.players) {
       if (p !== commander) {
         for (const res of ["Organic", "Tech", "Alien"] as const) {
           const donate = Math.floor(p.res[res] / 3);
           p.res[res] -= donate;
           game.commandPool[res] += donate;
+          if (donate) p.stats.donationsMade += donate;
         }
       }
     }
@@ -239,13 +336,92 @@ export class GameEngine {
       dmg = tempState.halfOverrunDamage ? Math.floor(overrunLanes / 2) : overrunLanes;
       dmg = Math.max(dmg, 1);
       game.overrunTracker -= dmg;
+      game.overrunTrackerMin = Math.min(game.overrunTrackerMin, game.overrunTracker);
+      game.overrunDropsBySeat.set(commander.seatIndex, (game.overrunDropsBySeat.get(commander.seatIndex) ?? 0) + dmg);
       this.log(`  Overrun Tracker -${dmg} -> ${game.overrunTracker}/20`);
     }
 
+    // Last Stand Beacon: only usable at EnemyProg>=8; AI plays it once the Overrun Tracker is
+    // actually in danger of hitting 0, rather than burning it on the very first eligible round.
+    if (game.enemyProgress >= 8 && game.overrunTracker <= 5) {
+      const holder = game.players.find((p) => p.hasLastStandBeacon);
+      if (holder) {
+        holder.hasLastStandBeacon = false;
+        game.playerProgress = Math.max(0, game.playerProgress - 2);
+        game.overrunTracker = Math.min(game.overrunTrackerMax, game.overrunTracker + 5);
+        this.log(
+          `  [Last Stand Beacon] ${holder.name} sacrifices 2 Player Progress -> ${game.playerProgress}/10, restores Overrun Tracker +5 -> ${game.overrunTracker}/20`
+        );
+      }
+    }
+
+    // README #34: the Overrun Tracker hitting 0 ends the game IMMEDIATELY -- no remaining
+    // Cleanup sub-steps run once it happens, even mid-Cleanup. Deus Machina (a hidden Secret
+    // Objective) is the one thing that can intervene first.
     if (game.overrunTracker <= 0) {
-      this.log(`\n#### PLAYERS LOSE on Round ${game.roundNum}. Overrun Tracker hit 0. ####`);
-      game.status = "lost";
-      return false;
+      const deusHolder = game.players.find(
+        (p) => p.secretObjectives.some((so) => so.Name === "Deus Machina") && canUseEffect(game, "Deus Machina", 1)
+      );
+      if (deusHolder) {
+        recordEffectUse(game, "Deus Machina");
+        game.overrunTracker += dmg; // restore to before this round's losses
+        game.enemyProgress = Math.max(0, game.enemyProgress - 1);
+        deusHolder.stats.secretObjectiveComplete = "Deus Machina";
+        this.log(
+          `  [Deus Machina] ${deusHolder.name}'s hidden objective triggers: Overrun Tracker restored to ${game.overrunTracker}/20, EnemyProg -1 -> ${game.enemyProgress}/10. Their Secret Objective is now complete.`
+        );
+      } else {
+        this.log(`\n#### PLAYERS LOSE on Round ${game.roundNum}. Overrun Tracker hit 0. ####`);
+        game.status = "lost";
+        return false;
+      }
+    }
+
+    // README #32: Round 0's Cleanup skips Event Resolution and Promotions entirely -- nothing
+    // for either to act on yet.
+    if (!isPrepRound) {
+      const eventPassed = Math.random() < 0.55;
+      this.log(`  Event ${eventPassed ? "PASSED" : "FAILED"}${activeEvent ? ` (${activeEvent["Event name"]})` : ""}`);
+      for (const p of game.players) {
+        if (eventPassed) p.stats.eventsPassed += 1;
+        else p.stats.eventsFailed += 1;
+      }
+      if (activeEvent) applyEventResolution(game, activeEvent, eventPassed, commander);
+
+      if (eventPassed) {
+        const eligible = game.players.filter((p) => p.rank < commander.rank);
+        if (eligible.length) {
+          const promo = eligible.reduce((a, b) => (b.rank < a.rank ? b : a));
+          promo.rank = Math.min(RANK_ORDER.length, promo.rank + 1);
+          promo.stats.promotionsReceived += 1;
+          this.log(`  Promotion: ${promo.name} -> Rank ${RANK_ORDER[promo.rank - 1]}`);
+        }
+      }
+    }
+
+    // Mission completion (the OTHER promotion path). Players are racing to rank up ASAP for
+    // stronger units, so: always complete the best eligible promoting mission if one is held.
+    for (const p of game.players) {
+      const eligibleMissions = p.missions.filter(
+        (m) => RANK_NUM[m["Player Rank"]] >= p.rank && missionRequirementMet(game, m, p, this.placementsThisRound)
+      );
+      if (eligibleMissions.length) {
+        const m = eligibleMissions.reduce((a, b) => (RANK_NUM[b["Player Rank"]] > RANK_NUM[a["Player Rank"]] ? b : a));
+        p.missions.splice(p.missions.indexOf(m), 1);
+        // README #36: a mission whose bracketed Rank is 3+ tiers above the completing player's
+        // current Rank grants +2 total instead of the usual +1 (capped at +2).
+        const gain = RANK_NUM[m["Player Rank"]] - p.rank >= 3 ? 2 : 1;
+        p.rank = Math.min(RANK_ORDER.length, p.rank + gain);
+        p.stats.promotionsReceived += 1;
+        applyMissionReward(game, m, p);
+        this.log(`  Mission complete: ${p.name} finishes '${m.Name}' (+${gain} Rank) -> Rank ${RANK_ORDER[p.rank - 1]}`);
+        p.stats.missionsCompleted += 1;
+        if (p.hasReconSatellite && canUseEffect(game, "Recon Satellite", 3)) {
+          game.enemyProgress = Math.max(0, game.enemyProgress - 1);
+          recordEffectUse(game, "Recon Satellite");
+          this.log(`  [Recon Satellite] ${p.name} reduces Enemy Progress by 1 -> ${game.enemyProgress}/10`);
+        }
+      }
     }
 
     if (game.roundNum > 1) {
@@ -337,11 +513,13 @@ export class GameEngine {
         } else if (loc === "Medical Bay") {
           p.res.Organic += full ? 1 : 0;
           const wounded = [...(p.active ? [p.active] : []), ...p.reserve].filter((u) => u.curHp < u.maxHp);
-          const target = wounded[0];
-          if (target) {
+          const isDoctor = p.tactician?.Name === "The Doctor";
+          const targetsPerWorker = isDoctor ? 2 : 1; // "Medical bay heals double" when your workers are there
+          for (const target of wounded.slice(0, targetsPerWorker)) {
             const healed = healUnit(target);
             if (healed) {
-              p.res.Organic += 2;
+              p.res.Organic += 2 + (isDoctor ? p.rank : 0);
+              p.stats.healsGiven += 1;
               this.log(`  ${p.name} heals ${target.card.Name} at Medical Bay (+${healed} HP)`);
             }
           }
@@ -371,6 +549,7 @@ export class GameEngine {
         p.res[biggest.split(" ")[0] as keyof typeof p.res] += toInt((u.card as any)[biggest]);
         game.unitDeck.push(u.card);
         p.gearHand.push(...u.equipped.filter((g) => "Rank Name" in (g as any)));
+        p.stats.unitsRetired += 1;
         this.log(`  ${p.name} retires ${u.card.Name} (Rank ${u.card.Rank}) for a partial refund`);
       }
     }
@@ -381,15 +560,22 @@ export class GameEngine {
     let bought = 0;
     while (bought < 2) {
       const affordable = game.shopUnits.filter(
-        (u) => RANK_NUM[u.Rank] <= p.rank && canAfford(p.res, u, UNIT_COST_KEYS)
+        (u) => RANK_NUM[u.Rank] <= p.rank && canAfford(p.res, tacticianDiscountedCost(p, u, "unit"), UNIT_COST_KEYS)
       );
       const choice = await this.decisions.chooseNextUnitPurchase(p, game, affordable);
       if (!choice) break;
-      pay(p.res, choice, UNIT_COST_KEYS);
+      pay(p.res, tacticianDiscountedCost(p, choice, "unit"), UNIT_COST_KEYS);
       game.shopUnits.splice(game.shopUnits.indexOf(choice), 1);
       refillShopUnit(game);
       const ui = makeUnitInstance(choice);
-      if (choice.Type.includes("Scout")) {
+      // Only donate a Scout-type unit to the shared pool if it's actually an upgrade over
+      // whatever's already there -- only one scout is ever assigned per round (the highest
+      // Scout Value), so donating a worse one just dumps a unit the player could have used in
+      // their own lane for no benefit.
+      const currentBestScoutValue = game.teamScoutPool.length
+        ? Math.max(...game.teamScoutPool.map((u) => scoutValue(u)))
+        : -1;
+      if (choice.Type.includes("Scout") && scoutValue(ui) > currentBestScoutValue) {
         game.teamScoutPool.push(ui);
         this.log(`  ${p.name} donates ${ui.card.Name} to the team scout pool`);
       } else if (p.active === null) {
@@ -413,6 +599,9 @@ export class GameEngine {
       p.active!.maxHp += hpBonus;
       p.active!.curHp += hpBonus;
       p.active!.curShields += toInt(g.Shields);
+      p.stats.gearEquipped += 1;
+      if (g.Name === "Recon Satellite") p.hasReconSatellite = true;
+      if (g.Name === "Last Stand Beacon") p.hasLastStandBeacon = true;
       this.log(
         `  ${p.name} equips ${g.Name} (Tech -${cost}) (Dmg+${toInt(g.Damage)} HP+${toInt(g.HP)} Arm+${toInt(g.Armor)} Shd+${toInt(g.Shields)})`
       );
@@ -429,11 +618,11 @@ export class GameEngine {
     let gearBought = 0;
     while (p.active && gearBought < 2) {
       const affordableG = game.shopGear.filter(
-        (g) => RANK_NUM[(g as any)["Rank Name"]] <= p.rank && canAfford(p.res, g as any, GEAR_COST_KEYS)
+        (g) => RANK_NUM[(g as any)["Rank Name"]] <= p.rank && canAfford(p.res, tacticianDiscountedCost(p, g as any, "gear"), GEAR_COST_KEYS)
       );
       const choice = await this.decisions.chooseNextGearPurchase(p, game, affordableG as any);
       if (!choice) break;
-      pay(p.res, choice as any, GEAR_COST_KEYS);
+      pay(p.res, tacticianDiscountedCost(p, choice as any, "gear"), GEAR_COST_KEYS);
       game.shopGear.splice(game.shopGear.indexOf(choice as any), 1);
       refillShopGear(game);
       equipOntoActive(choice);
@@ -724,6 +913,10 @@ export class GameEngine {
         else weakest.reserve.push(spare);
         this.log(`  [Redeploy] ${p.name}'s lane won -- sends ${spare.card.Name} to reinforce ${weakest.name}`);
       }
+    }
+
+    if (game.bossActive) {
+      resolveBossExchange(game, (t) => this.log(t));
     }
 
     if (lanesWithKill.length && this.containedEnemies.length < 2) {

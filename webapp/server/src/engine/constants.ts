@@ -56,6 +56,14 @@ export function enemyRankFromProgress(ep: number): EnemyRank {
   return "Conqueror";
 }
 
+export function bossTierFromProgress(ep: number): number {
+  if (ep <= 1) return 1;
+  if (ep <= 4) return 2;
+  if (ep <= 6) return 3;
+  if (ep <= 8) return 4;
+  return 5;
+}
+
 export const LOCATIONS = [
   "Barracks",
   "Armory",

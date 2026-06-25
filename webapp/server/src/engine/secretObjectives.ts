@@ -1,0 +1,110 @@
+import { LOCATIONS, OVERRUN_START, UPGRADE_SLOT_CAP } from "./constants.js";
+import type { SecretObjectiveCard } from "./data.js";
+import type { GamePlayer, GameState } from "./types.js";
+
+/** Checked once at game end. Uses the stats/state tracked through the round loop -- falls back
+ * to False (not silently True) for anything without a clean tracked counter, since an
+ * unverifiable personal objective shouldn't be assumed complete. Ported 1:1 from sim.py's
+ * secret_objective_met; the handful of "no clean hook" cases there stay false here too. */
+export function secretObjectiveMet(game: GameState, so: SecretObjectiveCard, p: GamePlayer): boolean {
+  const name = so.Name;
+  const others = game.players.filter((q) => q !== p);
+  const overrunStart = OVERRUN_START[game.settings.difficulty];
+  switch (name) {
+    case "Disruptor":
+      return p.stats.eventsFailed >= 3;
+    case "Slacker":
+      return p.stats.missionsCompleted < 5;
+    case "Corrupt Logistics":
+      return false; // no gear-discard tracking exists
+    case "Martyr":
+      return p.stats.deaths >= 20;
+    case "Misdirector":
+      return false; // "between these losses" sequencing not tracked
+    case "Butcher":
+      return p.stats.healsGiven === 0;
+    case "Trojan":
+      return overrunStart - game.overrunTrackerMin >= 5;
+    case "Usurper":
+      return false; // no "steal Command" event exists in this engine's commander model
+    case "Dictator":
+      return p.stats.commanderRounds >= 5;
+    case "Ghost":
+      return p.rank === Math.min(...game.players.map((q) => q.rank));
+    case "Incompetence":
+      return (game.overrunDropsBySeat.get(p.seatIndex) ?? 0) >= 3;
+    case "Problem Solver":
+      return p.stats.eventsPassed >= 5;
+    case "Adventurer":
+      return p.stats.missionsCompleted >= 6;
+    case "Armorer":
+      return false; // "equip to allies' lanes" not distinguished from own-lane equips
+    case "Enforcer":
+      return p.stats.kills >= 10;
+    case "The Wall":
+      return p.stats.overrunsSuffered === 0;
+    case "Medic":
+      return p.stats.healsGiven * 10 > 30; // approximating 10HP/heal-action, same as sim.py
+    case "Stubborn":
+      return overrunStart - game.overrunTrackerMin <= 5;
+    case "Conductor":
+      return false;
+    case "Leader":
+      return p.stats.commanderRounds >= 5;
+    case "Tactician":
+      return false; // progress-while-commander not separately tracked
+    case "High Command":
+      return p.rank === Math.max(...game.players.map((q) => q.rank));
+    case "Decorated":
+      return p.rank >= 5;
+    case "Interdictor":
+      return false;
+    case "Hoarder":
+      return p.res.Organic >= 40;
+    case "Nerd":
+      return p.res.Tech >= 40;
+    case "Collector":
+      return p.res.Alien >= 20;
+    case "Chef":
+      return p.stats.donationsMade >= 10;
+    case "Technician":
+      return p.stats.donationsMade >= 10;
+    case "Scientist":
+      return p.stats.donationsMade >= 5;
+    case "Middleman": {
+      const pool = others.length ? others : [p];
+      return Math.min(...pool.map((q) => q.rank)) < p.rank && p.rank < Math.max(...pool.map((q) => q.rank));
+    }
+    case "Exporter":
+      return p.stats.unitsRetired >= 5;
+    case "Advisor":
+      return p.stats.commanderRounds === 0;
+    case "Hunter":
+      return false;
+    case "Architect":
+      return LOCATIONS.filter((loc) => game.locationUpgradesBuilt[loc].length >= UPGRADE_SLOT_CAP[loc]).length >= 3;
+    case "Minimalist":
+      return LOCATIONS.reduce((s, loc) => s + (UPGRADE_SLOT_CAP[loc] - game.locationUpgradesBuilt[loc].length), 0) >= 3;
+    case "Survivor":
+      return false; // consecutive-round survival not tracked per-unit
+    case "Deus Machina":
+      return p.stats.secretObjectiveComplete === "Deus Machina";
+    case "AFK":
+    case "Leroy":
+    case "Kremlen":
+      return false;
+    default:
+      return false;
+  }
+}
+
+export function checkSecretObjectives(game: GameState, log: (t: string) => void) {
+  log("\n=== Secret Objectives ===");
+  for (const p of game.players) {
+    for (const so of p.secretObjectives) {
+      if (secretObjectiveMet(game, so, p)) {
+        log(`  ${p.name} completes [${so.Alignment}] ${so.Name}`);
+      }
+    }
+  }
+}

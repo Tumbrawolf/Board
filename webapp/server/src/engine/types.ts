@@ -1,4 +1,14 @@
-import type { CommandCard, EnemyCard, GearCard, UnitCard } from "./data.js";
+import type {
+  BossCard,
+  CommandCard,
+  EnemyCard,
+  EventCard,
+  GearCard,
+  MissionCard,
+  SecretObjectiveCard,
+  TacticianCard,
+  UnitCard,
+} from "./data.js";
 import type { Difficulty, Location } from "./constants.js";
 
 export interface ResourcePool {
@@ -32,11 +42,25 @@ export interface GamePlayer {
   gearHand: GearCard[];
   graveyard: UnitInstance[];
   overrunLastRound: boolean;
+  missions: MissionCard[];
+  secretObjectives: SecretObjectiveCard[];
+  tactician: TacticianCard | null;
+  hasReconSatellite: boolean;
+  hasLastStandBeacon: boolean;
   stats: {
     kills: number;
     deaths: number;
     overrunsSuffered: number;
     promotionsReceived: number;
+    donationsMade: number;
+    healsGiven: number;
+    gearEquipped: number;
+    missionsCompleted: number;
+    eventsPassed: number;
+    eventsFailed: number;
+    commanderRounds: number;
+    unitsRetired: number;
+    secretObjectiveComplete: string | null;
   };
 }
 
@@ -51,6 +75,16 @@ export interface GameLogEntry {
 
 export type GameStatus = "running" | "won" | "lost";
 
+export interface BossActive {
+  card: BossCard;
+  hpCur: number;
+  tierReached: number;
+  dmgBonus: number;
+  shieldBonus: number; // tracked for fidelity with sim.py -- never actually consumed in combat there either
+  armorBonus: number;
+  healsOnKill: number;
+}
+
 export interface GameState {
   players: GamePlayer[];
   commanderIdx: number;
@@ -59,6 +93,8 @@ export interface GameState {
   enemyProgress: number;
   overrunTracker: number;
   overrunTrackerMax: number;
+  overrunTrackerMin: number;
+  overrunDropsBySeat: Map<number, number>;
   settings: GameSettings;
   commandPool: ResourcePool;
   shopUnits: UnitCard[];
@@ -66,6 +102,13 @@ export interface GameState {
   unitDeck: UnitCard[];
   gearDeck: GearCard[];
   commandDeck: CommandCard[];
+  missionDeck: MissionCard[];
+  eventDeck: EventCard[];
+  secretObjectiveDeck: SecretObjectiveCard[];
+  tacticianDeck: TacticianCard[];
+  bossDeck: BossCard[];
+  bossActive: BossActive | null;
+  bossDiedLastRound: boolean;
   locationUpgradesBuilt: Record<Location, CommandCard[]>;
   teamScoutPool: UnitInstance[];
   status: GameStatus;

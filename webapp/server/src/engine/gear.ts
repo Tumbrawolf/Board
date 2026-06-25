@@ -66,7 +66,10 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
   for (const ui of [...p.reserve]) {
     for (const g of ui.equipped) {
       const amt = GEAR_RESERVE_HEAL[(g as any).Name];
-      if (amt && activeUnit) healUnit(activeUnit, amt);
+      if (amt && activeUnit) {
+        const healed = healUnit(activeUnit, amt);
+        if (healed) p.stats.healsGiven += 1;
+      }
     }
   }
 
@@ -168,7 +171,7 @@ function applyGearActive(
       const targets = unitsOf(w).filter((u) => u.curHp < u.maxHp);
       if (targets.length) {
         const t = targets.reduce((a, b) => (b.curHp - b.maxHp < a.curHp - a.maxHp ? b : a));
-        healUnit(t, Math.floor(t.maxHp / 2) + 1);
+        if (healUnit(t, Math.floor(t.maxHp / 2) + 1)) w.stats.healsGiven += 1;
       }
       break;
     }
@@ -222,7 +225,7 @@ function applyGearActive(
       );
       if (candidates.length) {
         const t = candidates.reduce((a, b) => (b.curHp - b.maxHp < a.curHp - a.maxHp ? b : a));
-        healUnit(t, Math.floor(t.maxHp / 2));
+        if (healUnit(t, Math.floor(t.maxHp / 2))) w.stats.healsGiven += 1;
       }
       break;
     }

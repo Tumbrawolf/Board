@@ -141,7 +141,10 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
         (best, ui) => (ui.maxHp - ui.curHp > (best ? best.maxHp - best.curHp : -1) ? ui : best),
         null as (typeof units)[number] | null
       );
-      if (target) healUnit(target);
+      if (target) {
+        healUnit(target);
+        w.stats.healsGiven += 1;
+      }
       break;
     }
     case "Ashes to Ashes":
@@ -156,13 +159,15 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
     case "Battle Medics":
     case "We can Rebuild them":
       for (const p of game.players) {
-        for (const ui of [...(p.active ? [p.active] : []), ...p.reserve]) healUnit(ui);
+        for (const ui of [...(p.active ? [p.active] : []), ...p.reserve]) {
+          if (healUnit(ui)) p.stats.healsGiven += 1;
+        }
       }
       break;
     case "Increased Budget":
       for (const p of game.players) {
         for (const ui of [...(p.active ? [p.active] : []), ...p.reserve]) {
-          healUnit(ui, Math.floor((ui.maxHp - ui.curHp) / 2));
+          if (healUnit(ui, Math.floor((ui.maxHp - ui.curHp) / 2))) p.stats.healsGiven += 1;
         }
       }
       break;
@@ -253,6 +258,7 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
         target.maxHp += toInt(g.HP);
         target.curHp += toInt(g.HP);
         target.curShields += toInt(g.Shields);
+        w.stats.gearEquipped += 1;
       }
       break;
     }

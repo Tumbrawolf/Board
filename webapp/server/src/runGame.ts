@@ -36,6 +36,8 @@ export async function runGame(io: Server, room: RoomState, gameId: number, looku
     if (going) await sleep(ROUND_PACING_MS);
   }
 
+  engine.reportSecretObjectives();
+
   const game = engine.game;
   io.to(room.code).emit("game:over", { status: game.status, round: game.roundNum });
   recordGameEnd(gameId, game.status, game.roundNum);
