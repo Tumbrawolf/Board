@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from "svelte";
   import { socket, clientId, loadOrCreateName, saveName } from "./socket";
   import BoardView from "./BoardView.svelte";
+  import PlanningPanel from "./PlanningPanel.svelte";
   import {
     DEFAULT_SETTINGS,
     MAX_SEATS,
@@ -348,6 +349,7 @@
           <span>Overrun {gameSnapshot.overrunTracker}/{gameSnapshot.overrunTrackerMax}</span>
         </div>
         <BoardView snapshot={gameSnapshot} mySeatIndex={mySeat?.seatIndex ?? null} />
+        <PlanningPanel snapshot={gameSnapshot} mySeatIndex={mySeat?.seatIndex ?? null} />
       {/if}
 
       <div class="log" bind:this={logEl}>
