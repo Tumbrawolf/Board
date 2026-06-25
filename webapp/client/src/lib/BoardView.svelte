@@ -68,6 +68,11 @@
     gap: 0.6rem;
     margin: 0.5rem 0;
   }
+  @media (max-width: 480px) {
+    .board {
+      grid-template-columns: 1fr;
+    }
+  }
   .lane {
     border: 1px solid #ddd;
     border-radius: 6px;

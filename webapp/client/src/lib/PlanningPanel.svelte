@@ -183,6 +183,12 @@
     padding: 0.3rem 0.8rem;
     cursor: pointer;
   }
+  .done:hover {
+    background: #235a7d;
+  }
+  .done:active {
+    background: #1c4863;
+  }
   .error {
     color: #a33;
     font-size: 0.85em;
@@ -192,6 +198,11 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 0.8rem;
+  }
+  @media (max-width: 760px) {
+    .columns {
+      grid-template-columns: 1fr;
+    }
   }
   .col h4 {
     margin: 0 0 0.3rem;

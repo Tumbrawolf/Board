@@ -181,7 +181,7 @@
 {#if showRules}
   <RulesPage onBack={() => (showRules = false)} />
 {:else}
-<div class="wrap">
+<div class="wrap" class:wide={room?.status === "started"}>
   <header>
     <h1>Board — Web Sim</h1>
     <button class="rules-link" onclick={() => (showRules = true)}>Rules &amp; How to Play</button>
@@ -386,6 +386,12 @@
     margin: 0 auto;
     padding: 1.5rem;
     font-family: system-ui, sans-serif;
+    transition: max-width 0.2s ease;
+  }
+  .wrap.wide {
+    /* The Board/Planning/Battlefield panels are multi-column and need real room -- the lobby's
+       narrow centered-card width (good for a join/settings form) would crush them otherwise. */
+    max-width: 1100px;
   }
   header {
     display: flex;

@@ -124,6 +124,12 @@
     padding: 0.3rem 0.8rem;
     cursor: pointer;
   }
+  .done:hover {
+    background: #8a2a28;
+  }
+  .done:active {
+    background: #6e2120;
+  }
   .error {
     color: #a33;
     font-size: 0.85em;
