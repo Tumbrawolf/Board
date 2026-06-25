@@ -29,20 +29,23 @@ import { applyBossTier, resolveBossExchange } from "./bosses.js";
 import { applyEventResolution, applyEventRoundEffect } from "./events.js";
 import { applyMissionReward, missionRequirementMet } from "./missions.js";
 import { checkSecretObjectives } from "./secretObjectives.js";
-import { tacticianDiscountedCost } from "./tactician.js";
-import { type BotDecisionProvider, type DecisionProvider } from "./decisions.js";
+import { type CommandCardChoice, type DecisionProvider } from "./decisions.js";
+import {
+  buildCardMutation,
+  canActivateAsNonCommander,
+  canBuildCard,
+  cardEligibleForPlanning,
+  commanderActivateCardMutation,
+  nonCommanderActivateCardMutation,
+} from "./planningActions.js";
 import { ensureLowestRankGear, ensureLowestRankUnit, refillShopGear, refillShopUnit } from "./shop.js";
 import {
   RoundTempState,
-  canAfford,
   canUseEffect,
-  GEAR_COST_KEYS,
   healUnit,
   instancePower,
-  makeUnitInstance,
-  pay,
   recordEffectUse,
-  UNIT_COST_KEYS,
+  scoutValue,
   weakestPlayer,
 } from "./state.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
@@ -80,6 +83,10 @@ export class GameEngine {
   private containmentSlots = 0;
   private locationUpgradesBuilt: Record<Location, CommandCard[]>;
   private nextCommanderSeatIndex: number | null = null;
+  /** Each player's recorded Command Card choices from this round's Planning window (build /
+   * activate / skip per card name). Bots leave this empty -- they're still asked live in
+   * resolveCommanderCards/resolveNonCommanderCardsFor, exactly as before this refactor. */
+  private pendingCardChoices: Record<number, Map<string, CommandCardChoice>> = {};
   /** Fired once per resolved worker placement (bot or human), for the server layer to broadcast
    * live board updates during the placement phase -- separate from onLog since this is
    * structured data, not a text line. */
@@ -295,9 +302,43 @@ export class GameEngine {
     }
 
     this.runRetireFromDuty();
-    for (const p of game.players) {
-      await this.runPurchasing(p);
+    // README/Stage 4: a connected human seat's Shop+Equip+Command-Card Planning window is open
+    // all at once (covered together in one screen, per the agreed design) and runs concurrently
+    // with every OTHER human's window -- real multiplayer contention over the shared shop, judged
+    // by whoever's action actually arrives first.
+    //
+    // Bots are walked in a plain sequential for-loop instead of folded into that same Promise.all
+    // -- even though a bot's "decision" has no real async work, every `await` still yields a
+    // microtask tick, so Promise.all-ing several bots' per-unit purchase loops together would
+    // round-robin-interleave their shop purchases (bot0 buys 1, bot1 buys 1, bot0 buys 2, ...)
+    // instead of each bot fully finishing before the next starts, as the original code did. That
+    // changed which bot wins ties for scarce shop items and measurably moved a verified all-bot
+    // win-rate sample (confirmed by re-running a 40-game batch before this fix landed) -- this
+    // for-loop keeps bot-vs-bot behavior bit-for-bit what it was before this refactor. Command
+    // Card choices are only RECORDED here -- their actual legality depends on Donation (just
+    // below) having already happened, so they're applied afterward by
+    // resolveCommanderCards/resolveNonCommanderCards.
+    const planningCtx = (p: GamePlayer) => {
+      const isCommander = p === commander;
+      return {
+        isCommander,
+        eligibleToActivateAsNonCommander:
+          isCommander ||
+          this.placementsThisRound[p.seatIndex].includes("Command") ||
+          this.placementsThisRound[p.seatIndex].includes("Battlefield"),
+        log: (t: string) => this.log(t),
+      };
+    };
+    const botPlayers = game.players.filter((p) => !this.decisions.isInteractiveSeat(p));
+    const humanPlayers = game.players.filter((p) => this.decisions.isInteractiveSeat(p));
+    for (const p of botPlayers) {
+      this.pendingCardChoices[p.seatIndex] = await this.decisions.runPlanningWindow(p, game, planningCtx(p));
     }
+    await Promise.all(
+      humanPlayers.map(async (p) => {
+        this.pendingCardChoices[p.seatIndex] = await this.decisions.runPlanningWindow(p, game, planningCtx(p));
+      })
+    );
 
     commander.stats.commanderRounds += 1;
     for (const p of game.players) {
@@ -311,8 +352,8 @@ export class GameEngine {
       }
     }
 
-    await this.resolveHand(commander, (loc) => loc !== "Battlefield", tempState, diffRank);
-    await this.resolveNonCommanderHands(commander, (loc) => loc !== "Battlefield", tempState, diffRank);
+    await this.resolveCommanderCards(commander, tempState, diffRank);
+    await this.resolveNonCommanderCards(commander, tempState, diffRank);
 
     this.log(`  Placements: ${JSON.stringify(this.placementsThisRound)}`);
     this.log(`  Command pool: O${game.commandPool.Organic} T${game.commandPool.Tech} A${game.commandPool.Alien}`);
@@ -559,83 +600,80 @@ export class GameEngine {
     }
   }
 
-  private async runPurchasing(p: GamePlayer) {
+  /** Planning-stage Command Card resolution for the commander's own hand (build-or-activate, both
+   * free of out-of-pocket cost -- build draws from the shared command pool, activate is entirely
+   * free). A bot is still asked live via chooseCommandCardAction, exactly as before this refactor;
+   * a human's choices were already recorded during their Planning window (runPlanningWindow) and
+   * just get re-validated here against the now-final (post-Donation) command pool. */
+  private async resolveCommanderCards(commander: GamePlayer, tempState: RoundTempState, diffRank: EnemyRank) {
     const game = this.game;
-    let bought = 0;
-    while (bought < 2) {
-      const affordable = game.shopUnits.filter(
-        (u) => RANK_NUM[u.Rank] <= p.rank && canAfford(p.res, tacticianDiscountedCost(p, u, "unit"), UNIT_COST_KEYS)
-      );
-      const choice = await this.decisions.chooseNextUnitPurchase(p, game, affordable);
-      if (!choice) break;
-      pay(p.res, tacticianDiscountedCost(p, choice, "unit"), UNIT_COST_KEYS);
-      game.shopUnits.splice(game.shopUnits.indexOf(choice), 1);
-      refillShopUnit(game);
-      const ui = makeUnitInstance(choice);
-      // Only donate a Scout-type unit to the shared pool if it's actually an upgrade over
-      // whatever's already there -- only one scout is ever assigned per round (the highest
-      // Scout Value), so donating a worse one just dumps a unit the player could have used in
-      // their own lane for no benefit.
-      const currentBestScoutValue = game.teamScoutPool.length
-        ? Math.max(...game.teamScoutPool.map((u) => scoutValue(u)))
-        : -1;
-      if (choice.Type.includes("Scout") && scoutValue(ui) > currentBestScoutValue) {
-        game.teamScoutPool.push(ui);
-        this.log(`  ${p.name} donates ${ui.card.Name} to the team scout pool`);
-      } else if (p.active === null) {
-        p.active = ui;
+    const interactive = this.decisions.isInteractiveSeat(commander);
+    for (const card of [...commander.hand].filter((c) => cardEligibleForPlanning(game, c))) {
+      let choice: CommandCardChoice;
+      if (interactive) {
+        const requested = this.pendingCardChoices[commander.seatIndex]?.get(card.Name) ?? "skip";
+        if (requested === "build" && !canBuildCard(game, card)) {
+          this.log(`  ${commander.name} wanted to build ${card.Name} but it's no longer affordable/slot-full -- skipped`);
+          choice = "skip";
+        } else {
+          choice = requested;
+        }
       } else {
-        p.reserve.push(ui);
+        choice = await this.decisions.chooseCommandCardAction(commander, game, card, canBuildCard(game, card), true);
       }
-      bought += 1;
-    }
-
-    const equipOntoActive = (g: any): boolean => {
-      const cost = RANK_NUM[g["Rank Name"]] ?? 1;
-      if (p.res.Tech < cost) {
-        p.gearHand.push(g);
-        this.log(`  ${p.name} can't afford ${cost} Tech to equip ${g.Name} -- held in hand`);
-        return false;
+      if (choice === "skip") continue;
+      commander.hand.splice(commander.hand.indexOf(card), 1);
+      if (choice === "build") {
+        buildCardMutation(game, card, (t) => this.log(t), () => {
+          this.containmentSlots = 2;
+        });
+      } else {
+        commanderActivateCardMutation(card, commander, (t) => this.log(t), (c, loc) => {
+          this.dispatchEffect(c, loc, commander, tempState, diffRank);
+          game.commandDeck.unshift(c);
+        });
       }
-      p.res.Tech -= cost;
-      p.active!.equipped.push(g);
-      const hpBonus = toInt(g.HP);
-      p.active!.maxHp += hpBonus;
-      p.active!.curHp += hpBonus;
-      p.active!.curShields += toInt(g.Shields);
-      p.stats.gearEquipped += 1;
-      if (g.Name === "Recon Satellite") p.hasReconSatellite = true;
-      if (g.Name === "Last Stand Beacon") p.hasLastStandBeacon = true;
-      this.log(
-        `  ${p.name} equips ${g.Name} (Tech -${cost}) (Dmg+${toInt(g.Damage)} HP+${toInt(g.HP)} Arm+${toInt(g.Armor)} Shd+${toInt(g.Shields)})`
-      );
-      return true;
-    };
-
-    const pendingHand = [...p.gearHand];
-    p.gearHand = [];
-    for (const g of pendingHand) {
-      if (p.active) equipOntoActive(g);
-      else p.gearHand.push(g);
     }
-
-    let gearBought = 0;
-    while (p.active && gearBought < 2) {
-      const affordableG = game.shopGear.filter(
-        (g) => RANK_NUM[(g as any)["Rank Name"]] <= p.rank && canAfford(p.res, tacticianDiscountedCost(p, g as any, "gear"), GEAR_COST_KEYS)
-      );
-      const choice = await this.decisions.chooseNextGearPurchase(p, game, affordableG as any);
-      if (!choice) break;
-      pay(p.res, tacticianDiscountedCost(p, choice as any, "gear"), GEAR_COST_KEYS);
-      game.shopGear.splice(game.shopGear.indexOf(choice as any), 1);
-      refillShopGear(game);
-      equipOntoActive(choice);
-      gearBought += 1;
-    }
-
-    reorderActive(p);
   }
 
+  /** Planning-stage Command Card resolution for eligible non-commanders (activate-only, costed
+   * from their own resources first with the command pool covering any shortfall). Same
+   * bot-live-ask vs human-recorded-choice split as resolveCommanderCards. */
+  private async resolveNonCommanderCards(commander: GamePlayer, tempState: RoundTempState, diffRank: EnemyRank) {
+    const game = this.game;
+    const eligible = game.players.filter(
+      (p) =>
+        p !== commander &&
+        (this.placementsThisRound[p.seatIndex].includes("Command") ||
+          this.placementsThisRound[p.seatIndex].includes("Battlefield"))
+    );
+    for (const actor of eligible) {
+      const interactive = this.decisions.isInteractiveSeat(actor);
+      for (const card of [...actor.hand].filter((c) => cardEligibleForPlanning(game, c))) {
+        let activate: boolean;
+        if (interactive) {
+          const requested = this.pendingCardChoices[actor.seatIndex]?.get(card.Name) ?? "skip";
+          activate = requested === "activate" && canActivateAsNonCommander(game, actor, card);
+          if (requested === "activate" && !activate) {
+            this.log(`  ${actor.name} wanted to activate ${card.Name} but can no longer afford it -- skipped`);
+          }
+        } else {
+          const choice = await this.decisions.chooseCommandCardAction(actor, game, card, false, canActivateAsNonCommander(game, actor, card));
+          activate = choice === "activate";
+        }
+        if (!activate) continue;
+        actor.hand.splice(actor.hand.indexOf(card), 1);
+        nonCommanderActivateCardMutation(game, card, actor, (t) => this.log(t), (c, loc) => {
+          this.dispatchEffect(c, loc, commander, tempState, diffRank);
+          game.commandDeck.unshift(c);
+        });
+      }
+    }
+  }
+
+  /** The Battlefield-card phase (runDeploymentAndCombat, after enemy hoards exist) still resolves
+   * via the original live-ask flow for every seat, bot or human -- Stage 4's interactive Planning
+   * window only covers Shop/Equip/non-Battlefield Command Cards, per the agreed scope. */
   private async resolveHand(
     commander: GamePlayer,
     buildingFilter: (loc: Location) => boolean,
@@ -931,22 +969,6 @@ export class GameEngine {
 
     return overrunLanes;
   }
-}
-
-function scoutValue(ui: UnitInstance): number {
-  return (
-    toInt((ui.card as any)["Organic Scout"]) +
-    toInt((ui.card as any)["Tech Scout"]) +
-    toInt((ui.card as any)["Alien Scout"])
-  );
-}
-
-function reorderActive(p: GamePlayer) {
-  const units = [...(p.active ? [p.active] : []), ...p.reserve];
-  if (!units.length) return;
-  units.sort((a, b) => instancePower(b) - instancePower(a));
-  p.active = units[0];
-  p.reserve = units.slice(1);
 }
 
 // GearCard type alias used in the deck fields above (kept local to avoid a circular import).

@@ -37,6 +37,22 @@ export function makeTempCard(name: string, damage = 0, hp = 1, armor = 0, shield
   };
 }
 
+export function scoutValue(ui: UnitInstance): number {
+  return (
+    toInt((ui.card as any)["Organic Scout"]) +
+    toInt((ui.card as any)["Tech Scout"]) +
+    toInt((ui.card as any)["Alien Scout"])
+  );
+}
+
+export function reorderActive(p: GamePlayer) {
+  const units = [...(p.active ? [p.active] : []), ...p.reserve];
+  if (!units.length) return;
+  units.sort((a, b) => instancePower(b) - instancePower(a));
+  p.active = units[0];
+  p.reserve = units.slice(1);
+}
+
 export function instancePower(ui: UnitInstance): number {
   return (
     toInt(ui.card.Damage) +

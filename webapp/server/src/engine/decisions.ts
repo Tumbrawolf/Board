@@ -1,5 +1,13 @@
 import { LOCATIONS, RANK_NUM, type Location } from "./constants.js";
 import type { CommandCard, GearCard, UnitCard } from "./data.js";
+import {
+  affordableGear,
+  affordableUnits,
+  buyGearMutation,
+  buyUnitMutation,
+  equipGearOntoActiveMutation,
+} from "./planningActions.js";
+import { reorderActive } from "./state.js";
 import type { GamePlayer, GameState } from "./types.js";
 
 export type CommandCardChoice = "build" | "activate" | "skip";
@@ -9,10 +17,21 @@ export interface PlacedWorker {
   name: string;
 }
 
+/** Stage 4's Planning window: a player's Shop/Equip purchases are applied immediately (they only
+ * ever depend on the player's own resources + shop contention), but their Command Card choices
+ * are just RECORDED here (card name -> build/activate/skip) and re-validated/applied later, once
+ * the round's Donation step has actually finished topping up the shared command pool -- exactly
+ * mirroring when sim.py's own build/activate funds checks were always evaluated. */
+export interface PlanningWindowCtx {
+  isCommander: boolean;
+  eligibleToActivateAsNonCommander: boolean;
+  log: (text: string) => void;
+}
+
 /** Per-seat decision points. Stage 2 only had BotDecisionProvider (mirroring Working/sim.py's
- * existing AI heuristics). Stage 3 adds chooseWorkerPlacement as the first decision a human can
- * actually make (see server/src/humanDecisions.ts) -- everything else stays bot-decided for every
- * seat this stage, per the agreed Stage 3 scope. */
+ * existing AI heuristics). Stage 3 added chooseWorkerPlacement as the first decision a human can
+ * actually make; Stage 4 adds runPlanningWindow (Shop/Equip/Command Cards, all open at once) for
+ * a human seat, via MixedDecisionProvider (see server/src/humanDecisions.ts). */
 export interface DecisionProvider {
   /** One worker at a time, round-robin across players -- placedSoFar is every placement already
    * resolved this round (across all players), so a provider can see what's contested/taken. */
@@ -35,7 +54,9 @@ export interface DecisionProvider {
   ): Promise<GearCard | null>;
 
   /** canBuild/canActivate tell the provider what's actually legal right now (slot cap, funds,
-   * eligibility) -- the provider must only return an option that's currently legal. */
+   * eligibility) -- the provider must only return an option that's currently legal. Still used by
+   * the bot path directly (game.ts's Phase 2 + the separate Battlefield-card phase); a human
+   * seat's choices instead come back from runPlanningWindow's returned map. */
   chooseCommandCardAction(
     player: GamePlayer,
     game: GameState,
@@ -43,6 +64,16 @@ export interface DecisionProvider {
     canBuild: boolean,
     canActivate: boolean
   ): Promise<CommandCardChoice>;
+
+  /** True only for a human-controlled, currently-connected seat -- lets game.ts decide whether to
+   * re-ask chooseCommandCardAction live (bots, Phase 2) or read back the choices already recorded
+   * during this player's Planning window (humans). */
+  isInteractiveSeat(player: GamePlayer): boolean;
+
+  /** Opens this player's Shop/Equip/Command-Card window. Implementations apply Shop/Equip actions
+   * immediately (via planningActions.ts's mutators) and return the player's recorded Command Card
+   * choices (possibly empty -- a bot still decides those live in game.ts's later Phase 2). */
+  runPlanningWindow(player: GamePlayer, game: GameState, ctx: PlanningWindowCtx): Promise<Map<string, CommandCardChoice>>;
 }
 
 const BOT_LOCATION_PRIORITY: Location[] = [
@@ -104,5 +135,41 @@ export class BotDecisionProvider implements DecisionProvider {
     if (canBuild) return "build";
     if (canActivate) return "activate";
     return "skip";
+  }
+
+  isInteractiveSeat(_player: GamePlayer): boolean {
+    return false;
+  }
+
+  /** Same buy-units-then-equip/buy-gear loop that used to live inline in game.ts's old
+   * runPurchasing -- moved here so the human path (MixedDecisionProvider) and the bot path share
+   * one call site in game.ts. Command Card decisions are deliberately NOT made here (returns an
+   * empty map) -- a bot still decides those live, in game.ts's Phase 2, exactly as before. */
+  async runPlanningWindow(player: GamePlayer, game: GameState, ctx: PlanningWindowCtx): Promise<Map<string, CommandCardChoice>> {
+    let bought = 0;
+    while (bought < 2) {
+      const choice = await this.chooseNextUnitPurchase(player, game, affordableUnits(game, player));
+      if (!choice) break;
+      buyUnitMutation(game, player, choice, ctx.log);
+      bought += 1;
+    }
+
+    const pendingHand = [...player.gearHand];
+    player.gearHand = [];
+    for (const g of pendingHand) {
+      if (player.active) equipGearOntoActiveMutation(player, g, ctx.log);
+      else player.gearHand.push(g);
+    }
+
+    let gearBought = 0;
+    while (player.active && gearBought < 2) {
+      const choice = await this.chooseNextGearPurchase(player, game, affordableGear(game, player));
+      if (!choice) break;
+      buyGearMutation(game, player, choice as any, ctx.log);
+      gearBought += 1;
+    }
+
+    reorderActive(player);
+    return new Map();
   }
 }

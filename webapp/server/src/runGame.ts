@@ -17,16 +17,10 @@ export async function runGame(io: Server, room: RoomState, gameId: number, looku
     .filter((s): s is NonNullable<typeof s> => s !== null)
     .map((s) => ({ seatIndex: s.seatIndex, name: s.name, isBot: s.isBot }));
 
-  const decisions = new MixedDecisionProvider(io, room, lookupSocket, (player) => {
-    io.to(room.code).emit("game:log", { text: `  [Placement timed out] ${player.name} -- defaulting to a bot pick` });
-  });
-
-  const engine = new GameEngine(seats, room.settings.difficulty, decisions, (text) => {
-    io.to(room.code).emit("game:log", { text });
-  });
-  engine.onPlacement = (seatIndex, location) => {
-    io.to(room.code).emit("placement:placed", { seatIndex, location });
-  };
+  // `engine` is assigned just below -- broadcastAll only ever runs after that, but is declared
+  // first since MixedDecisionProvider needs it (for live updates during a Planning window) before
+  // the engine that needs `decisions` can be constructed.
+  let engine!: GameEngine;
 
   function broadcastAll() {
     io.to(room.code).emit("game:state", snapshot(engine));
@@ -37,6 +31,26 @@ export async function runGame(io: Server, room: RoomState, gameId: number, looku
       socket?.emit("game:privateState", privateSnapshot(p));
     }
   }
+
+  const decisions = new MixedDecisionProvider(
+    io,
+    room,
+    lookupSocket,
+    (player) => {
+      io.to(room.code).emit("game:log", { text: `  [Placement timed out] ${player.name} -- defaulting to a bot pick` });
+    },
+    () => broadcastAll(),
+    (player) => {
+      io.to(room.code).emit("game:log", { text: `  [Planning timed out] ${player.name} -- defaulting to a bot pick` });
+    }
+  );
+
+  engine = new GameEngine(seats, room.settings.difficulty, decisions, (text) => {
+    io.to(room.code).emit("game:log", { text });
+  });
+  engine.onPlacement = (seatIndex, location) => {
+    io.to(room.code).emit("placement:placed", { seatIndex, location });
+  };
 
   broadcastAll();
 
