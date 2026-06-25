@@ -54,11 +54,11 @@ so the game never stalls) still resolve instantly via `BotDecisionProvider`. **E
 decision this stage — purchases, equip, Command Card build/activate — stays bot-decided even for
 human seats**, per the agreed Stage 3 scope; that's Stage 4's job.
 
-## Stage 4 (current): Backfilling deferred rules systems, one deck at a time
+## Stage 4: Backfilling deferred rules systems — done
 
 Stage 4 covers two different things from the original roadmap line (more human decision points,
-and backfilling the systems Stage 2 deliberately deferred) — by agreement, backfilling comes
-first, one full deck at a time, in the order most likely to fix the "loses more than the
+and backfilling the systems Stage 2 deliberately deferred) — by agreement, backfilling came
+first, one full deck/system at a time, in the order most likely to fix the "loses more than the
 validated ruleset" gap.
 
 **Units — done.** `engine/units.ts` ports `Working/sim.py`'s `UNIT_KEYWORD_RULES` +
@@ -97,15 +97,48 @@ Rambo's revive-once, before it, matching `sim.py`'s order). A handful of items (
 Backpack, Resupply Drone, Smoke Launcher, Night Vision, Reanimator) have no clean mechanical
 hook — documented no-ops, same as the source.
 
-**Still deferred**: Missions, Events, Bosses, Secret Objectives, Tactician, and the remaining
-human decision points (purchases, equip, Command Card build/activate, targeting).
+**Missions, Events, Bosses, Secret Objectives, Tactician — done.** All five ported close to 1:1:
 
-**Result so far**: with all three ability-text decks (Units, Enemies, Gear) now ported, bot-only
-games run somewhat longer (5-9 rounds, average ~7, vs. 4-8 before any of this backfill) but still
-0 wins across a 15-run sample. The remaining gap to the validated ~47% likely sits mostly in the
-still-missing systems — Missions in particular grant *additional* Rank promotions on top of Rank
-Trickle in the full ruleset, which this engine doesn't have yet — rather than further ability-text
-polish. Not a regression; just where the gap actually lives now.
+- `engine/missions.ts` — deck, per-round draw, keyword-matched Requirement checking, Resource/
+  Instant reward dispatch, completion → Rank gain. This is the Mission-driven promotion path
+  that stacks with Rank Trickle, and turned out to be the single biggest lever in the whole
+  deferred-systems list (see Result below).
+- `engine/events.ts` — deck, per-round draw + Round Effect, Completion Reward/Failure Penalty
+  dispatch on the existing flat 55% pass/fail roll, including the promotion-on-pass mechanic.
+- `engine/bosses.ts` — spawn roll, tier escalation (live lookup from Enemy Progress), Boss
+  Passive dispatch, the one-exchange-per-round combat block.
+- `engine/secretObjectives.ts` — 2 dealt per player at setup, the full alignment-flavored
+  personal-win-condition dispatch checked at game end, including Deus Machina's Overrun Tracker
+  save.
+- `engine/tactician.ts` — shop cost discounts for 6 roles, plus The Doctor's Medical Bay
+  heal-double/Organic-rank bonus. The other 9 roles (The Tactician, Kingmaker, Jailer, Reclaimer,
+  Pathfinder, Breaker, Bastion, Chessmaster, Quartermaster) have no clean hook in this model —
+  documented no-ops, same as the source.
+
+**Final pass caught real mis-ports from Stage 2.** Several Command Cards were written *before*
+Missions/Events/Bosses existed and got marked "no-op, system not ported yet" — re-checking every
+such comment against `sim.py`'s actual current code (not just the old assumption) turned up 8
+fixes: "Collaboration" and "Eradicator Cannon" were never actually about Missions/Bosses at all
+(flat resource transfer and hoard-reduction respectively — just mislabeled); "Conscription"/
+"Rapid Deployment" don't touch the still-unported locked Vehicle/Mech deck and were portable all
+along; "Take Credit", "Punch Through", "Exploitation", and the `explode_on_death` Unit keyword's
+Boss-targeting branch all needed the now-real `bossActive` to wire up. Also fixed Containment
+storage, which had been hardcoded always-on instead of gated behind actually building
+"Containment Protocol" first, matching `sim.py`'s real `containment_slots` behavior. Verified
+with an automated coverage check confirming every one of the 62 Command Cards and 41 Secret
+Objectives has a real dispatch case, not a silent fallthrough.
+
+**Bonus fix along the way**: bots no longer donate a Scout-type unit to the shared scout pool
+unless it's actually better than the pool's current best (only one scout is ever assigned per
+round) — they used to dump every Scout-type purchase into the pool unconditionally, including
+units that would have been more useful fighting in their own lane.
+
+**Result**: win rate climbed from 0/15 (end of the ability-text-only backfill) to a consistent
+~30% (6/20 in the final batch) once Missions/Events/Bosses/Secret Objectives/Tactician landed,
+with games now running 8-15 rounds — much closer to the validated full-ruleset range
+(`Playtest Game 6-7.md`: ~47%, Round 9-15). Missions turned out to matter most, confirming the
+theory from the ability-text-only checkpoint: the extra Rank-promotion path was the biggest
+single piece of the original gap.
 
 ## Running it locally
 
@@ -132,7 +165,8 @@ it.
 2. ~~Wire the rules engine in, all seats bot-controlled first~~ (Stage 2, done — see above for
    what's deliberately still missing)
 3. ~~Make worker placement the first real human decision point~~ (Stage 3, done — see above)
-4. Backfilling deferred systems (Stage 4, in progress — Units done, see above) and expanding to
-   the rest of the human decision points (purchases, equip, Command Cards, targeting)
+4. ~~Backfill deferred systems~~ (Stage 4, done — see above). Remaining human decision points
+   (purchases, equip, Command Card build/activate, targeting) are the natural next stage, not
+   yet started.
 5. Visual UI pass (board/lanes/resource trackers)
 6. Rules page + Tutorial content
