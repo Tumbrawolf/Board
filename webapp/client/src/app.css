@@ -1,0 +1,24 @@
+:root {
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: #fafafa;
+  color: #222;
+}
+
+button {
+  font: inherit;
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
