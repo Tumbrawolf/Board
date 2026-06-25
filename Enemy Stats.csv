@@ -1,6 +1,6 @@
 ﻿Name,Description,Type,Rank,Reveal,Passive,Damage,HP,Organic Cost,Tech Cost,Alien Cost,Armor,Shields
-Pests,Melee Fodder,Fodder,Fodder,,+1 damage for each other revealed Pest,1,1,2,0,0,0,0
-Ticks,Damages Economy,Fodder,Fodder,Each player loses 1 organic,-1 organic income while revealed,1,1,2,0,0,0,0
+Pests,Melee Fodder,Fodder,Fodder,,,1,1,2,0,0,0,0
+Ticks,Damages Economy,Fodder,Fodder,,,1,1,2,0,0,0,0
 Wasp,Flying Drone with Stuns,Drones,Grunt,Stun enemies in adjacent lane,Stuns on 1st hit of each combat,3,3,1,0,0,0,2
 Lancer,Fodder with laser spears,Infantry,Grunt,Deal 2x attack damage to active and reserve units in this lane,Attacks Pierce upto 2 armor,5,4,5,2,1,0,0
 Grunt,Automatic weapons with low accuracy,Infantry,Grunt,Deal 2x attack damage to all lanes,,4,5,5,2,1,0,2
