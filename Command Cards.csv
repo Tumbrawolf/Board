@@ -60,3 +60,4 @@ Battlefield,Tranq rounds,Reduce enemy damage by 2 per rank of the unit,reduce en
 Battlefield,Bunkers,Units can only be damaged by units in their lanes active slot,The 1st Damage ability per lane is prevented,5,5,5
 Battlefield,Security Drones,If a lane has no units deployed to the active slot at combat start you can produce 1/1 drones for that lane = commander rank,Add 8 1/1 Drones split evenly to bottom of your reserve piles,5,5,5
 Command,Strategic Withdrawal,,"Once per game: Reduce Enemy Progress by 3, but lose 1 Player Progress this round",3,5,5
+Battlefield,Early Warning Network,Reduce damage taken by all lanes from multi-lane enemy Reveal/Passive effects by 2 (minimum 1 still gets through),"This round, multi-lane enemy Reveal/Passive effects deal half damage (rounded down) to every lane they hit",5,5,5
