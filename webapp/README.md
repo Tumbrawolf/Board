@@ -180,12 +180,19 @@ it (37.5%, no crashes, over a fresh 40-game batch).
 over real Socket.IO round-trips: buyUnit, buyGear, and resolveCard (build/activate/skip) all
 round-trip correctly, and the game reaches a clean win/loss every run.
 
+**The Battlefield-building Command Card phase is interactive too, now** (added right after this
+shipped, same session): `client/BattlefieldCardPanel.svelte` + `humanDecisions.ts`'s new
+`runBattlefieldCardWindow` cover the cards resolved during Combat, after enemy hoards exist.
+Unlike the Planning window, choices apply immediately -- there's no Donation-equivalent step
+between this and Combat that changes what's legal, so there's nothing to defer. Same
+bot-sequential / human-concurrent `Promise.all` split as the Planning window, verified the same
+way (a 40-game bot-only batch at 30%, no crashes; a live Socket.IO test confirming build/
+activate/skip on a human seat).
+
 **Still not done**: targeting (no ability currently *needs* a player to pick a target -- the few
 multi-target effects in this engine already resolve via the same heuristics bots always used, so
 there's nothing to wire yet) and any further visual polish -- this is intentionally a "basic UI,"
-not a final pass. The Battlefield-building Command Card phase (resolved during Combat, after enemy
-hoards exist) is unchanged and still bot-only for every seat, including humans -- only the
-Planning-stage, non-Battlefield Command Cards are interactive now.
+not a final pass.
 
 ## Stage 7: Rules page — started
 

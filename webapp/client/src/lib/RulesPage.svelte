@@ -77,7 +77,7 @@
 
   <section>
     <h2>What's still bot-only in this web version</h2>
-    <p>Targeting decisions, and the Battlefield-building Command Card phase (resolved during Combat, after enemy hoards exist) are still automatic for every seat, including humans — there's no ability in the engine yet that genuinely needs a player to pick a target. Everything else in Planning (purchases, equip, Command Card build/activate) is a real decision for a connected human player.</p>
+    <p>Targeting decisions are still automatic for every seat, including humans — there's no ability in the engine yet that genuinely needs a player to pick a target. Everything else — purchases, equip, and both rounds of Command Card build/activate/skip (Planning-stage, and the Battlefield-building cards resolved mid-Combat) — is a real decision for a connected human player.</p>
   </section>
 </div>
 
