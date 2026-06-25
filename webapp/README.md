@@ -202,6 +202,22 @@ systems, plus a Quick Start section specific to how this web version's interacti
 work. Tutorial content (a guided in-game walkthrough, as opposed to a reference page) is still
 open.
 
+## Stage 6/7 follow-up: first-use tooltips + a code-only visual polish pass
+
+A small dismissible callout (`client/FirstUseTip.svelte`, localStorage-backed so it only shows
+once per browser) explains the worker placement prompt, the board/lane view, the Planning window,
+and the Battlefield Command Card window the first time each one appears — chosen over a full
+guided overlay or a separate practice mode, since it's far cheaper to build and doesn't require
+maintaining a second game-flow variant.
+
+Also fixed a real, fairly clear-cut layout bug found by reading the CSS: the page wrapper was
+capped at 640px max-width everywhere, including in-game, where BoardView (2 columns) and
+PlanningPanel (3 columns) need real room — now widens to 1100px once a game has started, while the
+lobby/join/settings screens keep the narrower centered-card width. Added responsive breakpoints so
+those grids stack to 1 column on narrow viewports, and global button hover/focus states that were
+missing entirely. This pass was done from code alone (no browser available while working) — it
+hasn't been visually verified yet.
+
 ## Running it locally
 
 Two processes, in two terminals:
