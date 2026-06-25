@@ -37,7 +37,7 @@ bot-only games lose noticeably more often and earlier than the validated full ru
 4-8 rounds each time) — that's an expected, scope-driven gap, not a balance regression to chase
 down. The numbers won't be meaningful again until those deferred systems land in later stages.
 
-## Stage 3 (current): Worker placement is a real human decision
+## Stage 3: Worker placement is a real human decision — done
 
 Worker placement is no longer pooled-and-shuffled — it's a genuine turn-based race, round-robin
 starting to the commander's left (commander goes last each lap), one worker at a time. **The
@@ -53,6 +53,35 @@ the engine decide for them — `server/src/humanDecisions.ts`'s `MixedDecisionPr
 so the game never stalls) still resolve instantly via `BotDecisionProvider`. **Every other
 decision this stage — purchases, equip, Command Card build/activate — stays bot-decided even for
 human seats**, per the agreed Stage 3 scope; that's Stage 4's job.
+
+## Stage 4 (current): Backfilling deferred rules systems, one deck at a time
+
+Stage 4 covers two different things from the original roadmap line (more human decision points,
+and backfilling the systems Stage 2 deliberately deferred) — by agreement, backfilling comes
+first, one full deck at a time, in the order most likely to fix the "loses more than the
+validated ruleset" gap.
+
+**Units — done.** `engine/units.ts` ports `Working/sim.py`'s `UNIT_KEYWORD_RULES` +
+`classify_unit` keyword-classification dispatch (substring-matching each unit's Main
+Effect/Bonus Effects text against ~20 recurring patterns, rather than one branch per card) plus
+the combat-time/precombat/death-time effects that actually consume those tags: `attacks_first`
+(9 units — the single most-cited gap, since enemies act first unconditionally otherwise),
+`ignore_armor`, `reflect_half`/`reflect_retaliate`, `consecutive_damage`, precombat
+heals/shields/no-reserve bonuses, `revive_once` (Rambo), and `explode_on_death`. `Combatant`
+(`engine/combat.ts`) was extended with the full field set (`shieldMultiplier`, `shredArmor`,
+`firstHitPrevented`, `reflectFraction`, `lifestealFraction`) so Gear and Enemy dispatch can reuse
+the same machinery when their turn comes. A few keyword tags sim.py itself classifies but never
+actually dispatches anywhere (`long_range`, `delete_on_kill` for units specifically,
+`execute_low_hp`, `heal_on_kill`, `shields_on_kill`, `once_per_combat_heal`) are left unconsumed
+here too — faithfully matching the source, not a gap introduced by the port.
+
+**Still deferred**: Enemy and Gear ability text (next, in that order per the original
+Gear→Unit→Enemy build order sim.py used — Units jumped the queue this round specifically for the
+Attacks-1st fix), Missions, Events, Bosses, Secret Objectives, Tactician.
+
+**Result so far**: bot-only games run longer (5-9 rounds vs. 4-8 before, across a 12-run sample)
+but still 0 wins — expected, since Enemy and Gear dispatch (probably carrying similar weight)
+aren't ported yet. Not a regression; the win-rate gap closes incrementally as each deck lands.
 
 ## Running it locally
 
@@ -79,8 +108,7 @@ it.
 2. ~~Wire the rules engine in, all seats bot-controlled first~~ (Stage 2, done — see above for
    what's deliberately still missing)
 3. ~~Make worker placement the first real human decision point~~ (Stage 3, done — see above)
-4. Expand to the rest of the decision points (purchases, equip, Command Cards, targeting), and
-   start filling in the deferred systems (Unit/Enemy/Gear ability text, Missions, Events, Bosses,
-   Secret Objectives, Tactician) incrementally
+4. Backfilling deferred systems (Stage 4, in progress — Units done, see above) and expanding to
+   the rest of the human decision points (purchases, equip, Command Cards, targeting)
 5. Visual UI pass (board/lanes/resource trackers)
 6. Rules page + Tutorial content

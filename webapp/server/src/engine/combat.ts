@@ -2,8 +2,9 @@ import { toInt } from "./data.js";
 import type { EnemyCard, UnitCard } from "./data.js";
 import type { UnitInstance } from "./types.js";
 
-/** A simplified combat participant -- Stage 2 scope has no per-card ability dispatch yet for
- * Units/Enemies/Gear (that's a later stage), so this only tracks flat numeric stats. */
+/** A combat participant. Gear-driven and Enemy-driven modifiers (ignoreArmor, shieldMultiplier,
+ * etc.) aren't dispatched onto these yet -- that's a later stage (Gear, then Enemy) -- but the
+ * fields exist now so Unit ability dispatch (engine/units.ts) has a real Combatant to set them on. */
 export class Combatant {
   name: string;
   dmg: number;
@@ -11,7 +12,14 @@ export class Combatant {
   curHp: number;
   armor: number;
   curShields: number;
+  ignoreArmor = false;
+  shieldMultiplier = 1;
+  shredArmor = 0;
+  firstHitPrevented = false;
+  deleteOnKill = false;
   attacksFirst = false;
+  reflectFraction = 0;
+  lifestealFraction = 0;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
@@ -39,14 +47,29 @@ export function equippedBonus(ui: UnitInstance, stat: "Damage" | "Armor" | "HP" 
 
 export function computeDealt(attacker: Combatant, defender: Combatant): number {
   if (attacker.dmg <= 0) return 0;
-  const effectiveArmor = defender.armor;
+  if (defender.firstHitPrevented) {
+    defender.firstHitPrevented = false;
+    return 0;
+  }
+  const effectiveArmor = attacker.ignoreArmor ? 0 : defender.armor;
+  if (attacker.shredArmor && defender.armor > 0) {
+    defender.armor -= Math.min(attacker.shredArmor, defender.armor);
+  }
   let dealt = Math.max(1, attacker.dmg - effectiveArmor);
   if (defender.curShields > 0) {
-    const absorbed = Math.min(defender.curShields, dealt);
+    const shieldDmg = dealt * attacker.shieldMultiplier;
+    const absorbed = Math.min(defender.curShields, shieldDmg);
     defender.curShields -= absorbed;
-    dealt -= absorbed;
+    dealt -= Math.floor(absorbed / attacker.shieldMultiplier);
   }
-  return Math.max(0, dealt);
+  dealt = Math.max(0, dealt);
+  if (defender.reflectFraction) {
+    attacker.curHp -= Math.floor(dealt * defender.reflectFraction);
+  }
+  if (attacker.lifestealFraction) {
+    attacker.curHp = Math.min(attacker.hp, attacker.curHp + Math.floor(dealt * attacker.lifestealFraction));
+  }
+  return dealt;
 }
 
 export interface LaneCombatResult {

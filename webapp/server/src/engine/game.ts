@@ -21,6 +21,7 @@ import {
   Combatant,
 } from "./combat.js";
 import { applyBattlefieldActive, applyCommandActive } from "./commandCards.js";
+import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, tryReviveOnce } from "./units.js";
 import { type BotDecisionProvider, type DecisionProvider } from "./decisions.js";
 import { ensureLowestRankGear, ensureLowestRankUnit, refillShopGear, refillShopUnit } from "./shop.js";
 import {
@@ -581,8 +582,13 @@ export class GameEngine {
     const overrunLeftover = new Map<GamePlayer, Combatant[]>();
 
     for (const p of game.players) {
+      applyPrecombatUnit(p, tempState);
       const pUnits = [...(p.active ? [p.active] : []), ...p.reserve];
-      const pCombatants = pUnits.map((ui) => combatantFromUnit(ui));
+      const pCombatants = pUnits.map((ui) => {
+        const c = combatantFromUnit(ui);
+        applyUnitCombatMods(c, ui);
+        return c;
+      });
       const eCombatants = p.laneEnemyReserve.map((e) => new Combatant(e));
       if (!eCombatants.length) {
         this.log(`  ${p.name}: no enemies this lane (clean).`);
@@ -614,7 +620,10 @@ export class GameEngine {
         } else if (tempState.cannotDie.has(ui.id)) {
           ui.curHp = 1;
           newUnits.push(ui);
+        } else if (tryReviveOnce(game, p, ui, (t) => this.log(t))) {
+          newUnits.push(ui);
         } else {
+          applyExplodeOnDeath(p, ui, (t) => this.log(t));
           const realGear = ui.equipped.filter((g) => "Name" in (g as any));
           if (realGear.length) {
             const kept = realGear.reduce((a, b) =>
@@ -648,7 +657,11 @@ export class GameEngine {
         }
       }
       if (!target) continue;
-      const rCombatants = reinforcements.map((ui) => combatantFromUnit(ui));
+      const rCombatants = reinforcements.map((ui) => {
+        const c = combatantFromUnit(ui);
+        applyUnitCombatMods(c, ui);
+        return c;
+      });
       const { overrun: overrun2, playerSurvivors: rSurv, enemySurvivors: eSurv2 } = resolveLaneCombat(
         rCombatants,
         overrunLeftover.get(target)!

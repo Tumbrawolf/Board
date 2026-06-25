@@ -13,6 +13,7 @@ export function makeUnitInstance(card: UnitCard): UnitInstance {
     curHp: maxHp,
     curShields: toInt(card.Shields),
     equipped: [],
+    charges: {},
   };
 }
 

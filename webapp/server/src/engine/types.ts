@@ -14,6 +14,9 @@ export interface UnitInstance {
   curHp: number;
   curShields: number;
   equipped: GearCard[];
+  /** Per-unit ability counters (e.g. consecutive_hits for "bonus damage on consecutive hits"
+   * abilities) -- mirrors Working/sim.py's UnitInstance.charges Counter. */
+  charges: Record<string, number>;
 }
 
 export interface GamePlayer {
