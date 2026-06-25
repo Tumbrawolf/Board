@@ -50,6 +50,7 @@ function shuffle<T>(arr: T[]): T[] {
 export interface SeatInput {
   seatIndex: number;
   name: string;
+  isBot: boolean;
 }
 
 export type LogFn = (text: string) => void;
@@ -65,6 +66,11 @@ export class GameEngine {
   private placementsThisRound: Record<number, Location[]> = {};
   private containedEnemies: EnemyRank[] = [];
   private locationUpgradesBuilt: Record<Location, CommandCard[]>;
+  private nextCommanderSeatIndex: number | null = null;
+  /** Fired once per resolved worker placement (bot or human), for the server layer to broadcast
+   * live board updates during the placement phase -- separate from onLog since this is
+   * structured data, not a text line. */
+  onPlacement?: (seatIndex: number, location: Location) => void;
 
   constructor(seats: SeatInput[], difficulty: Difficulty, decisions: DecisionProvider, onLog: LogFn) {
     const data = loadGameData();
@@ -83,7 +89,7 @@ export class GameEngine {
     const players: GamePlayer[] = seats.map((s) => ({
       seatIndex: s.seatIndex,
       name: s.name,
-      isBot: true, // Stage 2: every seat is bot-controlled regardless of lobby isBot flag
+      isBot: s.isBot,
       rank: 1,
       res: { Organic: 2, Tech: 0, Alien: 0 }, // README #36 starting Organic lever
       active: null,
@@ -252,7 +258,15 @@ export class GameEngine {
       this.log(`  [Rank Trickle] Every player +1 Rank -> [${game.players.map((p) => RANK_ORDER[p.rank - 1]).join(", ")}]`);
     }
 
-    game.commanderIdx = (game.commanderIdx + 1) % game.players.length;
+    // README 4.5/7.2: the commander is whoever placed the FIRST worker at Command this round
+    // (a real race now that placement is turn-based -- see runWorkerPlacementAndIncome). Falls
+    // back to round-robin only on the rare round nobody chooses Command at all.
+    if (this.nextCommanderSeatIndex !== null) {
+      const idx = game.players.findIndex((p) => p.seatIndex === this.nextCommanderSeatIndex);
+      game.commanderIdx = idx !== -1 ? idx : (game.commanderIdx + 1) % game.players.length;
+    } else {
+      game.commanderIdx = (game.commanderIdx + 1) % game.players.length;
+    }
 
     if (game.playerProgress >= 10) {
       this.log(`\n#### PLAYERS WIN on Round ${game.roundNum}! Player Progress reached 10. ####`);
@@ -263,32 +277,45 @@ export class GameEngine {
     return true;
   }
 
+  /** README 4.5/7.2 ("the 1st worker placed at Command each round takes it") implemented as a
+   * real turn-based race: workers go one at a time, round-robin starting to the commander's
+   * left (same convention as Mission Assignment passing), commander going last each lap. Each
+   * player's DecisionProvider picks a location for their own worker; whoever's the first to ever
+   * pick Command this round becomes next round's commander (consumed in runRound's Cleanup). */
   private async runWorkerPlacementAndIncome(commander: GamePlayer, diffCount: number) {
     const game = this.game;
     const workerCount = (p: GamePlayer) => (p.rank >= 4 ? 3 : 2);
     const remaining = new Map(game.players.map((p) => [p.seatIndex, workerCount(p)]));
     remaining.set(commander.seatIndex, remaining.get(commander.seatIndex)! + 1);
 
-    const pool: GamePlayer[] = [];
-    for (const p of game.players) {
-      for (let i = 0; i < remaining.get(p.seatIndex)!; i++) pool.push(p);
-    }
-    const shuffled = shuffle(pool);
-    const priority: Location[] = [
-      "Barracks",
-      "Barracks",
-      "Command",
-      "Containment Block",
-      "Armory",
-      "Battlefield",
-      "Medical Bay",
+    const commanderPos = game.players.findIndex((p) => p.seatIndex === commander.seatIndex);
+    const turnOrder = [
+      ...game.players.slice(commanderPos + 1),
+      ...game.players.slice(0, commanderPos + 1),
     ];
+
     const locWorkers: Record<Location, GamePlayer[]> = Object.fromEntries(LOCATIONS.map((l) => [l, []])) as any;
-    shuffled.forEach((p, i) => {
-      const loc = i < priority.length ? priority[i] : LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
-      locWorkers[loc].push(p);
-      this.placementsThisRound[p.seatIndex].push(loc);
-    });
+    this.nextCommanderSeatIndex = null;
+    let anyRemaining = true;
+    while (anyRemaining) {
+      anyRemaining = false;
+      for (const p of turnOrder) {
+        if (remaining.get(p.seatIndex)! <= 0) continue;
+        anyRemaining = true;
+        const placedSoFar = Object.fromEntries(
+          LOCATIONS.map((l) => [l, locWorkers[l].map((q) => ({ seatIndex: q.seatIndex, name: q.name }))])
+        ) as Record<Location, { seatIndex: number; name: string }[]>;
+        const loc = await this.decisions.chooseWorkerPlacement(p, game, placedSoFar);
+        locWorkers[loc].push(p);
+        remaining.set(p.seatIndex, remaining.get(p.seatIndex)! - 1);
+        this.placementsThisRound[p.seatIndex].push(loc);
+        if (loc === "Command" && this.nextCommanderSeatIndex === null) {
+          this.nextCommanderSeatIndex = p.seatIndex;
+        }
+        this.log(`  ${p.name} places a worker at ${loc}`);
+        this.onPlacement?.(p.seatIndex, loc);
+      }
+    }
 
     for (const loc of LOCATIONS) {
       const workers = locWorkers[loc];

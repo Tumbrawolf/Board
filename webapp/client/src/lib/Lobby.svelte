@@ -78,6 +78,22 @@
     gameOver = payload;
   }
 
+  interface PlacementPrompt {
+    requestId: string;
+    locations: string[];
+    placedSoFar: Record<string, { seatIndex: number; name: string }[]>;
+  }
+  let placementPrompt = $state<PlacementPrompt | null>(null);
+
+  function onPlacementPrompt(payload: PlacementPrompt) {
+    placementPrompt = payload;
+  }
+  function choosePlacement(location: string) {
+    if (!placementPrompt) return;
+    socket.emit("placement:choose", { requestId: placementPrompt.requestId, location });
+    placementPrompt = null;
+  }
+
   onMount(() => {
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
@@ -85,6 +101,7 @@
     socket.on("game:log", onGameLog);
     socket.on("game:state", onGameState);
     socket.on("game:over", onGameOver);
+    socket.on("placement:prompt", onPlacementPrompt);
     connected = socket.connected;
   });
 
@@ -95,6 +112,7 @@
     socket.off("game:log", onGameLog);
     socket.off("game:state", onGameState);
     socket.off("game:over", onGameOver);
+    socket.off("placement:prompt", onPlacementPrompt);
   });
 
   function persistName() {
@@ -300,8 +318,8 @@
         {/if}
       </div>
       <p class="hint">
-        Stage 2: every seat plays itself (bot-controlled) once the game starts — there's no
-        human input wired in yet. Watch it play out below once you hit Start.
+        Stage 3: when it's your turn to place a worker, you'll get to pick the location
+        yourself. Everything else (shopping, equipping, Command Cards) still plays itself.
       </p>
     </section>
   {:else}
@@ -314,6 +332,21 @@
           </span>
         {/if}
       </h2>
+
+      {#if placementPrompt}
+        <div class="placement-prompt">
+          <p>Your turn — place a worker:</p>
+          <div class="placement-options">
+            {#each placementPrompt.locations as loc}
+              {@const count = placementPrompt.placedSoFar[loc]?.length ?? 0}
+              <button onclick={() => choosePlacement(loc)}>
+                {loc}
+                {#if count}<span class="muted"> ({count} placed)</span>{/if}
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       {#if gameSnapshot}
         <div class="trackers">
@@ -498,5 +531,21 @@
   }
   .log-line {
     line-height: 1.4;
+  }
+  .placement-prompt {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border: 2px solid #2a6f97;
+    border-radius: 6px;
+    background: #eef6fb;
+  }
+  .placement-prompt p {
+    margin: 0 0 0.5rem;
+    font-weight: bold;
+  }
+  .placement-options {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
 </style>

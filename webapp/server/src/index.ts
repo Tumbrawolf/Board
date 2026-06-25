@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import { RoomManager } from "./rooms.js";
 import { recordGameStart } from "./db.js";
 import { runGame } from "./runGame.js";
+import { resolvePlacementChoice } from "./humanDecisions.js";
 import type { RoomSettings } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -26,6 +27,15 @@ interface SocketData {
   clientId?: string;
 }
 
+// clientId -> current socket id, so the game engine can prompt a specific connected human
+// (Stage 3 worker placement) without going through the whole room. Looked up live, not cached,
+// so a reconnect (new socket id, same clientId) is always handled correctly.
+const clientSockets = new Map<string, string>();
+function lookupSocket(clientId: string) {
+  const socketId = clientSockets.get(clientId);
+  return socketId ? io.sockets.sockets.get(socketId) : undefined;
+}
+
 io.on("connection", (socket) => {
   const data = socket.data as SocketData;
 
@@ -43,6 +53,7 @@ io.on("connection", (socket) => {
     }
     data.roomCode = room.state.code;
     data.clientId = clientId;
+    clientSockets.set(clientId, socket.id);
     socket.join(room.state.code);
     ack?.({ ok: true, roomCode: room.state.code });
     broadcastRoom(room.state.code);
@@ -63,11 +74,16 @@ io.on("connection", (socket) => {
       }
       data.roomCode = room.state.code;
       data.clientId = clientId;
+      clientSockets.set(clientId, socket.id);
       socket.join(room.state.code);
       ack?.({ ok: true, roomCode: room.state.code });
       broadcastRoom(room.state.code);
     }
   );
+
+  socket.on("placement:choose", ({ requestId, location }: { requestId: string; location: string }) => {
+    resolvePlacementChoice(socket.id, requestId, location);
+  });
 
   socket.on("room:toggleReady", ({ ready }: { ready: boolean }, ack) => {
     if (!data.roomCode || !data.clientId) {
@@ -119,13 +135,16 @@ io.on("connection", (socket) => {
     const gameId = recordGameStart(room.state);
     ack?.({ ok: true });
     broadcastRoom(room.state.code);
-    runGame(io, room.state, gameId).catch((err) => {
+    runGame(io, room.state, gameId, lookupSocket).catch((err) => {
       console.error(`Game in room ${room.state.code} crashed:`, err);
       io.to(room.state.code).emit("game:log", { text: `[ERROR] Game crashed: ${String(err)}` });
     });
   });
 
   socket.on("disconnect", () => {
+    if (data.clientId && clientSockets.get(data.clientId) === socket.id) {
+      clientSockets.delete(data.clientId);
+    }
     if (!data.roomCode || !data.clientId) return;
     const room = rooms.get(data.roomCode);
     if (!room) return;

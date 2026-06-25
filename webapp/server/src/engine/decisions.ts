@@ -1,16 +1,27 @@
-import { RANK_NUM } from "./constants.js";
+import { LOCATIONS, RANK_NUM, type Location } from "./constants.js";
 import type { CommandCard, GearCard, UnitCard } from "./data.js";
 import type { GamePlayer, GameState } from "./types.js";
 
 export type CommandCardChoice = "build" | "activate" | "skip";
 
-/** Per-seat decision points. Stage 2 only implements BotDecisionProvider (mirroring
- * Working/sim.py's existing AI heuristics); Stage 3 adds a HumanDecisionProvider with the same
- * shape that resolves its promises from an incoming socket message instead of deciding
- * synchronously. Worker placement is NOT yet a per-seat decision here -- it's still the same
- * team-wide pooled/shuffled assignment sim.py uses; making it a real per-player race is Stage 3's
- * whole point. */
+export interface PlacedWorker {
+  seatIndex: number;
+  name: string;
+}
+
+/** Per-seat decision points. Stage 2 only had BotDecisionProvider (mirroring Working/sim.py's
+ * existing AI heuristics). Stage 3 adds chooseWorkerPlacement as the first decision a human can
+ * actually make (see server/src/humanDecisions.ts) -- everything else stays bot-decided for every
+ * seat this stage, per the agreed Stage 3 scope. */
 export interface DecisionProvider {
+  /** One worker at a time, round-robin across players -- placedSoFar is every placement already
+   * resolved this round (across all players), so a provider can see what's contested/taken. */
+  chooseWorkerPlacement(
+    player: GamePlayer,
+    game: GameState,
+    placedSoFar: Record<Location, PlacedWorker[]>
+  ): Promise<Location>;
+
   chooseNextUnitPurchase(
     player: GamePlayer,
     game: GameState,
@@ -34,7 +45,28 @@ export interface DecisionProvider {
   ): Promise<CommandCardChoice>;
 }
 
+const BOT_LOCATION_PRIORITY: Location[] = [
+  "Command",
+  "Barracks",
+  "Armory",
+  "Containment Block",
+  "Battlefield",
+  "Medical Bay",
+];
+
 export class BotDecisionProvider implements DecisionProvider {
+  async chooseWorkerPlacement(
+    _player: GamePlayer,
+    _game: GameState,
+    placedSoFar: Record<Location, PlacedWorker[]>
+  ): Promise<Location> {
+    // Prefer a still-open "full income" slot (first 2 workers at a location both earn full) in
+    // a fixed priority order; once everywhere has 2+, just pile onto the least-crowded location.
+    const open = BOT_LOCATION_PRIORITY.find((loc) => placedSoFar[loc].length < 2);
+    if (open) return open;
+    return LOCATIONS.reduce((a, b) => (placedSoFar[b].length < placedSoFar[a].length ? b : a));
+  }
+
   async chooseNextUnitPurchase(
     player: GamePlayer,
     _game: GameState,
