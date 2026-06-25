@@ -2,7 +2,7 @@
 
 A cooperative (with hidden-traitor potential), tactical resource-management board game for the tabletop, currently in active design. Players defend against waves of enemies across multiple combat lanes while managing a shared economy, recruiting and upgrading units, and completing missions — all while one or more players may secretly be working against the group.
 
-> **Status:** Design in progress, with a full balance-and-rules playtest pass complete, plus 5 full manual playtest games (see `Playtest Game 1-5.md`) validating the ruleset end to end. `Rules.docx` reflects every change below; a second, reader-friendly edition (`Board_Rules_Reorganized.docx`) restructures the same content for teaching new players and table-side lookup — both docs are kept in sync by hand, since there's no automatic link between them.
+> **Status:** Design in progress, with a full balance-and-rules playtest pass complete, plus 5 full manual playtest games (see `Playtest Game 1-5.md`) and 2 simulator-driven playtests (`Playtest Game 6-7.md`) validating the ruleset end to end. `Rules.docx` reflects every change below; a second, reader-friendly edition (`Board_Rules_Reorganized.docx`) restructures the same content for teaching new players and table-side lookup — both docs are kept in sync by hand, since there's no automatic link between them.
 
 ## Overview
 
@@ -37,6 +37,8 @@ Players act as commanders defending against escalating threats (fodder, infantry
 | `Location Actions.csv` | Slot counts and effects per board location, exported from `Data for cards.xlsx`'s `Location Actions` sheet. Cross-checked word-for-word against `Rules.docx`'s Locations section this round and corrected where they'd drifted apart (see Feedback #21). |
 | `Boards/` | Board section mockups (Battlefield, Barracks, Armory, Medical Bay, Containment Block, Command) |
 | `Playtest Game 1.md` – `Playtest Game 5.md` | 5 full manual playtest games (2026-06-25), played start-to-finish to genuine win/loss: Games 1-3 are a baseline batch (no antagonist / guaranteed Saboteur / guaranteed Chaos) that surfaced the Feedback #31-40 revision; Games 4-5 validate that revision plus the follow-on Rank Trickle (#41) and Reveal-damage (#42) fixes. |
+| `Playtest Game 6.md` | A 6th playtest (2026-06-25), the first run on the rebuilt `Working/sim.py` (now current through Feedback #42) instead of hand-narrated at the table. Confirms the #42 Reveal-damage fix breaks the exact Round 4/6 board-wide-wipe pattern that ended Games 4 and 5; finds Lane Reinforcement (#33) is doing comparable work to the Reveal fix itself, and that later-game simultaneous multi-lane overruns (outpacing Reinforcement's 1-donor-lane cap) are the new thing that ends a losing game. |
+| `Playtest Game 7.md` | A 7th playtest (2026-06-25), a losing seed from the same batch pulled to confirm Game 6's late-game diagnosis. Finds the failure mode is sharper than predicted — Lane Reinforcement needs at least 1 lane to clear each round to have a donor at all, and the fatal round had zero. A gradual multi-round bleed, not a cliff; also flags a sim-AI targeting quirk on the "Nuke" Command Card (not a rules issue). |
 | `Playtest Log - Full Game Walkthrough.md` | Running log of rules gaps/ambiguities found across the 5 playtest games, with an explicit disposition (adopted / adopted-with-modification / deferred / superseded) for each — see its "Resolution" section. |
 
 ## Playtesting

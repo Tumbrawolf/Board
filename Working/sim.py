@@ -142,12 +142,21 @@ leader = random.choice(players)
 leader.rank = 2
 print(f"Leader: {leader.name} (starts at Rank 2 / Private)")
 
+COMMAND_HAND_SIZE = 3       # README #40: base hand size raised 2->3
+COMMANDER_HAND_SIZE = 4     # README #40: commander's hand size raised 3->4
+
 for p in players:
-    p.hand = [command_deck.pop() for _ in range(min(2, len(command_deck)))]
+    p.res['Organic'] += 2  # README #36: starting Organic lever
+    p.hand = [command_deck.pop() for _ in range(min(COMMAND_HAND_SIZE, len(command_deck)))]
     p.secret_objectives = [secret_obj_deck.pop() for _ in range(min(2, len(secret_obj_deck)))]
     if tactician_deck:
         p.tactician = tactician_deck.pop()
 leader.hand += [command_deck.pop() for _ in range(min(2, len(command_deck)))]  # leader's one-time setup bonus
+
+# Shared team-wide scout pool (README #35/#37/#42): any Scout-type unit a player would otherwise
+# add to their own active/reserve is instead donated here for free, no worker required. One is
+# assigned as the round's scout each round during Deployment (see Assign Scouts below).
+team_scout_pool = []
 
 commander_idx = players.index(leader)
 player_progress = 0
@@ -414,23 +423,44 @@ def apply_enemy_combat_mods(c, card):
     if 'takes_half_damage' in tags:
         c.armor += 999  # approximated as near-total damage reduction floor-clamped to 1 by compute_dealt's max(1,...)
 
-def apply_enemy_reveal(card, p):
-    """Reveal-column effects, applied once when this round's hoard is dealt -- the most
-    common pattern by far is a flat damage hit to the player's Active unit on entry."""
+def apply_enemy_reveal(card, p, all_players):
+    """Reveal-column effects, applied once when this round's hoard is dealt. Most cards hit only
+    their own lane (p); a 'all lanes'/'every lane'/'adjacent lane' card hits other lanes too --
+    README #42's multi-lane damage cap: full damage to its own lane, half (rounded down, min 1)
+    to every other lane it reaches, further softened by a built/activated Early Warning Network."""
     text = (card.get('Reveal','') or '')
     low = text.lower()
-    if not p.active:
-        return
-    if 'deal' in low and 'damage' in low:
+    base_dmg = None
+    m = re.search(r'deal[s]? (\d+)x', low)
+    if m:
+        base_dmg = to_int(card.get('Damage')) * int(m.group(1))
+    elif 'deal' in low and 'damage' in low:
         m = re.search(r'deal[s]? (\d+)', low)
         if m:
-            dmg = int(m.group(1))
-            armor = to_int(p.active.card.get('Armor')) + p.active.equipped_bonus('Armor')
-            p.active.cur_hp -= max(1, dmg - armor)
-    elif 'gain' in low and ('shield' in low or 'armor' in low):
-        m = re.search(r'gain (\d+)', low)
-        # this is the enemy buffing itself, not the player -- no player-side change needed here;
-        # self-buffs on reveal are instead approximated via the flat stat increase already on the card.
+            base_dmg = int(m.group(1))
+    if base_dmg is None:
+        return  # self-buffs ('gain shield/armor') and non-damage effects (stun, move) have no
+                # player-side HP change to apply here -- approximated via the card's own flat stats
+    multilane = 'all lane' in low or 'every lane' in low or 'adjacent lane' in low
+    adjacent_only = 'adjacent lane' in low and 'all lane' not in low and 'every lane' not in low
+    ewn_built = any(c['Name'] == 'Early Warning Network' for c in location_upgrades_built['Battlefield'])
+    targets = [p]
+    if multilane:
+        others = [q for q in all_players if q is not p]
+        targets += (random.sample(others, min(1, len(others))) if adjacent_only else others)
+    for target in targets:
+        if not target.active:
+            continue
+        if target is p:
+            dmg = base_dmg
+        else:
+            dmg = max(1, base_dmg // 2)  # multi-lane floor: half rounded down, minimum 1 always gets through
+            if HALF_REVEAL_DAMAGE[0]:
+                dmg = max(1, dmg // 2)
+            elif ewn_built:
+                dmg = max(1, dmg - 2)
+        armor = to_int(target.active.card.get('Armor')) + target.active.equipped_bonus('Armor')
+        target.active.cur_hp -= max(1, dmg - armor)
 
 def apply_unit_combat_mods(c, ui):
     tags = classify_unit(ui.card)
@@ -774,7 +804,7 @@ def apply_gear_active(name, ui, p):
                 if p.active is ui: p.active = p.reserve[0] if p.reserve else None
                 elif ui in p.reserve: p.reserve.remove(ui)
                 else: p.reserve = [u for u in p.reserve if u is not ui]
-                p.gear_hand.extend(ui.equipped)
+                p.gear_hand.extend(g for g in ui.equipped if 'Name' in g)  # real gear only, not temp_buff's synthetic stat dicts
     elif name == 'Nanite Tech':
         if w.active and w.active is not ui:
             owner_units = ([p.active] if p.active else []) + list(p.reserve)
@@ -820,9 +850,10 @@ def compute_dealt(attacker, defender):
     return dealt
 
 def resolve_lane_combat(player_combatants, enemy_combatants):
-    """Default: simultaneous exchange (both deal damage before either checks for death).
-    A combatant with .attacks_first (an "Attacks 1st" ability) instead resolves completely --
-    including killing its target outright -- before the other side ever gets to act."""
+    """Default (README #33): the enemy's Active card deals damage first each exchange --
+    resolving completely, including killing its target outright, before the player's unit ever
+    responds -- unless that unit has .attacks_first (an "Attacks 1st" ability), which flips
+    priority to the player instead."""
     pq = list(player_combatants)
     eq = list(enemy_combatants)
     while pq and eq:
@@ -834,10 +865,11 @@ def resolve_lane_combat(player_combatants, enemy_combatants):
                 continue
             p.cur_hp -= compute_dealt(e, p)
         else:
-            dealt_to_p = compute_dealt(e, p)
-            dealt_to_e = compute_dealt(p, e)
-            p.cur_hp -= dealt_to_p
-            e.cur_hp -= dealt_to_e
+            p.cur_hp -= compute_dealt(e, p)
+            if p.cur_hp <= 0:
+                pq.pop(0)
+                continue
+            e.cur_hp -= compute_dealt(p, e)
         if p.cur_hp <= 0:
             pq.pop(0)
         if e.cur_hp <= 0:
@@ -937,9 +969,9 @@ def pick_target(pool, rule):
     fn = TARGET_RULES.get(rule, random.choice)
     return fn(pool)
 
-def on_reveal(enemy_card, p):
+def on_reveal(enemy_card, p, all_players):
     """Dispatch hook for Enemy Stats' Reveal-column effects."""
-    apply_enemy_reveal(enemy_card, p)
+    apply_enemy_reveal(enemy_card, p, all_players)
 
 def apply_boss_passive(boss_active, target):
     """The Boss Passive column -- 'Passive is activated' at T1 means it's on for the boss's
@@ -1031,6 +1063,7 @@ def clear_round_temp_state():
 
 HOARD_REDUCTION = {}              # player -> int, consumed when hoards are dealt this round
 HALF_OVERRUN_DAMAGE = [False]     # mutable single-slot flag (Forward Command)
+HALF_REVEAL_DAMAGE = [False]      # mutable single-slot flag (Early Warning Network Active, README #42)
 CANNOT_DIE = set()                # UnitInstance ids that survive at 1 HP instead of dying this round
 
 def apply_command_active(name, card, commander, loc):
@@ -1234,6 +1267,8 @@ def apply_battlefield_active(name, commander):
             temp_buff(w.active, Damage=w.active.cur_hp)
     elif name == 'Suppression':
         pass  # no enemy-ability subsystem yet to suppress (Section 4)
+    elif name == 'Early Warning Network':
+        HALF_REVEAL_DAMAGE[0] = True  # README #42: halves multi-lane Reveal/Passive damage this round
     elif name == 'Barrier Systems':
         if w.active:
             temp_buff(w.active, Shields=10)
@@ -1261,7 +1296,7 @@ def apply_battlefield_active(name, commander):
 
 print("=== BEGINNING GAME ===\n")
 
-round_num = 0
+round_num = -1
 MAX_ROUNDS = 40
 
 while True:
@@ -1270,8 +1305,10 @@ while True:
         print(f"\n--- SAFETY CAP: stopping after {MAX_ROUNDS} rounds (no resolution) ---")
         break
 
+    is_prep_round = (round_num == 0)  # README #32: Round 0 -- full Planning/Deployment, no enemies/Combat at all
     commander = players[commander_idx]
-    print(f"\n========== ROUND {round_num} | Commander: {commander.name} (Rk{commander.rank}) | "
+    print(f"\n========== ROUND {round_num}{' (PREP, no enemies)' if is_prep_round else ''} | "
+          f"Commander: {commander.name} (Rk{commander.rank}) | "
           f"PlayerProg {player_progress}/10 | EnemyProg {enemy_progress}/10 | Overrun {overrun_tracker}/20 ==========")
 
     # ---------------- PLANNING ----------------
@@ -1279,9 +1316,12 @@ while True:
     diff_rank = enemy_rank_from_progress(enemy_progress)
     HOARD_REDUCTION.clear()
     HALF_OVERRUN_DAMAGE[0] = False
+    HALF_REVEAL_DAMAGE[0] = False
     CANNOT_DIE.clear()
 
-    if boss_active is None:
+    if is_prep_round:
+        print("  [Round 0] Prep round -- no Boss check, no enemy hoard, no Combat Stage.")
+    elif boss_active is None:
         if boss_died_last_round:
             boss_died_last_round = False
             print(f"  [Boss check] Grace period -- a Boss died last round, none can spawn this round.")
@@ -1308,17 +1348,20 @@ while True:
                 mission_deck.remove(m)
                 p.missions.append(m)
 
-    # Commander draws 2 Events and chooses 1 to be active this round.
-    if not event_deck:
-        event_deck = list(events); random.shuffle(event_deck)
-    drawn = [event_deck.pop() for _ in range(min(2, len(event_deck)))]
-    active_event = random.choice(drawn) if drawn else None
-    for e in drawn:
-        if e is not active_event:
-            event_deck.insert(0, e)
-    if active_event:
-        print(f"  [Event] Active this round: {active_event['Event name']} -- {active_event['Round Effect']}")
-        apply_event_round_effect(active_event)
+    # Commander draws 2 Events and chooses 1 to be active this round (README #32: skipped on
+    # Round 0 -- there's no Combat Stage for a Round Effect to apply to, nothing to resolve later).
+    active_event = None
+    if not is_prep_round:
+        if not event_deck:
+            event_deck = list(events); random.shuffle(event_deck)
+        drawn = [event_deck.pop() for _ in range(min(2, len(event_deck)))]
+        active_event = random.choice(drawn) if drawn else None
+        for e in drawn:
+            if e is not active_event:
+                event_deck.insert(0, e)
+        if active_event:
+            print(f"  [Event] Active this round: {active_event['Event name']} -- {active_event['Round Effect']}")
+            apply_event_round_effect(active_event)
 
     # Each player has 2 Worker Tokens (3 once Rank 4/Captain+); commander gets +1 for the round --
     # a real, freely-placeable token like any other, not a forced Command placement.
@@ -1391,15 +1434,17 @@ while True:
             print(f"  [Catch-up Resupply] {p.name} (overrun last round) gets +3 Organic +3 Tech +2 Alien")
 
     # Retire from Duty: dump obsolete units (2+ ranks below current) back to the shop deck for a partial refund.
+    # Excludes temp/synthetic cards (e.g. Security Drones' Drone tokens, made via make_temp_card)
+    # -- they have no 'Type' or real cost fields, so they're not real shop-deck cards to recycle.
     for p in players:
-        obsolete = [u for u in p.reserve if p.rank - RANK_NUM[u.card['Rank']] >= 2]
+        obsolete = [u for u in p.reserve if 'Type' in u.card and p.rank - RANK_NUM[u.card['Rank']] >= 2]
         for u in obsolete:
             p.reserve.remove(u)
             refund_keys = ['Organic Cost','Tech Cost','Alien Cost']
             biggest = max(refund_keys, key=lambda k: to_int(u.card.get(k,0)))
             p.res[biggest.split(' ')[0]] += to_int(u.card.get(biggest,0))
             unit_deck.append(u.card)
-            p.gear_hand.extend(u.equipped)  # equipped gear returns to hand, free to re-equip elsewhere
+            p.gear_hand.extend(g for g in u.equipped if 'Rank Name' in g)  # real gear returns to hand; synthetic gear (e.g. Nanite Tech's transfer token) is dropped, it has no shop identity to re-equip
             p.stats['units_retired'] += 1
             print(f"  {p.name} retires {u.name} (Rank {u.card['Rank']}) for a partial refund"
                   + (f", {len(u.equipped)} gear item(s) returned to hand" if u.equipped else ""))
@@ -1418,24 +1463,52 @@ while True:
             shop_units.remove(choice)
             refill_shop_unit(shop_units)
             ui = UnitInstance(choice)
-            if p.active is None:
+            if 'Scout' in choice.get('Type', ''):
+                team_scout_pool.append(ui)  # Scout-type units occupy the shared scout slot, not a combat slot
+                print(f"  {p.name} donates {ui.name} to the team scout pool")
+            elif p.active is None:
                 p.active = ui
             else:
                 p.reserve.append(ui)
             bought += 1
-        # Re-equip from gear_hand first (free, e.g. salvaged off a retired unit) before spending
-        # resources on new gear from the shop.
-        while p.active and p.gear_hand:
-            g = p.gear_hand.pop()
+        # README #38: equipping gear (including re-equipping it elsewhere) costs Tech = the gear's
+        # own Rank number, paid each time, on top of the existing once-per-round Activation cost --
+        # a deliberate partial reversal of the earlier "equipping is always free" rework, since that
+        # left Tech with no real sink. If a player can't afford it, the item just stays in hand
+        # unequipped rather than being lost.
+        def equip_onto_active(p, g):
+            cost = RANK_NUM.get(g.get('Rank Name'), 1)  # synthetic gear (e.g. Nanite Tech's transfer
+                                                          # token) has no real Rank -- treat as cheapest
+            if p.res['Tech'] < cost:
+                p.gear_hand.append(g)
+                print(f"  {p.name} can't afford {cost} Tech to equip {g['Name']} -- held in hand")
+                return False
+            p.res['Tech'] -= cost
             p.active.equipped.append(g)
             hp_bonus = to_int(g.get('HP', 0))
             p.active.max_hp += hp_bonus
             p.active.cur_hp += hp_bonus
             p.active.cur_shields += to_int(g.get('Shields', 0))
             p.stats['gear_equipped'] += 1
-            print(f"  {p.name} re-equips {g['Name']} from hand (free)")
-        # Gear: bought whenever affordable, accumulates on the PLAYER (equip is free per this session's
-        # rules rework), applied to whichever unit is active at combat time -- not baked into one unit dict.
+            if g['Name'] == 'Recon Satellite':
+                p.has_recon_satellite = True
+            if g['Name'] == 'Last Stand Beacon':
+                p.has_last_stand_beacon = True
+            print(f"  {p.name} equips {g['Name']} (Tech -{cost}) (Dmg+{to_int(g.get('Damage',0))} HP+{to_int(g.get('HP',0))} "
+                  f"Arm+{to_int(g.get('Armor',0))} Shd+{to_int(g.get('Shields',0))})")
+            return True
+
+        # Re-equip from gear_hand first (e.g. salvaged off a retired unit) before spending resources
+        # on new gear from the shop -- the item purchase itself is free, only the Tech equip cost applies.
+        pending_hand = list(p.gear_hand)
+        p.gear_hand = []
+        for g in pending_hand:
+            if p.active:
+                equip_onto_active(p, g)
+            else:
+                p.gear_hand.append(g)
+        # Gear: bought whenever affordable, accumulates on the PLAYER, applied to whichever unit is
+        # active at combat time -- not baked into one unit dict.
         gear_bought_this_round = 0
         while p.active and gear_bought_this_round < 2:
             affordable_g = [g for g in shop_gear if RANK_NUM[g['Rank Name']] <= p.rank
@@ -1450,19 +1523,8 @@ while True:
             pay(p.res, tactician_discounted_cost(p, g, 'gear'), GEAR_COST_KEYS)
             shop_gear.remove(g)
             refill_shop_gear(shop_gear)
-            p.active.equipped.append(g)
-            hp_bonus = to_int(g.get('HP', 0))
-            p.active.max_hp += hp_bonus
-            p.active.cur_hp += hp_bonus
-            p.active.cur_shields += to_int(g.get('Shields', 0))
-            p.stats['gear_equipped'] += 1
-            if g['Name'] == 'Recon Satellite':
-                p.has_recon_satellite = True
-            if g['Name'] == 'Last Stand Beacon':
-                p.has_last_stand_beacon = True
+            equip_onto_active(p, g)
             gear_bought_this_round += 1
-            print(f"  {p.name} equips {g['Name']} (Dmg+{to_int(g.get('Damage',0))} HP+{to_int(g.get('HP',0))} "
-                  f"Arm+{to_int(g.get('Armor',0))} Shd+{to_int(g.get('Shields',0))})")
         reorder_active(p)  # Reassign Units: always fight with the strongest unit Active
 
     commander.stats['commander_rounds'] += 1
@@ -1541,145 +1603,242 @@ while True:
     print(f"  Placements: {placements}")
     print(f"  Command pool: {command_pool}")
 
-    # ---------------- DEPLOYMENT ----------------
-    print(f"  Enemy hoard this round: {diff_count}x {diff_rank} per lane")
-    global_reduction = HOARD_REDUCTION.get('__global__', 0)
-    for p in players:
-        pool = enemy_by_rank[diff_rank]
-        count = max(0, diff_count - global_reduction - HOARD_REDUCTION.get(p.name, 0))
-        hoard = [random.choice(pool) for _ in range(count)] if pool else []
-        p.lane_enemy_reserve = hoard
-        for e in hoard:
-            on_reveal(e, p)  # dispatch hook for Enemy Stats' Reveal-column effects (Section 4)
-
-    # Battlefield's Active Effects target enemy hoards / active units, so Battlefield-building
-    # cards in hand are only resolved here, after Deployment deals the hoards -- same hand-based
-    # build-or-activate logic as the other 5 locations, just deferred for this one Building.
-    resolve_commander_hand(lambda loc: loc == 'Battlefield')
-    resolve_noncommander_hands(lambda loc: loc == 'Battlefield')
-
-    # ---------------- COMBAT ----------------
-    overrun_lanes = 0
-    overran_players = set()
-    lanes_won = set()  # players whose lane actually fought and cleared this round (real combat win, not an idle lane)
-    lanes_with_a_kill = []  # which players' lanes scored at least 1 kill this round -- feeds Containment storage RNG
-    for p in players:
-        apply_precombat_gear(p)
-        apply_precombat_unit(p)
-        if p.active and p.active.name == 'Saboteur Cell' and can_use_effect('Saboteur Cell', 3):
-            enemy_progress = max(0, enemy_progress - 1)
-            record_effect_use('Saboteur Cell')
-            print(f"  [Saboteur Cell] {p.name} reduces Enemy Progress by 1 -> {enemy_progress}/10 (use {EFFECT_USES['Saboteur Cell']}/3)")
-        p_units = ([p.active] if p.active else []) + list(p.reserve)
-        p_combatants = []
-        for ui in p_units:
-            c = Combatant(ui.card)
-            c.dmg += ui.equipped_bonus('Damage')
-            c.armor += ui.equipped_bonus('Armor')
-            c.hp = ui.max_hp
-            c.cur_hp = ui.cur_hp
-            c.cur_shields = ui.cur_shields
-            apply_gear_combat_mods(c, ui)
-            apply_unit_combat_mods(c, ui)
-            p_combatants.append(c)
-        e_combatants = []
-        for e in p.lane_enemy_reserve:
-            ec = Combatant(e)
-            apply_enemy_combat_mods(ec, e)
-            e_combatants.append(ec)
-        if not e_combatants:
-            print(f"  {p.name}: no enemies this lane (clean).")
-            continue
-        overrun, p_surv, e_surv = resolve_lane_combat(p_combatants, e_combatants)
-        kills_this_lane = len(e_combatants) - len(e_surv)
-        if kills_this_lane > 0:
-            lanes_with_a_kill.append(p)  # at least 1 enemy died in this lane this round
-            p.stats['kills'] += kills_this_lane
-        if overrun:
-            overrun_lanes += 1
-            overran_players.add(p)
-            p.stats['overruns_suffered'] += 1
-            print(f"  {p.name}'s lane OVERRUN ({len(e_surv)} enemies still standing)")
+    if not is_prep_round:
+        # ---------------- DEPLOYMENT ----------------
+        # Assign Scouts (README #33/#35/#37/#42): the team's best scout-eligible unit (if any) in the
+        # shared pool is assigned for free, no worker needed. Its Scout Value pays straight into the
+        # command pool. Reveal count defaults to 2/round either way (#42, up from 1) -- an empty pool
+        # still gets this baseline reveal, it just earns no income (#37). Named per-card bonuses called
+        # out in the rules text stack on top.
+        reveal_count = 2
+        if team_scout_pool:
+            scout = max(team_scout_pool, key=lambda u: sum(to_int(u.card.get(k, 0)) for k in
+                        ('Organic Scout', 'Tech Scout', 'Alien Scout')))
+            for res, key in (('Organic', 'Organic Scout'), ('Tech', 'Tech Scout'), ('Alien', 'Alien Scout')):
+                command_pool[res] += to_int(scout.card.get(key, 0))
+            if scout.name == 'Civilian Survivalist':
+                reveal_count += 1
+            if scout.name == '"Python"':
+                reveal_count *= 2
+            if scout.name == 'Saboteur Cell' and can_use_effect('Saboteur Cell', 3):
+                enemy_progress = max(0, enemy_progress - 1)
+                record_effect_use('Saboteur Cell')
+                print(f"  [Saboteur Cell] scouting reduces Enemy Progress by 1 -> {enemy_progress}/10 (use {EFFECT_USES['Saboteur Cell']}/3)")
+            print(f"  [Assign Scouts] {scout.name} scouts this round -- command pool +{scout.card.get('Organic Scout',0)}O"
+                  f"/{scout.card.get('Tech Scout',0)}T/{scout.card.get('Alien Scout',0)}A, revealing {reveal_count} enemies")
         else:
-            print(f"  {p.name}'s lane CLEARED ({len(p_surv)} units survived)")
-            lanes_won.add(p)
-        new_units = []
-        for ui, c in zip(p_units, p_combatants):
-            if c in p_surv:
-                ui.cur_hp = c.cur_hp
-                ui.cur_shields = c.cur_shields
-                new_units.append(ui)
-            elif id(ui) in CANNOT_DIE:
-                ui.cur_hp = 1
-                new_units.append(ui)
-            elif try_chronostasis_save(p, ui):
-                new_units.append(ui)
-            elif try_revive_once(p, ui):
-                new_units.append(ui)
-            else:
-                apply_explode_on_death(p, ui)
-                p.graveyard.append(ui)
-                p.stats['deaths'] += 1
-        p.active = new_units[0] if new_units else None
-        p.reserve = new_units[1:] if len(new_units) > 1 else []
+            print(f"  [Assign Scouts] scout pool empty -- baseline reveal of {reveal_count} only, no income")
 
-    for p in players:
-        p.overrun_last_round = p in overran_players
-
-    # Redeploy: a player whose lane WON this round may send up to 1 spare reserve unit to
-    # reinforce whichever teammate's lane is currently weakest, for next round's combat.
-    # Real (permanent) transfer, not a loan -- decided after combat resolves, not before.
-    for p in sorted(lanes_won, key=lambda p: -instance_power(p.reserve[0]) if p.reserve else 0):
-        if not p.reserve:
-            continue
-        def lane_power(q):
-            return sum(instance_power(u) for u in (([q.active] if q.active else []) + list(q.reserve)))
-        weakest = min((q for q in players if q is not p), key=lane_power)
-        if lane_power(weakest) < lane_power(p):
-            spare = min(p.reserve, key=instance_power)
-            p.reserve.remove(spare)
-            if weakest.active is None:
-                weakest.active = spare
-            else:
-                weakest.reserve.append(spare)
-            print(f"  [Redeploy] {p.name}'s lane won -- sends {spare.name} to reinforce {weakest.name}")
-
-    if boss_active:
-        target = random.choice(players)
-        apply_boss_passive(boss_active, target)
-        boss_card = boss_active['card']
-        boss_dmg = to_int(boss_card.get('Damage')) + boss_active.get('dmg_bonus', 0)
-        if target.active:
-            target_armor = to_int(target.active.card.get('Armor')) + target.active.equipped_bonus('Armor')
-            dealt = max(1, boss_dmg - target_armor) if boss_dmg > 0 else 0
-            target.active.cur_hp -= dealt
-            print(f"  [BOSS] {boss_card['Name']} hits {target.name}'s lane for {dealt}")
-            if target.active.cur_hp <= 0 and not try_chronostasis_save(target, target.active):
-                target.graveyard.append(target.active)
-                target.stats['deaths'] += 1
-                target.active = target.reserve[0] if target.reserve else None
-                target.reserve = target.reserve[1:] if len(target.reserve) > 1 else []
-                if boss_active.get('heals_on_kill'):
-                    boss_active['hp_cur'] += boss_active['heals_on_kill']
-        boss_armor = boss_active.get('armor_bonus', 0)
+        # Deal this round's hoard: draw the FULL pool across every lane first, reveal reveal_count of
+        # them, reshuffle, then split back out to lanes -- a scouted card isn't pre-assigned to any
+        # particular lane (README #33's sequencing).
+        print(f"  Enemy hoard this round: {diff_count}x {diff_rank} per lane")
+        global_reduction = HOARD_REDUCTION.get('__global__', 0)
+        full_pool = []
+        per_player_counts = {}
+        pool = enemy_by_rank[diff_rank]
         for p in players:
-            if not p.lane_enemy_reserve and p.active:
-                atk = to_int(p.active.card.get('Damage',0)) + p.active.equipped_bonus('Damage')
-                dealt = max(1, atk - boss_armor) if atk > 0 else 0
-                boss_active['hp_cur'] -= dealt
-        if boss_active['hp_cur'] <= 0:
-            print(f"  [BOSS DEFEATED] {boss_card['Name']} is dead!")
-            boss_active = None
-            boss_died_last_round = True
+            count = max(0, diff_count - global_reduction - HOARD_REDUCTION.get(p.name, 0))
+            per_player_counts[p.name] = count
+            full_pool.extend(random.choice(pool) for _ in range(count)) if pool else None
+        random.shuffle(full_pool)
+        revealed = random.sample(full_pool, min(reveal_count, len(full_pool)))
+        if revealed:
+            print(f"  [Scouted] {', '.join(e['Name'] for e in revealed)}")
+        idx = 0
+        for p in players:
+            n = per_player_counts[p.name]
+            p.lane_enemy_reserve = full_pool[idx: idx + n]
+            idx += n
 
-    # The Cell can only hold the FINAL enemy killed in a lane this round, and which lane that is
-    # is itself random (lanes don't resolve in a fixed order at the table) -- so even though every
-    # enemy in a given round's hoard shares the same Rank in this model, which lane's kill actually
-    # gets offered to Containment is still an RNG draw, not a guaranteed pick.
-    if lanes_with_a_kill and containment_slots > 0 and len(contained_enemies) < containment_slots:
-        random.choice(lanes_with_a_kill)
-        contained_enemies.append(diff_rank)
-        print(f"  [Containment] stores a {diff_rank} ({len(contained_enemies)}/{containment_slots} cells filled)")
+        # Battlefield's Active Effects target enemy hoards / active units, so Battlefield-building
+        # cards in hand are resolved here, after the hoard is dealt but BEFORE Reveal effects fire --
+        # this lets Air Strike/Defense Turrets/Chemical Warfare trim the hoard before anything in it
+        # gets a chance to reveal, and lets Early Warning Network's Active (half multi-lane Reveal
+        # damage this round) take effect before the Reveal damage it's meant to soften actually lands.
+        resolve_commander_hand(lambda loc: loc == 'Battlefield')
+        resolve_noncommander_hands(lambda loc: loc == 'Battlefield')
+
+        for p in players:
+            for e in p.lane_enemy_reserve:
+                on_reveal(e, p, players)  # dispatch hook for Enemy Stats' Reveal-column effects (Section 4)
+
+        # ---------------- COMBAT ----------------
+        overrun_lanes = 0
+        overran_players = set()
+        lanes_won = set()  # players whose lane actually fought and cleared this round (real combat win, not an idle lane)
+        lanes_with_a_kill = []  # which players' lanes scored at least 1 kill this round -- feeds Containment storage RNG
+        overrun_leftover_enemies = {}  # player -> surviving enemy Combatants, for Lane Reinforcement below
+        for p in players:
+            apply_precombat_gear(p)
+            apply_precombat_unit(p)
+            p_units = ([p.active] if p.active else []) + list(p.reserve)
+            p_combatants = []
+            for ui in p_units:
+                c = Combatant(ui.card)
+                c.dmg += ui.equipped_bonus('Damage')
+                c.armor += ui.equipped_bonus('Armor')
+                c.hp = ui.max_hp
+                c.cur_hp = ui.cur_hp
+                c.cur_shields = ui.cur_shields
+                apply_gear_combat_mods(c, ui)
+                apply_unit_combat_mods(c, ui)
+                p_combatants.append(c)
+            e_combatants = []
+            for e in p.lane_enemy_reserve:
+                ec = Combatant(e)
+                apply_enemy_combat_mods(ec, e)
+                e_combatants.append(ec)
+            if not e_combatants:
+                print(f"  {p.name}: no enemies this lane (clean).")
+                continue
+            overrun, p_surv, e_surv = resolve_lane_combat(p_combatants, e_combatants)
+            kills_this_lane = len(e_combatants) - len(e_surv)
+            if kills_this_lane > 0:
+                lanes_with_a_kill.append(p)  # at least 1 enemy died in this lane this round
+                p.stats['kills'] += kills_this_lane
+            if overrun:
+                overrun_lanes += 1
+                overran_players.add(p)
+                overrun_leftover_enemies[p] = e_surv
+                p.stats['overruns_suffered'] += 1
+                print(f"  {p.name}'s lane OVERRUN ({len(e_surv)} enemies still standing)")
+            else:
+                print(f"  {p.name}'s lane CLEARED ({len(p_surv)} units survived)")
+                lanes_won.add(p)
+            new_units = []
+            for ui, c in zip(p_units, p_combatants):
+                if c in p_surv:
+                    ui.cur_hp = c.cur_hp
+                    ui.cur_shields = c.cur_shields
+                    new_units.append(ui)
+                elif id(ui) in CANNOT_DIE:
+                    ui.cur_hp = 1
+                    new_units.append(ui)
+                elif try_chronostasis_save(p, ui):
+                    new_units.append(ui)
+                elif try_revive_once(p, ui):
+                    new_units.append(ui)
+                else:
+                    apply_explode_on_death(p, ui)
+                    real_gear = [g for g in ui.equipped if 'Name' in g]  # excludes temp_buff's synthetic,
+                    if real_gear:  # nameless stat-only dicts (Tranq rounds etc.), which aren't real items
+                        # README #33: gear survives the unit's death, but only 1 item -- owner keeps the best one
+                        kept = max(real_gear, key=lambda g: to_int(g.get('Damage',0)) + to_int(g.get('HP',0))
+                                   + to_int(g.get('Armor',0)) + to_int(g.get('Shields',0)))
+                        p.gear_hand.append(kept)  # the rest is lost for good
+                    p.graveyard.append(ui)
+                    p.stats['deaths'] += 1
+            p.active = new_units[0] if new_units else None
+            p.reserve = new_units[1:] if len(new_units) > 1 else []
+
+        # Post-combat Lane Reinforcement (README #33): once every lane has resolved its own Combat
+        # Cycle, a lane that fully cleared its enemies may send its survivors into a still-overrun
+        # lane for one extra exchange against whatever enemies are left there -- this can rescue a
+        # lane from an overrun, and resolves before the Overrunning Lanes check.
+        for p in sorted(lanes_won, key=lambda q: -instance_power(q.active) if q.active else 0):
+            if not overrun_leftover_enemies:
+                break
+            reinforcements = ([p.active] if p.active else []) + list(p.reserve)
+            if not reinforcements:
+                continue
+            target = max(overrun_leftover_enemies, key=lambda q: sum(c.cur_hp for c in overrun_leftover_enemies[q]))
+            r_combatants = []
+            for ui in reinforcements:
+                c = Combatant(ui.card)
+                c.dmg += ui.equipped_bonus('Damage')
+                c.armor += ui.equipped_bonus('Armor')
+                c.hp = ui.max_hp
+                c.cur_hp = ui.cur_hp
+                c.cur_shields = ui.cur_shields
+                apply_gear_combat_mods(c, ui)
+                apply_unit_combat_mods(c, ui)
+                r_combatants.append(c)
+            overrun2, r_surv, e_surv2 = resolve_lane_combat(r_combatants, overrun_leftover_enemies[target])
+            surviving_ids = set(id(c) for c in r_surv)
+            new_reinforcements = []
+            for ui, c in zip(reinforcements, r_combatants):
+                if id(c) in surviving_ids:
+                    ui.cur_hp = c.cur_hp
+                    ui.cur_shields = c.cur_shields
+                    new_reinforcements.append(ui)
+                else:
+                    p.graveyard.append(ui)
+                    p.stats['deaths'] += 1
+            p.active, p.reserve = None, []  # they've moved permanently into target's lane
+            target.active = new_reinforcements[0] if new_reinforcements else target.active
+            target.reserve = list(target.reserve) + new_reinforcements[1:]
+            if not overrun2:
+                print(f"  [Lane Reinforcement] {p.name}'s survivors save {target.name}'s lane!")
+                overrun_lanes -= 1
+                overran_players.discard(target)
+                lanes_won.add(target)
+                del overrun_leftover_enemies[target]
+            else:
+                overrun_leftover_enemies[target] = e_surv2
+                print(f"  [Lane Reinforcement] {p.name}'s survivors reinforce {target.name}'s lane but it's still overrun")
+
+        for p in players:
+            p.overrun_last_round = p in overran_players
+
+        # Redeploy: a player whose lane WON this round may send up to 1 spare reserve unit to
+        # reinforce whichever teammate's lane is currently weakest, for next round's combat.
+        # Real (permanent) transfer, not a loan -- decided after combat resolves, not before.
+        for p in sorted(lanes_won, key=lambda p: -instance_power(p.reserve[0]) if p.reserve else 0):
+            if not p.reserve:
+                continue
+            def lane_power(q):
+                return sum(instance_power(u) for u in (([q.active] if q.active else []) + list(q.reserve)))
+            weakest = min((q for q in players if q is not p), key=lane_power)
+            if lane_power(weakest) < lane_power(p):
+                spare = min(p.reserve, key=instance_power)
+                p.reserve.remove(spare)
+                if weakest.active is None:
+                    weakest.active = spare
+                else:
+                    weakest.reserve.append(spare)
+                print(f"  [Redeploy] {p.name}'s lane won -- sends {spare.name} to reinforce {weakest.name}")
+
+        if boss_active:
+            target = random.choice(players)
+            apply_boss_passive(boss_active, target)
+            boss_card = boss_active['card']
+            boss_dmg = to_int(boss_card.get('Damage')) + boss_active.get('dmg_bonus', 0)
+            if target.active:
+                target_armor = to_int(target.active.card.get('Armor')) + target.active.equipped_bonus('Armor')
+                dealt = max(1, boss_dmg - target_armor) if boss_dmg > 0 else 0
+                target.active.cur_hp -= dealt
+                print(f"  [BOSS] {boss_card['Name']} hits {target.name}'s lane for {dealt}")
+                if target.active.cur_hp <= 0 and not try_chronostasis_save(target, target.active):
+                    target.graveyard.append(target.active)
+                    target.stats['deaths'] += 1
+                    target.active = target.reserve[0] if target.reserve else None
+                    target.reserve = target.reserve[1:] if len(target.reserve) > 1 else []
+                    if boss_active.get('heals_on_kill'):
+                        boss_active['hp_cur'] += boss_active['heals_on_kill']
+            boss_armor = boss_active.get('armor_bonus', 0)
+            for p in players:
+                if not p.lane_enemy_reserve and p.active:
+                    atk = to_int(p.active.card.get('Damage',0)) + p.active.equipped_bonus('Damage')
+                    dealt = max(1, atk - boss_armor) if atk > 0 else 0
+                    boss_active['hp_cur'] -= dealt
+            if boss_active['hp_cur'] <= 0:
+                print(f"  [BOSS DEFEATED] {boss_card['Name']} is dead!")
+                boss_active = None
+                boss_died_last_round = True
+
+        # The Cell can only hold the FINAL enemy killed in a lane this round, and which lane that is
+        # is itself random (lanes don't resolve in a fixed order at the table) -- so even though every
+        # enemy in a given round's hoard shares the same Rank in this model, which lane's kill actually
+        # gets offered to Containment is still an RNG draw, not a guaranteed pick.
+        if lanes_with_a_kill and containment_slots > 0 and len(contained_enemies) < containment_slots:
+            random.choice(lanes_with_a_kill)
+            contained_enemies.append(diff_rank)
+            print(f"  [Containment] stores a {diff_rank} ({len(contained_enemies)}/{containment_slots} cells filled)")
+
+    else:
+        overrun_lanes = 0
+        print("  [Round 0] No enemies, no Combat Stage this round.")
 
     # ---------------- CLEANUP ----------------
     clear_round_temp_state()
@@ -1687,7 +1846,7 @@ while True:
     # Command Card hand refill: every player tops back up to their hand cap (2, or 3 for
     # whoever was commander this round) by drawing from the shared deck.
     for p in players:
-        cap = 3 if p is commander else 2
+        cap = COMMANDER_HAND_SIZE if p is commander else COMMAND_HAND_SIZE
         while len(p.hand) < cap and command_deck:
             p.hand.append(command_deck.pop())
 
@@ -1709,49 +1868,9 @@ while True:
             overrun_tracker = min(20, overrun_tracker + 5)
             print(f"  [Last Stand Beacon] {holder.name} sacrifices 2 Player Progress -> {player_progress}/10, restores Overrun Tracker +5 -> {overrun_tracker}/20")
 
-    event_passed = random.random() < 0.55
-    print(f"  Event {'PASSED' if event_passed else 'FAILED'}" + (f" ({active_event['Event name']})" if active_event else ""))
-    for p in players:
-        p.stats['events_passed' if event_passed else 'events_failed'] += 1
-    if active_event:
-        apply_event_resolution(active_event, event_passed, commander)
-
-    if event_passed:
-        eligible = [p for p in players if p.rank < commander.rank]
-        if eligible:
-            promo = min(eligible, key=lambda p: p.rank)
-            promo.rank = min(len(RANK_ORDER), promo.rank + 1)
-            promo.stats['promotions_received'] += 1
-            print(f"  Promotion: {promo.name} -> Rank {RANK_ORDER[promo.rank-1]}")
-
-    # Mission completion (the OTHER promotion path). Players are racing to rank up ASAP for
-    # stronger units, so: always complete the best eligible promoting mission if one is held.
-    for p in players:
-        eligible_missions = [m for m in p.missions if RANK_NUM[m['Player Rank']] >= p.rank and mission_requirement_met(m, p)]
-        if eligible_missions:
-            m = max(eligible_missions, key=lambda m: RANK_NUM[m['Player Rank']])
-            p.missions.remove(m)
-            p.rank = min(len(RANK_ORDER), p.rank + 1)
-            p.stats['promotions_received'] += 1
-            apply_mission_reward(m, p)
-            print(f"  Mission complete: {p.name} finishes '{m['Name']}' -> Rank {RANK_ORDER[p.rank-1]}")
-            p.stats['missions_completed'] += 1
-            if p.has_recon_satellite and can_use_effect('Recon Satellite', 3):
-                enemy_progress = max(0, enemy_progress - 1)
-                record_effect_use('Recon Satellite')
-                print(f"  [Recon Satellite] {p.name} reduces Enemy Progress by 1 -> {enemy_progress}/10 (use {EFFECT_USES['Recon Satellite']}/3)")
-
-    if round_num > 1:
-        enemy_progress = min(10, enemy_progress + 1)
-        if overrun_lanes == 0:
-            player_progress += 1
-    print(f"  After Escalate: PlayerProg {player_progress}/10, EnemyProg {enemy_progress}/10")
-
-    commander_idx = (commander_idx + 1) % len(players)
-
-    if player_progress >= 10:
-        print(f"\n#### PLAYERS WIN on Round {round_num}! Player Progress reached 10. ####")
-        break
+    # README #34: the Overrun Tracker hitting 0 ends the game IMMEDIATELY -- no remaining Cleanup
+    # sub-steps (Event Resolution, Promotions, Mission completion, Escalate) run once it happens,
+    # even mid-Cleanup.
     if overrun_tracker <= 0:
         deus_holder = next((p for p in players if any(
             so['Name'] == 'Deus Machina' for so in p.secret_objectives) and can_use_effect('Deus Machina', 1)), None)
@@ -1765,6 +1884,65 @@ while True:
         else:
             print(f"\n#### PLAYERS LOSE on Round {round_num}. Overrun Tracker hit 0. ####")
             break
+
+    # README #32: Round 0's Cleanup skips Event Resolution and Promotions entirely -- nothing for
+    # either to act on yet (no combat happened, no event consequence to check).
+    if not is_prep_round:
+        event_passed = random.random() < 0.55
+        print(f"  Event {'PASSED' if event_passed else 'FAILED'}" + (f" ({active_event['Event name']})" if active_event else ""))
+        for p in players:
+            p.stats['events_passed' if event_passed else 'events_failed'] += 1
+        if active_event:
+            apply_event_resolution(active_event, event_passed, commander)
+
+        if event_passed:
+            eligible = [p for p in players if p.rank < commander.rank]
+            if eligible:
+                promo = min(eligible, key=lambda p: p.rank)
+                promo.rank = min(len(RANK_ORDER), promo.rank + 1)
+                promo.stats['promotions_received'] += 1
+                print(f"  Promotion: {promo.name} -> Rank {RANK_ORDER[promo.rank-1]}")
+
+    # Mission completion (the OTHER promotion path). Players are racing to rank up ASAP for
+    # stronger units, so: always complete the best eligible promoting mission if one is held.
+    for p in players:
+        eligible_missions = [m for m in p.missions if RANK_NUM[m['Player Rank']] >= p.rank and mission_requirement_met(m, p)]
+        if eligible_missions:
+            m = max(eligible_missions, key=lambda m: RANK_NUM[m['Player Rank']])
+            p.missions.remove(m)
+            # README #36: a mission whose bracketed Rank is 3+ tiers above the completing player's
+            # current Rank grants +2 total instead of the usual +1 (capped at +2).
+            gain = 2 if RANK_NUM[m['Player Rank']] - p.rank >= 3 else 1
+            p.rank = min(len(RANK_ORDER), p.rank + gain)
+            p.stats['promotions_received'] += 1
+            apply_mission_reward(m, p)
+            print(f"  Mission complete: {p.name} finishes '{m['Name']}' (+{gain} Rank) -> Rank {RANK_ORDER[p.rank-1]}")
+            p.stats['missions_completed'] += 1
+            if p.has_recon_satellite and can_use_effect('Recon Satellite', 3):
+                enemy_progress = max(0, enemy_progress - 1)
+                record_effect_use('Recon Satellite')
+                print(f"  [Recon Satellite] {p.name} reduces Enemy Progress by 1 -> {enemy_progress}/10 (use {EFFECT_USES['Recon Satellite']}/3)")
+
+    if round_num > 1:
+        enemy_progress = min(10, enemy_progress + 1)
+        if overrun_lanes == 0:
+            player_progress += 1
+    print(f"  After Escalate: PlayerProg {player_progress}/10, EnemyProg {enemy_progress}/10")
+
+    # Rank Trickle (README #41): every player gains +1 Rank automatically every 2 rounds (end of
+    # Round 2, 4, 6...; Round 0 doesn't count toward this), capped at Brigadier, stacking with
+    # whatever Missions/Promotions already granted this round.
+    if round_num > 0 and round_num % 2 == 0:
+        for p in players:
+            if p.rank < len(RANK_ORDER):
+                p.rank += 1
+        print(f"  [Rank Trickle] Every player +1 Rank -> {[RANK_ORDER[p.rank-1] for p in players]}")
+
+    commander_idx = (commander_idx + 1) % len(players)
+
+    if player_progress >= 10:
+        print(f"\n#### PLAYERS WIN on Round {round_num}! Player Progress reached 10. ####")
+        break
 
 print("\n=== GAME OVER ===")
 print(f"Final: Round {round_num} | PlayerProg {player_progress}/10 | EnemyProg {enemy_progress}/10 | Overrun {overrun_tracker}/20")
