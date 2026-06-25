@@ -75,13 +75,37 @@ actually dispatches anywhere (`long_range`, `delete_on_kill` for units specifica
 `execute_low_hp`, `heal_on_kill`, `shields_on_kill`, `once_per_combat_heal`) are left unconsumed
 here too — faithfully matching the source, not a gap introduced by the port.
 
-**Still deferred**: Enemy and Gear ability text (next, in that order per the original
-Gear→Unit→Enemy build order sim.py used — Units jumped the queue this round specifically for the
-Attacks-1st fix), Missions, Events, Bosses, Secret Objectives, Tactician.
+**Enemies — done.** `engine/enemies.ts` ports `ENEMY_KEYWORD_RULES`/`classify_enemy` (same
+substring-matching approach, over the Passive column) and `apply_enemy_combat_mods`:
+`shred_armor_on_hit`, `multistrike_2/4/6`, `lifesteal`, `reflect_full`/`reflect_on_armor`,
+`double_hp`/`double_attack`, `ignore_armor`, `takes_half_damage`, `gain_armor_on_hit`. Note:
+`attacks_first` is classified for enemies too but — exactly as in `sim.py` — never changes combat
+order, since `resolveLaneCombat` only branches on the *player* side's `attacksFirst` (the enemy
+already acts first by default). Unlike Units, this backfill mostly makes specific enemies
+*tougher* (lifesteal, double HP, armor shred are enemy-side buffs) rather than helping players —
+expected, not a sign the wrong thing got ported.
 
-**Result so far**: bot-only games run longer (5-9 rounds vs. 4-8 before, across a 12-run sample)
-but still 0 wins — expected, since Enemy and Gear dispatch (probably carrying similar weight)
-aren't ported yet. Not a regression; the win-rate gap closes incrementally as each deck lands.
+**Gear — done.** `engine/gear.ts` ports the full Gear dispatch: `apply_gear_combat_mods`
+(name-set based equip-time mods — ignore-armor, shield-multiplier, armor-shred, first-hit-free,
+delete-on-kill weapons), `apply_precombat_gear` (reserve-unit healers, precombat
+heals/shields, the dice-roll items — XVL3/XVL33, Holographic Decoys, Quantum Plates — and
+auto-activating every affordable equipped Active effect each round, since `sim.py` has no human
+choice here either), `apply_gear_active`'s ~30-branch name dispatch (medkits, enemy-hoard-thinning
+items like Grenades/Landmines/Artillery Strike, Shield Generator, Nanite Tech's item-transfer,
+Chronostasis), and Chronostasis's death-save (added to the same death-handling chain as
+Rambo's revive-once, before it, matching `sim.py`'s order). A handful of items (Expanded
+Backpack, Resupply Drone, Smoke Launcher, Night Vision, Reanimator) have no clean mechanical
+hook — documented no-ops, same as the source.
+
+**Still deferred**: Missions, Events, Bosses, Secret Objectives, Tactician, and the remaining
+human decision points (purchases, equip, Command Card build/activate, targeting).
+
+**Result so far**: with all three ability-text decks (Units, Enemies, Gear) now ported, bot-only
+games run somewhat longer (5-9 rounds, average ~7, vs. 4-8 before any of this backfill) but still
+0 wins across a 15-run sample. The remaining gap to the validated ~47% likely sits mostly in the
+still-missing systems — Missions in particular grant *additional* Rank promotions on top of Rank
+Trickle in the full ruleset, which this engine doesn't have yet — rather than further ability-text
+polish. Not a regression; just where the gap actually lives now.
 
 ## Running it locally
 

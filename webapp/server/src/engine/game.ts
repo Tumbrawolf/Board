@@ -22,6 +22,8 @@ import {
 } from "./combat.js";
 import { applyBattlefieldActive, applyCommandActive } from "./commandCards.js";
 import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, tryReviveOnce } from "./units.js";
+import { applyEnemyCombatMods } from "./enemies.js";
+import { applyGearCombatMods, applyPrecombatGear, tryChronostasisSave } from "./gear.js";
 import { type BotDecisionProvider, type DecisionProvider } from "./decisions.js";
 import { ensureLowestRankGear, ensureLowestRankUnit, refillShopGear, refillShopUnit } from "./shop.js";
 import {
@@ -582,14 +584,20 @@ export class GameEngine {
     const overrunLeftover = new Map<GamePlayer, Combatant[]>();
 
     for (const p of game.players) {
+      applyPrecombatGear(game, p, (t) => this.log(t), tempState);
       applyPrecombatUnit(p, tempState);
       const pUnits = [...(p.active ? [p.active] : []), ...p.reserve];
       const pCombatants = pUnits.map((ui) => {
         const c = combatantFromUnit(ui);
+        applyGearCombatMods(c, ui);
         applyUnitCombatMods(c, ui);
         return c;
       });
-      const eCombatants = p.laneEnemyReserve.map((e) => new Combatant(e));
+      const eCombatants = p.laneEnemyReserve.map((e) => {
+        const c = new Combatant(e);
+        applyEnemyCombatMods(c, e);
+        return c;
+      });
       if (!eCombatants.length) {
         this.log(`  ${p.name}: no enemies this lane (clean).`);
         continue;
@@ -619,6 +627,8 @@ export class GameEngine {
           newUnits.push(ui);
         } else if (tempState.cannotDie.has(ui.id)) {
           ui.curHp = 1;
+          newUnits.push(ui);
+        } else if (tryChronostasisSave(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
         } else if (tryReviveOnce(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
@@ -659,6 +669,7 @@ export class GameEngine {
       if (!target) continue;
       const rCombatants = reinforcements.map((ui) => {
         const c = combatantFromUnit(ui);
+        applyGearCombatMods(c, ui);
         applyUnitCombatMods(c, ui);
         return c;
       });
