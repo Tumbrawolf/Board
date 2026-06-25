@@ -74,6 +74,10 @@ export class GameEngine {
   private onLog: LogFn;
   private placementsThisRound: Record<number, Location[]> = {};
   private containedEnemies: EnemyRank[] = [];
+  /** sim.py's containment_slots: starts at 0 (Containment storage genuinely does nothing until
+   * "Containment Protocol" is built, unlike the other Passive-unlock flags it sets alongside,
+   * which are inert everywhere in the source too -- only this one is actually consumed). */
+  private containmentSlots = 0;
   private locationUpgradesBuilt: Record<Location, CommandCard[]>;
   private nextCommanderSeatIndex: number | null = null;
   /** Fired once per resolved worker placement (bot or human), for the server layer to broadcast
@@ -653,6 +657,7 @@ export class GameEngine {
       if (choice === "build") {
         for (const k of ["Organic", "Tech", "Alien"] as const) game.commandPool[k] -= toInt((card as any)[k]);
         game.locationUpgradesBuilt[loc].push(card);
+        if (card.Name === "Containment Protocol") this.containmentSlots = 2;
         this.log(`  [Upgrade built] ${loc}: ${card.Name} (from ${commander.name}'s hand)`);
       } else {
         this.log(`  [Active Effect] ${loc}: ${commander.name} activates ${card.Name} for free (commander) -> ${card["Active Effect"]}`);
@@ -822,7 +827,7 @@ export class GameEngine {
         } else if (tryReviveOnce(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
         } else {
-          applyExplodeOnDeath(p, ui, (t) => this.log(t));
+          applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
           const realGear = ui.equipped.filter((g) => "Name" in (g as any));
           if (realGear.length) {
             const kept = realGear.reduce((a, b) =>
@@ -919,9 +924,9 @@ export class GameEngine {
       resolveBossExchange(game, (t) => this.log(t));
     }
 
-    if (lanesWithKill.length && this.containedEnemies.length < 2) {
+    if (lanesWithKill.length && this.containmentSlots > 0 && this.containedEnemies.length < this.containmentSlots) {
       this.containedEnemies.push(diffRank);
-      this.log(`  [Containment] stores a ${diffRank} (${this.containedEnemies.length}/2 cells filled)`);
+      this.log(`  [Containment] stores a ${diffRank} (${this.containedEnemies.length}/${this.containmentSlots} cells filled)`);
     }
 
     return overrunLanes;

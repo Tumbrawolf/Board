@@ -42,11 +42,28 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
   switch (name) {
     case "Mech Station":
     case "Vehicle Bay":
+      // These two specifically pull from sim.py's locked Vehicle/Mech sub-deck, which isn't
+      // ported (all units are in one pool from the start) -- documented no-op until it is.
+      break;
     case "Combined Arms":
-    case "Conscription":
+      // sim.py sets vehicle_unlocked/mech_unlocked flags here, but nothing in either engine
+      // actually gates a purchase on them (Mech Station/Vehicle Bay pull from the locked deck
+      // directly) -- inert in both, not just here.
+      break;
+    case "Conscription": {
+      // Pulls from the regular unit_deck (Rank 1 only) -- doesn't touch the locked Vehicle/Mech
+      // deck at all, fully portable.
+      const pool = game.unitDeck.filter((u) => RANK_NUM[u.Rank] === 1);
+      if (pool.length) {
+        const u = pool[Math.floor(Math.random() * pool.length)];
+        game.unitDeck.splice(game.unitDeck.indexOf(u), 1);
+        addTempUnitPerm(w, makeUnitInstance(u));
+      }
+      break;
+    }
     case "Rapid Deployment":
-      // No locked Vehicle/Mech sub-deck in Stage 2 (all units are in one pool from the start) --
-      // documented no-op until that system is ported.
+      w.res.Organic += 3;
+      w.res.Tech += 3;
       break;
     case "Additional Bedding": {
       const pool = game.unitDeck.filter((u) => RANK_NUM[u.Rank] <= commander.rank);
@@ -122,6 +139,7 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       break;
     case "Exploitation":
       if (commander.active) {
+        if (game.bossActive) game.bossActive.hpCur -= 15;
         commander.graveyard.push(commander.active);
         commander.stats.deaths += 1;
         commander.active = commander.reserve.length ? commander.reserve[0] : null;
@@ -202,8 +220,13 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       game.commandPool.Tech += 5;
       break;
     case "Take Credit":
-      // No Mission/Event-driven promotion roll exists yet in Stage 2 (only Rank Trickle, which
-      // isn't "a promotion someone else would get") -- documented no-op for now.
+      // sim.py's own implementation isn't a literal "intercept someone else's promotion" hook
+      // either (that would need to reach into every promotion-granting code path) -- it's a flat
+      // self-promotion approximation, same as ported here.
+      if (commander.rank < RANK_ORDER.length) {
+        commander.rank += 1;
+        commander.stats.promotionsReceived += 1;
+      }
       break;
     case "Pull Rank":
       if (game.shopUnits.length && commander.rank > Math.max(...game.shopUnits.map((u) => RANK_NUM[u.Rank]))) {
@@ -263,7 +286,13 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       break;
     }
     case "Collaboration":
-      // No Mission system yet in Stage 2 ("cover mission costs") -- documented no-op.
+      // sim.py's actual implementation is a flat command-pool-to-weakest-player transfer, not a
+      // literal "cover mission costs" hook -- ported as-is, matching the source exactly.
+      for (const res of ["Organic", "Tech", "Alien"] as const) {
+        const give = Math.min(3, game.commandPool[res]);
+        game.commandPool[res] -= give;
+        w.res[res] += give;
+      }
       break;
     case "Scouting update":
       commander.res.Organic += 3;
@@ -274,7 +303,9 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       tempState.halfOverrunDamage = true;
       break;
     case "Eradicator Cannon":
-      // No Boss system yet in Stage 2 -- documented no-op.
+      // sim.py's actual implementation doesn't reference Boss at all -- it's a hoard-reduction
+      // effect on the weakest player's next deal, same pattern as "Perfect information".
+      tempState.hoardReduction.set(w.seatIndex.toString(), (tempState.hoardReduction.get(w.seatIndex.toString()) ?? 0) + 1);
       break;
     case "Strategic Withdrawal":
       if (canUseEffect(game, "Strategic Withdrawal", 1)) {
@@ -340,7 +371,7 @@ export function applyBattlefieldActive(ctx: CommandContext, card: CommandCard) {
       if (w.active) tempState.tempBuff(w.active, { Damage: toInt(w.active.card.Damage) });
       break;
     case "Punch Through":
-      // No Boss system yet in Stage 2 -- documented no-op.
+      if (game.bossActive) game.bossActive.hpCur -= 5;
       break;
     case "Tranq rounds":
       if (w.active) tempState.tempBuff(w.active, { Armor: 4 });

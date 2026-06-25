@@ -66,13 +66,13 @@ export function tryReviveOnce(game: GameState, p: GamePlayer, ui: UnitInstance, 
   return false;
 }
 
-/** explode_on_death's Boss-targeting branch is a documented no-op (no Boss system ported yet);
- * the enemy-reserve-trim branch (the only one reachable without a Boss) is fully ported. */
-export function applyExplodeOnDeath(p: GamePlayer, ui: UnitInstance, log: (t: string) => void) {
+export function applyExplodeOnDeath(game: GameState, p: GamePlayer, ui: UnitInstance, log: (t: string) => void) {
   const tags = classifyUnit(ui.card);
   if (tags.has("explode_on_death")) {
     const dmg = toInt(ui.card.Damage) * 3;
-    if (p.laneEnemyReserve.length) {
+    if (game.bossActive) {
+      game.bossActive.hpCur -= dmg;
+    } else if (p.laneEnemyReserve.length) {
       p.laneEnemyReserve = p.laneEnemyReserve.filter((e) => toInt(e.HP) > dmg);
     }
     log(`  [Explode] ${p.name}'s ${ui.card.Name} explodes on death for ${dmg}`);
