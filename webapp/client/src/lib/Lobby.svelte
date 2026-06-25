@@ -3,6 +3,7 @@
   import { socket, clientId, loadOrCreateName, saveName } from "./socket";
   import BoardView from "./BoardView.svelte";
   import PlanningPanel from "./PlanningPanel.svelte";
+  import BattlefieldCardPanel from "./BattlefieldCardPanel.svelte";
   import RulesPage from "./RulesPage.svelte";
 
   let showRules = $state(false);
@@ -357,6 +358,7 @@
         </div>
         <BoardView snapshot={gameSnapshot} mySeatIndex={mySeat?.seatIndex ?? null} />
         <PlanningPanel snapshot={gameSnapshot} mySeatIndex={mySeat?.seatIndex ?? null} />
+        <BattlefieldCardPanel />
       {/if}
 
       <div class="log" bind:this={logEl}>

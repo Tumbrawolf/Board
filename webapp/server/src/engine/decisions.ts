@@ -5,6 +5,12 @@ import {
   affordableUnits,
   buyGearMutation,
   buyUnitMutation,
+  canActivateAsNonCommander,
+  canBuildCard,
+  cardEligibleForBattlefield,
+  buildCardMutation,
+  commanderActivateCardMutation,
+  nonCommanderActivateCardMutation,
   equipGearOntoActiveMutation,
 } from "./planningActions.js";
 import { reorderActive } from "./state.js";
@@ -26,6 +32,16 @@ export interface PlanningWindowCtx {
   isCommander: boolean;
   eligibleToActivateAsNonCommander: boolean;
   log: (text: string) => void;
+}
+
+/** Stage 7's Battlefield-card window: unlike the Planning window, there's no later step whose
+ * state changes what's legal here (no Donation-equivalent occurs between this and Combat), so
+ * choices apply immediately instead of being recorded for later. */
+export interface BattlefieldWindowCtx {
+  isCommander: boolean;
+  eligibleToActivateAsNonCommander: boolean;
+  log: (text: string) => void;
+  dispatch: (card: CommandCard, loc: Location) => void;
 }
 
 /** Per-seat decision points. Stage 2 only had BotDecisionProvider (mirroring Working/sim.py's
@@ -74,6 +90,11 @@ export interface DecisionProvider {
    * immediately (via planningActions.ts's mutators) and return the player's recorded Command Card
    * choices (possibly empty -- a bot still decides those live in game.ts's later Phase 2). */
   runPlanningWindow(player: GamePlayer, game: GameState, ctx: PlanningWindowCtx): Promise<Map<string, CommandCardChoice>>;
+
+  /** Opens this player's Battlefield-card window (Combat stage, after enemy hoards exist). Unlike
+   * runPlanningWindow, choices apply immediately -- there's no later step that changes what's
+   * legal here. */
+  runBattlefieldCardWindow(player: GamePlayer, game: GameState, ctx: BattlefieldWindowCtx): Promise<void>;
 }
 
 const BOT_LOCATION_PRIORITY: Location[] = [
@@ -171,5 +192,29 @@ export class BotDecisionProvider implements DecisionProvider {
 
     reorderActive(player);
     return new Map();
+  }
+
+  /** Mirrors the old resolveHand/resolveNonCommanderHands live-ask loop, just relocated here so
+   * the bot path and the human path (MixedDecisionProvider) share one call site in game.ts. */
+  async runBattlefieldCardWindow(player: GamePlayer, game: GameState, ctx: BattlefieldWindowCtx): Promise<void> {
+    for (const card of [...player.hand].filter((c) => cardEligibleForBattlefield(game, c))) {
+      let choice: CommandCardChoice;
+      if (ctx.isCommander) {
+        choice = await this.chooseCommandCardAction(player, game, card, canBuildCard(game, card), true);
+      } else {
+        if (!ctx.eligibleToActivateAsNonCommander) continue;
+        choice = await this.chooseCommandCardAction(player, game, card, false, canActivateAsNonCommander(game, player, card));
+      }
+      if (choice === "skip") continue;
+      if (!ctx.isCommander && choice !== "activate") continue;
+      player.hand.splice(player.hand.indexOf(card), 1);
+      if (choice === "build") {
+        buildCardMutation(game, card, ctx.log, () => {});
+      } else if (ctx.isCommander) {
+        commanderActivateCardMutation(card, player, ctx.log, ctx.dispatch);
+      } else {
+        nonCommanderActivateCardMutation(game, card, player, ctx.log, ctx.dispatch);
+      }
+    }
   }
 }

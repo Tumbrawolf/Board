@@ -88,10 +88,15 @@ export function buyGearMutation(game: GameState, p: GamePlayer, choice: GearCard
 
 /** Both roles share this gate: a card with a capped one-time effect (Strategic Withdrawal) that's
  * already been used this game can't be built OR activated by anyone -- skip it entirely. Only
- * non-Battlefield cards belong in the Planning-stage window; Battlefield cards stay a separate,
- * still-bot-only step resolved during Combat after enemy hoards exist (see game.ts). */
+ * non-Battlefield cards belong in the Planning-stage window; Battlefield cards resolve in their
+ * own separate window during Combat, after enemy hoards exist (cardEligibleForBattlefield, see
+ * game.ts's resolveBattlefieldCards). */
 export function cardEligibleForPlanning(game: GameState, card: CommandCard): boolean {
   return card.Building !== "Battlefield" && canUseEffect(game, card.Name, card.Name === "Strategic Withdrawal" ? 1 : Infinity);
+}
+
+export function cardEligibleForBattlefield(game: GameState, card: CommandCard): boolean {
+  return card.Building === "Battlefield" && canUseEffect(game, card.Name, card.Name === "Strategic Withdrawal" ? 1 : Infinity);
 }
 
 /** Whether the COMMANDER can build this card as a permanent Upgrade right now (slot cap + funds

@@ -3,6 +3,7 @@ import type { Server, Socket } from "socket.io";
 import { LOCATIONS, type Location } from "./engine/constants.js";
 import {
   BotDecisionProvider,
+  type BattlefieldWindowCtx,
   type CommandCardChoice,
   type DecisionProvider,
   type PlacedWorker,
@@ -12,17 +13,22 @@ import type { CommandCard, GearCard, UnitCard } from "./engine/data.js";
 import {
   affordableGear,
   affordableUnits,
+  buildCardMutation,
   buyGearMutation,
   buyUnitMutation,
   canActivateAsNonCommander,
   canBuildCard,
+  cardEligibleForBattlefield,
   cardEligibleForPlanning,
+  commanderActivateCardMutation,
+  nonCommanderActivateCardMutation,
 } from "./engine/planningActions.js";
 import type { GamePlayer, GameState } from "./engine/types.js";
 import type { RoomState } from "./types.js";
 
 const PLACEMENT_TIMEOUT_MS = 30000;
 const PLANNING_TIMEOUT_MS = 60000;
+const BATTLEFIELD_TIMEOUT_MS = 30000;
 
 interface PendingPlacement {
   socketId: string;
@@ -41,9 +47,14 @@ export function resolvePlacementChoice(socketId: string, requestId: string, loca
   req.resolve(LOCATIONS.includes(location as Location) ? (location as Location) : null);
 }
 
-function serializeHandForPlanning(game: GameState, player: GamePlayer, ctx: PlanningWindowCtx) {
+function serializeHand(
+  game: GameState,
+  player: GamePlayer,
+  ctx: { isCommander: boolean; eligibleToActivateAsNonCommander: boolean },
+  eligible: (game: GameState, card: CommandCard) => boolean
+) {
   return player.hand
-    .filter((c) => cardEligibleForPlanning(game, c))
+    .filter((c) => eligible(game, c))
     .map((c) => ({
       name: c.Name,
       building: c.Building,
@@ -76,7 +87,8 @@ export class MixedDecisionProvider implements DecisionProvider {
     /** Called after every Shop/Equip action that actually mutates state, so the server layer can
      * re-broadcast game:state/game:privateState immediately instead of waiting for round-end. */
     private onStateChange: () => void = () => {},
-    private onPlanningTimeout: (player: GamePlayer) => void = () => {}
+    private onPlanningTimeout: (player: GamePlayer) => void = () => {},
+    private onBattlefieldTimeout: (player: GamePlayer) => void = () => {}
   ) {}
 
   async chooseWorkerPlacement(
@@ -165,7 +177,7 @@ export class MixedDecisionProvider implements DecisionProvider {
       }, PLANNING_TIMEOUT_MS);
 
       const sendUpdate = () => {
-        socket.emit("planning:update", { hand: serializeHandForPlanning(game, player, ctx) });
+        socket.emit("planning:update", { hand: serializeHand(game, player, ctx, cardEligibleForPlanning) });
       };
 
       const onBuyUnit = (payload: { name: string }, ack?: (r: { ok: boolean; error?: string }) => void) => {
@@ -217,8 +229,85 @@ export class MixedDecisionProvider implements DecisionProvider {
       socket.emit("planning:prompt", {
         isCommander: ctx.isCommander,
         eligibleToActivateAsNonCommander: ctx.eligibleToActivateAsNonCommander,
-        hand: serializeHandForPlanning(game, player, ctx),
+        hand: serializeHand(game, player, ctx, cardEligibleForPlanning),
         timeoutMs: PLANNING_TIMEOUT_MS,
+      });
+    });
+  }
+
+  /** Stage 7: the Battlefield-card window, opened mid-Combat after enemy hoards exist. Unlike
+   * runPlanningWindow, there's no later step that changes legality here, so choices apply
+   * immediately instead of being recorded for later. */
+  async runBattlefieldCardWindow(player: GamePlayer, game: GameState, ctx: BattlefieldWindowCtx): Promise<void> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === player.seatIndex);
+    if (!seat || seat.isBot) return this.bot.runBattlefieldCardWindow(player, game, ctx);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.runBattlefieldCardWindow(player, game, ctx);
+
+    return new Promise<void>((resolveWindow) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        socket.off("battlefield:resolveCard", onResolveCard);
+        socket.off("battlefield:done", onDone);
+        resolveWindow();
+      };
+
+      const timer = setTimeout(() => {
+        this.onBattlefieldTimeout(player);
+        finish();
+      }, BATTLEFIELD_TIMEOUT_MS);
+
+      const sendUpdate = () => {
+        socket.emit("battlefield:update", { hand: serializeHand(game, player, ctx, cardEligibleForBattlefield) });
+      };
+
+      const onResolveCard = (payload: { name: string; action: CommandCardChoice }, ack?: (r: { ok: boolean; error?: string }) => void) => {
+        const card = player.hand.find((c) => c.Name === payload?.name);
+        if (!card || !cardEligibleForBattlefield(game, card)) {
+          ack?.({ ok: false, error: "Card not available." });
+          return;
+        }
+        if (payload.action === "skip") {
+          ack?.({ ok: true });
+          sendUpdate();
+          return;
+        }
+        if (payload.action === "build") {
+          if (!ctx.isCommander || !canBuildCard(game, card)) {
+            ack?.({ ok: false, error: "Can't build that right now." });
+            return;
+          }
+          player.hand.splice(player.hand.indexOf(card), 1);
+          buildCardMutation(game, card, ctx.log, () => {});
+        } else if (ctx.isCommander) {
+          player.hand.splice(player.hand.indexOf(card), 1);
+          commanderActivateCardMutation(card, player, ctx.log, ctx.dispatch);
+        } else {
+          if (!ctx.eligibleToActivateAsNonCommander || !canActivateAsNonCommander(game, player, card)) {
+            ack?.({ ok: false, error: "Can't afford to activate that right now." });
+            return;
+          }
+          player.hand.splice(player.hand.indexOf(card), 1);
+          nonCommanderActivateCardMutation(game, card, player, ctx.log, ctx.dispatch);
+        }
+        ack?.({ ok: true });
+        this.onStateChange();
+        sendUpdate();
+      };
+
+      const onDone = () => finish();
+
+      socket.on("battlefield:resolveCard", onResolveCard);
+      socket.on("battlefield:done", onDone);
+
+      socket.emit("battlefield:prompt", {
+        isCommander: ctx.isCommander,
+        eligibleToActivateAsNonCommander: ctx.eligibleToActivateAsNonCommander,
+        hand: serializeHand(game, player, ctx, cardEligibleForBattlefield),
+        timeoutMs: BATTLEFIELD_TIMEOUT_MS,
       });
     });
   }

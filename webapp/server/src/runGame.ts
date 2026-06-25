@@ -42,6 +42,9 @@ export async function runGame(io: Server, room: RoomState, gameId: number, looku
     () => broadcastAll(),
     (player) => {
       io.to(room.code).emit("game:log", { text: `  [Planning timed out] ${player.name} -- defaulting to a bot pick` });
+    },
+    (player) => {
+      io.to(room.code).emit("game:log", { text: `  [Battlefield card window timed out] ${player.name} -- defaulting to a bot pick` });
     }
   );
 

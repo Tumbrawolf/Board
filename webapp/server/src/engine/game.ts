@@ -6,7 +6,6 @@ import {
   OVERRUN_START,
   RANK_NUM,
   RANK_ORDER,
-  UPGRADE_SLOT_CAP,
   bossTierFromProgress,
   enemyRankFromProgress,
   hoardCount,
@@ -671,76 +670,34 @@ export class GameEngine {
     }
   }
 
-  /** The Battlefield-card phase (runDeploymentAndCombat, after enemy hoards exist) still resolves
-   * via the original live-ask flow for every seat, bot or human -- Stage 4's interactive Planning
-   * window only covers Shop/Equip/non-Battlefield Command Cards, per the agreed scope. */
-  private async resolveHand(
-    commander: GamePlayer,
-    buildingFilter: (loc: Location) => boolean,
-    tempState: RoundTempState,
-    diffRank: EnemyRank
-  ) {
+  /** Stage 7: the Battlefield-card phase (after enemy hoards exist) is now interactive for a
+   * connected human seat too, via the same DecisionProvider.runBattlefieldCardWindow call site
+   * for bots and humans alike. Same bot-sequential / human-concurrent split as the Planning
+   * window's Promise.all -- bots must stay in a plain loop or their per-card decisions
+   * round-robin-interleave instead of each bot resolving its whole hand before the next starts. */
+  private async resolveBattlefieldCards(commander: GamePlayer, tempState: RoundTempState, diffRank: EnemyRank) {
     const game = this.game;
-    for (const card of [...commander.hand]) {
-      const loc = card.Building as Location;
-      if (!buildingFilter(loc) || !canUseEffect(game, card.Name, card.Name === "Strategic Withdrawal" ? 1 : Infinity)) {
-        continue;
-      }
-      const canBuild =
-        Boolean(card["Passive Effect"]?.trim()) &&
-        game.locationUpgradesBuilt[loc].length < UPGRADE_SLOT_CAP[loc] &&
-        (["Organic", "Tech", "Alien"] as const).every((k) => game.commandPool[k] >= toInt((card as any)[k]));
-      const choice = await this.decisions.chooseCommandCardAction(commander, game, card, canBuild, true);
-      commander.hand.splice(commander.hand.indexOf(card), 1);
-      if (choice === "build") {
-        for (const k of ["Organic", "Tech", "Alien"] as const) game.commandPool[k] -= toInt((card as any)[k]);
-        game.locationUpgradesBuilt[loc].push(card);
-        if (card.Name === "Containment Protocol") this.containmentSlots = 2;
-        this.log(`  [Upgrade built] ${loc}: ${card.Name} (from ${commander.name}'s hand)`);
-      } else {
-        this.log(`  [Active Effect] ${loc}: ${commander.name} activates ${card.Name} for free (commander) -> ${card["Active Effect"]}`);
-        this.dispatchEffect(card, loc, commander, tempState, diffRank);
-        game.commandDeck.unshift(card);
-      }
+    const ctxFor = (p: GamePlayer) => {
+      const isCommander = p === commander;
+      return {
+        isCommander,
+        eligibleToActivateAsNonCommander:
+          isCommander ||
+          this.placementsThisRound[p.seatIndex].includes("Command") ||
+          this.placementsThisRound[p.seatIndex].includes("Battlefield"),
+        log: (t: string) => this.log(t),
+        dispatch: (card: CommandCard, loc: Location) => {
+          this.dispatchEffect(card, loc, commander, tempState, diffRank);
+          game.commandDeck.unshift(card);
+        },
+      };
+    };
+    const botPlayers = game.players.filter((p) => !this.decisions.isInteractiveSeat(p));
+    const humanPlayers = game.players.filter((p) => this.decisions.isInteractiveSeat(p));
+    for (const p of botPlayers) {
+      await this.decisions.runBattlefieldCardWindow(p, game, ctxFor(p));
     }
-  }
-
-  private async resolveNonCommanderHands(
-    commander: GamePlayer,
-    buildingFilter: (loc: Location) => boolean,
-    tempState: RoundTempState,
-    diffRank: EnemyRank
-  ) {
-    const game = this.game;
-    const eligible = game.players.filter(
-      (p) =>
-        p !== commander &&
-        (this.placementsThisRound[p.seatIndex].includes("Command") ||
-          this.placementsThisRound[p.seatIndex].includes("Battlefield"))
-    );
-    for (const actor of eligible) {
-      for (const card of [...actor.hand]) {
-        const loc = card.Building as Location;
-        if (!buildingFilter(loc) || !canUseEffect(game, card.Name, card.Name === "Strategic Withdrawal" ? 1 : Infinity)) {
-          continue;
-        }
-        const canActivate = (["Organic", "Tech", "Alien"] as const).every(
-          (res) => actor.res[res] + game.commandPool[res] >= toInt((card as any)[res])
-        );
-        const choice = await this.decisions.chooseCommandCardAction(actor, game, card, false, canActivate);
-        if (choice !== "activate") continue;
-        for (const res of ["Organic", "Tech", "Alien"] as const) {
-          const cost = toInt((card as any)[res]);
-          const fromSelf = Math.min(actor.res[res], cost);
-          actor.res[res] -= fromSelf;
-          game.commandPool[res] -= cost - fromSelf;
-        }
-        actor.hand.splice(actor.hand.indexOf(card), 1);
-        this.log(`  [Active Effect] ${loc}: ${actor.name} (non-commander) activates ${card.Name} -> ${card["Active Effect"]}`);
-        this.dispatchEffect(card, loc, commander, tempState, diffRank);
-        game.commandDeck.unshift(card);
-      }
-    }
+    await Promise.all(humanPlayers.map((p) => this.decisions.runBattlefieldCardWindow(p, game, ctxFor(p))));
   }
 
   private dispatchEffect(card: CommandCard, loc: Location, commander: GamePlayer, tempState: RoundTempState, diffRank: EnemyRank) {
@@ -803,8 +760,7 @@ export class GameEngine {
       idx += n;
     }
 
-    await this.resolveHand(commander, (loc) => loc === "Battlefield", tempState, diffRank);
-    await this.resolveNonCommanderHands(commander, (loc) => loc === "Battlefield", tempState, diffRank);
+    await this.resolveBattlefieldCards(commander, tempState, diffRank);
 
     // No on_reveal dispatch in Stage 2 (multi-lane Reveal damage isn't ported yet) -- enemies are
     // plain stat-lines until the engine grows enemy-text dispatch in a later stage.
