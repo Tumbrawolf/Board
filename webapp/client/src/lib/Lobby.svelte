@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { socket, clientId, loadOrCreateName, saveName } from "./socket";
+  import BoardView from "./BoardView.svelte";
   import {
     DEFAULT_SETTINGS,
     MAX_SEATS,
     type RoomState,
     type RoomSettings,
+    type GameStateSnapshot,
+    type PrivateStateSnapshot,
   } from "./types";
 
   let name = $state(loadOrCreateName());
@@ -42,25 +45,9 @@
     room = state;
   }
 
-  interface GameStateSnapshot {
-    roundNum: number;
-    status: string;
-    playerProgress: number;
-    enemyProgress: number;
-    overrunTracker: number;
-    overrunTrackerMax: number;
-    players: {
-      seatIndex: number;
-      name: string;
-      rank: number;
-      res: { Organic: number; Tech: number; Alien: number };
-      active: { name: string; hp: number; maxHp: number; shields: number } | null;
-      reserveCount: number;
-    }[];
-  }
-
   let gameLog = $state<string[]>([]);
   let gameSnapshot = $state<GameStateSnapshot | null>(null);
+  let privateState = $state<PrivateStateSnapshot | null>(null);
   let gameOver = $state<{ status: string; round: number } | null>(null);
   let logEl: HTMLDivElement | undefined = $state();
 
@@ -73,6 +60,9 @@
   }
   function onGameState(snapshot: GameStateSnapshot) {
     gameSnapshot = snapshot;
+  }
+  function onPrivateState(snapshot: PrivateStateSnapshot) {
+    privateState = snapshot;
   }
   function onGameOver(payload: { status: string; round: number }) {
     gameOver = payload;
@@ -100,6 +90,7 @@
     socket.on("room:state", onRoomState);
     socket.on("game:log", onGameLog);
     socket.on("game:state", onGameState);
+    socket.on("game:privateState", onPrivateState);
     socket.on("game:over", onGameOver);
     socket.on("placement:prompt", onPlacementPrompt);
     connected = socket.connected;
@@ -111,6 +102,7 @@
     socket.off("room:state", onRoomState);
     socket.off("game:log", onGameLog);
     socket.off("game:state", onGameState);
+    socket.off("game:privateState", onPrivateState);
     socket.off("game:over", onGameOver);
     socket.off("placement:prompt", onPlacementPrompt);
   });
@@ -355,19 +347,7 @@
           <span>Enemy Progress {gameSnapshot.enemyProgress}/10</span>
           <span>Overrun {gameSnapshot.overrunTracker}/{gameSnapshot.overrunTrackerMax}</span>
         </div>
-        <ul class="players">
-          {#each gameSnapshot.players as p}
-            <li>
-              <strong>{p.name}</strong> (Rk{p.rank}) —
-              {#if p.active}
-                {p.active.name} {p.active.hp}/{p.active.maxHp} HP{p.active.shields ? ` +${p.active.shields} Shd` : ""}
-              {:else}
-                <em>no active unit</em>
-              {/if}
-              {#if p.reserveCount}<span class="muted"> (+{p.reserveCount} reserve)</span>{/if}
-            </li>
-          {/each}
-        </ul>
+        <BoardView snapshot={gameSnapshot} mySeatIndex={mySeat?.seatIndex ?? null} />
       {/if}
 
       <div class="log" bind:this={logEl}>
@@ -507,15 +487,6 @@
     font-size: 0.9em;
     color: #444;
     margin: 0.5rem 0;
-  }
-  .players {
-    list-style: none;
-    padding: 0;
-    margin: 0.5rem 0;
-    font-size: 0.9em;
-  }
-  .players li {
-    padding: 0.2rem 0;
   }
   .log {
     margin-top: 0.75rem;

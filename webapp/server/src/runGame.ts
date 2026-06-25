@@ -1,5 +1,6 @@
 import type { Server } from "socket.io";
 import { GameEngine, type SeatInput } from "./engine/game.js";
+import { toInt } from "./engine/data.js";
 import { recordGameEnd } from "./db.js";
 import { MixedDecisionProvider, type SocketLookup } from "./humanDecisions.js";
 import type { RoomState } from "./types.js";
@@ -27,12 +28,22 @@ export async function runGame(io: Server, room: RoomState, gameId: number, looku
     io.to(room.code).emit("placement:placed", { seatIndex, location });
   };
 
-  io.to(room.code).emit("game:state", snapshot(engine));
+  function broadcastAll() {
+    io.to(room.code).emit("game:state", snapshot(engine));
+    for (const p of engine.game.players) {
+      const seat = room.seats.find((s) => s?.seatIndex === p.seatIndex);
+      if (!seat || seat.isBot) continue;
+      const socket = lookupSocket(seat.clientId);
+      socket?.emit("game:privateState", privateSnapshot(p));
+    }
+  }
+
+  broadcastAll();
 
   let going = true;
   while (going) {
     going = await engine.runRound();
-    io.to(room.code).emit("game:state", snapshot(engine));
+    broadcastAll();
     if (going) await sleep(ROUND_PACING_MS);
   }
 
@@ -53,14 +64,66 @@ function snapshot(engine: GameEngine) {
     overrunTracker: g.overrunTracker,
     overrunTrackerMax: g.overrunTrackerMax,
     commandPool: g.commandPool,
+    commanderSeatIndex: g.players[g.commanderIdx]?.seatIndex ?? null,
+    shopUnits: g.shopUnits.map((u) => ({
+      name: u.Name,
+      rank: u.Rank,
+      damage: toInt(u.Damage),
+      hp: toInt(u.HP),
+      armor: toInt(u.Armor),
+      shields: toInt(u.Shields),
+      organicCost: toInt(u["Organic Cost"]),
+      techCost: toInt(u["Tech Cost"]),
+      alienCost: toInt(u["Alien Cost"]),
+      type: u.Type,
+    })),
+    shopGear: g.shopGear.map((gear) => ({
+      name: gear.Name,
+      rank: gear["Rank Name"],
+      damage: toInt(gear.Damage),
+      hp: toInt(gear.HP),
+      armor: toInt(gear.Armor),
+      shields: toInt(gear.Shields),
+      organicCost: toInt(gear["Organic Cost"]),
+      techCost: toInt(gear["Tech Cost"]),
+      alienCost: toInt(gear["Alien Cost"]),
+      type: gear.Type,
+    })),
     players: g.players.map((p) => ({
       seatIndex: p.seatIndex,
       name: p.name,
       rank: p.rank,
       res: p.res,
-      active: p.active ? { name: p.active.card.Name, hp: p.active.curHp, maxHp: p.active.maxHp, shields: p.active.curShields } : null,
-      reserveCount: p.reserve.length,
+      active: p.active
+        ? { id: p.active.id, name: p.active.card.Name, hp: p.active.curHp, maxHp: p.active.maxHp, shields: p.active.curShields, equipped: p.active.equipped.map((eq) => (eq as any).Name).filter(Boolean) }
+        : null,
+      reserve: p.reserve.map((u) => ({ id: u.id, name: u.card.Name, hp: u.curHp, maxHp: u.maxHp, shields: u.curShields })),
+      laneEnemyReserve: p.laneEnemyReserve.map((e) => ({ name: e.Name, hp: toInt(e.HP), damage: toInt(e.Damage) })),
       stats: p.stats,
+    })),
+  };
+}
+
+/** Sent only to the owning player's own socket -- a hidden hand stays hidden. */
+function privateSnapshot(p: GameEngine["game"]["players"][number]) {
+  return {
+    seatIndex: p.seatIndex,
+    hand: p.hand.map((c) => ({
+      name: c.Name,
+      building: c.Building,
+      passiveEffect: c["Passive Effect"],
+      activeEffect: c["Active Effect"],
+      organic: toInt(c.Organic),
+      tech: toInt(c.Tech),
+      alien: toInt(c.Alien),
+    })),
+    gearHand: p.gearHand.map((g: any) => ({
+      name: g.Name,
+      rank: g["Rank Name"],
+      damage: toInt(g.Damage),
+      hp: toInt(g.HP),
+      armor: toInt(g.Armor),
+      shields: toInt(g.Shields),
     })),
   };
 }
