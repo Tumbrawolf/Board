@@ -187,6 +187,14 @@ not a final pass. The Battlefield-building Command Card phase (resolved during C
 hoards exist) is unchanged and still bot-only for every seat, including humans -- only the
 Planning-stage, non-Battlefield Command Cards are interactive now.
 
+## Stage 7: Rules page — started
+
+A "Rules & How to Play" button in the lobby header (`client/RulesPage.svelte`) covers the economy,
+locations/worker placement, units/gear/Rank, combat, win/loss conditions, and the supporting
+systems, plus a Quick Start section specific to how this web version's interactive parts actually
+work. Tutorial content (a guided in-game walkthrough, as opposed to a reference page) is still
+open.
+
 ## Running it locally
 
 Two processes, in two terminals:
