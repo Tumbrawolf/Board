@@ -140,6 +140,53 @@ with games now running 8-15 rounds — much closer to the validated full-ruleset
 theory from the ability-text-only checkpoint: the extra Rank-promotion path was the biggest
 single piece of the original gap.
 
+## Stage 5: Basic UI + the remaining decision points (purchases, equip, Command Cards) — done
+
+By agreement, this stage built UI for the still-bot-only decisions first, then wired them in --
+not a thin sequential wizard, but everything open in one screen at once, since real tabletop
+Planning isn't a strict turn order either.
+
+**Board/Lane view (`client/BoardView.svelte`)** -- replaces the old plain-text player list with a
+real per-player lane: resources, active unit (HP/Shields/equipped gear), reserve units, and lane
+enemies, plus a commander badge and a "you" marker. Needed a server-side companion,
+**`game:privateState`**: a player's Command Card hand and unequipped gear hand are now sent only
+to their own socket, never broadcast room-wide -- the first real hidden information in this
+engine. The public `game:state` snapshot was also enriched with live shop contents and full unit
+detail so the new panels (below) have what they need without a separate round-trip.
+
+**The Planning window (`client/PlanningPanel.svelte` + `server/humanDecisions.ts`'s
+`runPlanningWindow`)** -- a connected human seat gets Shop Units, Shop Gear (auto-equips onto
+their active unit), and their Command Card hand (Build/Activate/Skip per card) all on screen at
+once, acts on whichever in whatever order, then hits "Done with Planning" (or a 60s timeout falls
+back to the bot heuristic, same precedent as Stage 3's placement prompt). Shop/Equip actions apply
+immediately; Command Card choices are only *recorded* during the window and applied afterward
+(`resolveCommanderCards`/`resolveNonCommanderCards`), once Donation has actually topped up the
+shared command pool -- matching exactly when their legality was always evaluated. The actual
+buy/equip/build/activate mutations now live in one shared module, `engine/planningActions.ts`,
+called by both the bot path and the human path, so neither can silently drift from the other's
+rules.
+
+**Caught and fixed a real regression before this shipped**: the first version ran every seat
+(bots included) through one `Promise.all` for their Planning window. That's correct for humans
+(real contention over the shared shop is the point), but for bots it silently changed behavior --
+every `await`, even on an already-resolved bot decision, yields one microtask tick, so several
+bots sharing one `Promise.all` round-robin-interleave their per-unit purchase loops instead of
+each bot finishing its shopping before the next starts, like the original sequential code did. A
+40-game batch comparison caught it (win rate dropped from the validated ~30%+ to 20%); splitting
+bots into a plain sequential loop and only human seats into the concurrent `Promise.all` restored
+it (37.5%, no crashes, over a fresh 40-game batch).
+
+**Verified end-to-end** with a live server and a simulated human seat exercising all three panels
+over real Socket.IO round-trips: buyUnit, buyGear, and resolveCard (build/activate/skip) all
+round-trip correctly, and the game reaches a clean win/loss every run.
+
+**Still not done**: targeting (no ability currently *needs* a player to pick a target -- the few
+multi-target effects in this engine already resolve via the same heuristics bots always used, so
+there's nothing to wire yet) and any further visual polish -- this is intentionally a "basic UI,"
+not a final pass. The Battlefield-building Command Card phase (resolved during Combat, after enemy
+hoards exist) is unchanged and still bot-only for every seat, including humans -- only the
+Planning-stage, non-Battlefield Command Cards are interactive now.
+
 ## Running it locally
 
 Two processes, in two terminals:
@@ -165,8 +212,8 @@ it.
 2. ~~Wire the rules engine in, all seats bot-controlled first~~ (Stage 2, done — see above for
    what's deliberately still missing)
 3. ~~Make worker placement the first real human decision point~~ (Stage 3, done — see above)
-4. ~~Backfill deferred systems~~ (Stage 4, done — see above). Remaining human decision points
-   (purchases, equip, Command Card build/activate, targeting) are the natural next stage, not
-   yet started.
-5. Visual UI pass (board/lanes/resource trackers)
-6. Rules page + Tutorial content
+4. ~~Backfill deferred systems~~ (Stage 4, done — see above)
+5. ~~Basic UI + remaining decision points (purchases, equip, Command Cards)~~ (Stage 5, done — see
+   above). Targeting is still untouched -- no ability currently needs a player to pick one.
+6. Further visual polish pass (the board/lanes view is basic by design so far)
+7. Rules page + Tutorial content
