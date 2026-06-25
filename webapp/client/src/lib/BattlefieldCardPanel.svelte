@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { socket } from "./socket";
+  import FirstUseTip from "./FirstUseTip.svelte";
 
   interface BattlefieldCard {
     name: string;
@@ -70,6 +71,10 @@
       <button class="done" onclick={finish}>Done</button>
     </div>
     {#if errorMsg}<div class="error">{errorMsg}</div>{/if}
+    <FirstUseTip
+      tipId="battlefield"
+      text="These Command Cards act on the enemies that just got deployed (thinning hoards, buffing your lane, etc.) -- separate from your Planning-stage hand, and resolved right before Combat."
+    />
     {#if !prompt.hand.length}
       <div class="hint">Nothing actionable in your hand this round.</div>
     {/if}

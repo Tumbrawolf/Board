@@ -5,6 +5,7 @@
   import PlanningPanel from "./PlanningPanel.svelte";
   import BattlefieldCardPanel from "./BattlefieldCardPanel.svelte";
   import RulesPage from "./RulesPage.svelte";
+  import FirstUseTip from "./FirstUseTip.svelte";
 
   let showRules = $state(false);
   import {
@@ -336,6 +337,10 @@
 
       {#if placementPrompt}
         <div class="placement-prompt">
+          <FirstUseTip
+            tipId="placement"
+            text="Each round you place workers one at a time, in turn order. Locations give different income -- check the Rules page for what each one does. Whoever places first at Command becomes next round's commander."
+          />
           <p>Your turn — place a worker:</p>
           <div class="placement-options">
             {#each placementPrompt.locations as loc}
@@ -356,6 +361,10 @@
           <span>Enemy Progress {gameSnapshot.enemyProgress}/10</span>
           <span>Overrun {gameSnapshot.overrunTracker}/{gameSnapshot.overrunTrackerMax}</span>
         </div>
+        <FirstUseTip
+          tipId="board"
+          text="This is the board: everyone's resources, active/reserve units, and lane enemies. You win at Player Progress 10, you lose if Overrun hits 0 -- Enemy Progress just controls how tough new enemies are."
+        />
         <BoardView snapshot={gameSnapshot} mySeatIndex={mySeat?.seatIndex ?? null} />
         <PlanningPanel snapshot={gameSnapshot} mySeatIndex={mySeat?.seatIndex ?? null} />
         <BattlefieldCardPanel />

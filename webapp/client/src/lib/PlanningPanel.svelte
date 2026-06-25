@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { socket } from "./socket";
+  import FirstUseTip from "./FirstUseTip.svelte";
   import type { GameStateSnapshot } from "./types";
 
   let { snapshot, mySeatIndex }: { snapshot: GameStateSnapshot; mySeatIndex: number | null } = $props();
@@ -88,6 +89,10 @@
       <button class="done" onclick={finishPlanning}>Done with Planning</button>
     </div>
     {#if errorMsg}<div class="error">{errorMsg}</div>{/if}
+    <FirstUseTip
+      tipId="planning"
+      text="Buy units, buy/equip gear, and build/activate/skip Command Cards in any order -- they're all open at once. Hit 'Done with Planning' when you're finished (or it'll auto-resolve after the timer)."
+    />
 
     <div class="columns">
       <section class="col">
