@@ -1,0 +1,79 @@
+export const RANK_ORDER = [
+  "Conscript",
+  "Private",
+  "Sergeant",
+  "Captain",
+  "Major",
+  "Colonel",
+  "Specialist",
+  "Brigadier",
+] as const;
+export type Rank = (typeof RANK_ORDER)[number];
+
+export const RANK_NUM: Record<string, number> = Object.fromEntries(
+  RANK_ORDER.map((r, i) => [r, i + 1])
+);
+
+export const ENEMY_RANK_ORDER = [
+  "Fodder",
+  "Grunt",
+  "Core",
+  "Advanced",
+  "Elite",
+  "General",
+  "Conqueror",
+] as const;
+export type EnemyRank = (typeof ENEMY_RANK_ORDER)[number];
+
+export const ENEMY_RANK_NUM: Record<string, number> = Object.fromEntries(
+  ENEMY_RANK_ORDER.map((r, i) => [r, i + 1])
+);
+
+export type Difficulty = "Easy" | "Normal" | "Hard";
+
+export const OVERRUN_START: Record<Difficulty, number> = { Easy: 15, Normal: 10, Hard: 5 };
+
+export const HOARD_TABLE: Record<Difficulty, { base: number; mid: number; late: number }> = {
+  Easy: { base: 2, mid: 3, late: 3 },
+  Normal: { base: 3, mid: 4, late: 5 },
+  Hard: { base: 4, mid: 6, late: 7 },
+};
+
+export function hoardCount(difficulty: Difficulty, playerProgress: number): number {
+  const t = HOARD_TABLE[difficulty];
+  if (playerProgress >= 8) return t.late;
+  if (playerProgress >= 5) return t.mid;
+  return t.base;
+}
+
+export function enemyRankFromProgress(ep: number): EnemyRank {
+  if (ep <= 1) return "Fodder";
+  if (ep <= 3) return "Grunt";
+  if (ep <= 5) return "Core";
+  if (ep <= 7) return "Advanced";
+  if (ep === 8) return "Elite";
+  if (ep === 9) return "General";
+  return "Conqueror";
+}
+
+export const LOCATIONS = [
+  "Barracks",
+  "Armory",
+  "Medical Bay",
+  "Containment Block",
+  "Command",
+  "Battlefield",
+] as const;
+export type Location = (typeof LOCATIONS)[number];
+
+export const UPGRADE_SLOT_CAP: Record<Location, number> = {
+  Barracks: 4,
+  Armory: 1,
+  "Medical Bay": 2,
+  "Containment Block": 3,
+  Command: 2,
+  Battlefield: 3,
+};
+
+export const COMMAND_HAND_SIZE = 3;
+export const COMMANDER_HAND_SIZE = 4;

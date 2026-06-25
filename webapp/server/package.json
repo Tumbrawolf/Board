@@ -9,6 +9,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "csv-parse": "^7.0.0",
     "express": "^4.21.1",
     "socket.io": "^4.8.1"
   },

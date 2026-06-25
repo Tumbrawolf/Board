@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { RoomManager } from "./rooms.js";
 import { recordGameStart } from "./db.js";
+import { runGame } from "./runGame.js";
 import type { RoomSettings } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -115,9 +116,13 @@ io.on("connection", (socket) => {
       ack?.({ ok: false, error: result.error });
       return;
     }
-    recordGameStart(room.state);
+    const gameId = recordGameStart(room.state);
     ack?.({ ok: true });
     broadcastRoom(room.state.code);
+    runGame(io, room.state, gameId).catch((err) => {
+      console.error(`Game in room ${room.state.code} crashed:`, err);
+      io.to(room.state.code).emit("game:log", { text: `[ERROR] Game crashed: ${String(err)}` });
+    });
   });
 
   socket.on("disconnect", () => {

@@ -20,8 +20,6 @@ db.exec(`
   );
 `);
 
-/** Records a game starting (Stage 1: no real engine yet, just proves the persistence wiring).
- * Stage 2+ will update this row's ended_at/result_json once a real game can finish. */
 export function recordGameStart(room: RoomState): number {
   const stmt = db.prepare(
     `INSERT INTO games (room_code, started_at, settings_json, seats_json) VALUES (?, ?, ?, ?)`
@@ -33,6 +31,16 @@ export function recordGameStart(room: RoomState): number {
     JSON.stringify(room.seats)
   );
   return Number(info.lastInsertRowid);
+}
+
+/** Stage 2: the engine can now actually finish a game, so this fills in the row recordGameStart
+ * created -- final round reached and win/loss, not yet per-player stats (that's a later stage). */
+export function recordGameEnd(gameId: number, status: string, finalRound: number) {
+  db.prepare(`UPDATE games SET ended_at = ?, result_json = ? WHERE id = ?`).run(
+    Date.now(),
+    JSON.stringify({ status, finalRound }),
+    gameId
+  );
 }
 
 export function listRecentGames(limit = 20) {
