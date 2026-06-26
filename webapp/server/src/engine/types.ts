@@ -128,4 +128,25 @@ export interface GameState {
   /** Night Vision's "Roll D6, Reveal that many enemies" -- added to the round's base scout
    * reveal count, reset to 0 each round. */
   nightVisionRevealBonus?: number;
+  /** The round's drawn Event, if any -- stored on GameState (not just a runRound-local variable)
+   * so combat-time Event Round Effects (e.g. "Active Non-Infantry are stunned") can be checked
+   * from the Combatant-construction code in runDeploymentAndCombat. */
+  activeEvent: EventCard | null;
+  /** Per-round Event flags, all reset to their default (false/null) at the start of each round's
+   * Event draw -- see runRound. Each backs one Event's Round Effect that needs to be checked from
+   * a different part of the round loop than events.ts itself (worker income, gear equip cost,
+   * Medical Bay, worker placement eligibility, Containment capacity, commander handoff). */
+  missionRankReqRemoved: boolean;
+  medicalBayCostsOrganic: boolean;
+  equipCostDoubled: boolean;
+  gearActiveCostDoubledType: string | null;
+  locationsWithUpgradesBlocked: boolean;
+  disabledLocation: Location | null;
+  forceCommanderChange: boolean;
+  containmentCapacityDoubled: boolean;
+  /** Per-round kill/death counts by seatIndex, reset at the start of each round -- distinct from
+   * stats.kills/stats.deaths, which accumulate for the whole game. Used by Event Completion
+   * Conditions that reference "this round" specifically (Kill Contest, Annihilation Clause). */
+  killsThisRound: Map<number, number>;
+  deathsThisRound: Map<number, number>;
 }

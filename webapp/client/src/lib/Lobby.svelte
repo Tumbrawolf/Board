@@ -6,6 +6,7 @@
   import BattlefieldCardPanel from "./BattlefieldCardPanel.svelte";
   import CommandersCallPanel from "./CommandersCallPanel.svelte";
   import VoteOfNoConfidencePanel from "./VoteOfNoConfidencePanel.svelte";
+  import EventChoicePanel from "./EventChoicePanel.svelte";
   import RulesPage from "./RulesPage.svelte";
   import FirstUseTip from "./FirstUseTip.svelte";
 
@@ -358,6 +359,7 @@
 
       <CommandersCallPanel />
       <VoteOfNoConfidencePanel />
+      <EventChoicePanel />
 
       {#if gameSnapshot}
         <div class="trackers">

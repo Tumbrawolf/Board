@@ -27,7 +27,7 @@ import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, tryRevive
 import { applyEnemyCombatMods } from "./enemies.js";
 import { applyGearCombatMods, applyPrecombatGear, tryChronostasisSave } from "./gear.js";
 import { applyBossBoardWideMods, applyBossTier, resolveBossExchange } from "./bosses.js";
-import { applyEventResolution, applyEventRoundEffect } from "./events.js";
+import { applyEventCombatMods, applyEventResolution, applyEventRoundEffect, eventConditionMet, eventSeverity } from "./events.js";
 import { applyMissionReward, missionRequirementMet } from "./missions.js";
 import { checkSecretObjectives } from "./secretObjectives.js";
 import { payEscrow, resolveAccusation } from "./accusations.js";
@@ -222,6 +222,17 @@ export class GameEngine {
       log: [],
       effectUses: new Map(),
       lastKilledEnemy: null,
+      activeEvent: null,
+      missionRankReqRemoved: false,
+      medicalBayCostsOrganic: false,
+      equipCostDoubled: false,
+      gearActiveCostDoubledType: null,
+      locationsWithUpgradesBlocked: false,
+      disabledLocation: null,
+      forceCommanderChange: false,
+      containmentCapacityDoubled: false,
+      killsThisRound: new Map(),
+      deathsThisRound: new Map(),
     };
 
     refillShopUnit(this.game);
@@ -303,6 +314,40 @@ export class GameEngine {
       this.log(`  [Boss active] ${game.bossActive.card.Name} at T${tier}, HP ${game.bossActive.hpCur}/${game.bossActive.card.HP}`);
     }
 
+    // Commander draws 2 Events and chooses 1 to be active this round (README #32: skipped on
+    // Round 0 -- there's no Combat Stage for a Round Effect to apply to, nothing to resolve later).
+    // Drawn BEFORE Missions (moved here) so "Prove your worth"'s Round Effect (mission Rank
+    // requirements removed) can actually affect the SAME round's mission draw, not just the next
+    // one.
+    let activeEvent: EventCard | null = null;
+    game.missionRankReqRemoved = false;
+    game.medicalBayCostsOrganic = false;
+    game.equipCostDoubled = false;
+    game.gearActiveCostDoubledType = null;
+    game.locationsWithUpgradesBlocked = false;
+    game.disabledLocation = null;
+    game.forceCommanderChange = false;
+    game.containmentCapacityDoubled = false;
+    game.killsThisRound = new Map();
+    game.deathsThisRound = new Map();
+    if (!isPrepRound) {
+      if (!game.eventDeck.length) game.eventDeck = shuffle(loadGameData().events);
+      const drawn = [];
+      for (let i = 0; i < Math.min(2, game.eventDeck.length); i++) drawn.push(game.eventDeck.pop()!);
+      // Commander picks which of the 2 drawn cards becomes active -- previously a random pick in
+      // both this engine and sim.py (the comment said "chooses," the code never did).
+      const chosenIdx = drawn.length ? await this.decisions.chooseActiveEvent(commander, game, drawn) : 0;
+      activeEvent = drawn.length ? drawn[Math.max(0, Math.min(chosenIdx, drawn.length - 1))] : null;
+      for (const e of drawn) {
+        if (e !== activeEvent) game.eventDeck.unshift(e);
+      }
+      if (activeEvent) {
+        this.log(`  [Event] Active this round: ${activeEvent["Event name"]} -- ${activeEvent["Round Effect"]}`);
+        applyEventRoundEffect(game, activeEvent, (t) => this.log(t));
+      }
+    }
+    game.activeEvent = activeEvent;
+
     // Tiered Mission Draw (optional rule, README #19): Rank 1-3 missions are always available;
     // Rank 4+ missions need a 1d8 roll (scaled down to highest player Rank + 1 on overshoot) to
     // even be in the draw pool this round -- one shared roll for the whole round, same as the
@@ -322,7 +367,7 @@ export class GameEngine {
 
     for (const p of game.players) {
       if (p.missions.length < 3 && game.missionDeck.length) {
-        let candidates = game.missionDeck.filter((m) => RANK_NUM[m["Player Rank"]] <= p.rank + 1);
+        let candidates = game.missionDeck.filter((m) => RANK_NUM[m["Player Rank"]] <= p.rank + 1 || game.missionRankReqRemoved);
         if (this.optionalRules.tieredMissionDraw) {
           candidates = candidates.filter((m) => RANK_NUM[m["Player Rank"]] <= 3 || RANK_NUM[m["Player Rank"]] <= highTierMissionCap);
         }
@@ -331,23 +376,6 @@ export class GameEngine {
           game.missionDeck.splice(game.missionDeck.indexOf(m), 1);
           p.missions.push(m);
         }
-      }
-    }
-
-    // Commander draws 2 Events and chooses 1 to be active this round (README #32: skipped on
-    // Round 0 -- there's no Combat Stage for a Round Effect to apply to, nothing to resolve later).
-    let activeEvent: EventCard | null = null;
-    if (!isPrepRound) {
-      if (!game.eventDeck.length) game.eventDeck = shuffle(loadGameData().events);
-      const drawn = [];
-      for (let i = 0; i < Math.min(2, game.eventDeck.length); i++) drawn.push(game.eventDeck.pop()!);
-      activeEvent = drawn.length ? drawn[Math.floor(Math.random() * drawn.length)] : null;
-      for (const e of drawn) {
-        if (e !== activeEvent) game.eventDeck.unshift(e);
-      }
-      if (activeEvent) {
-        this.log(`  [Event] Active this round: ${activeEvent["Event name"]} -- ${activeEvent["Round Effect"]}`);
-        applyEventRoundEffect(game, activeEvent);
       }
     }
 
@@ -492,7 +520,12 @@ export class GameEngine {
     // README #32: Round 0's Cleanup skips Event Resolution and Promotions entirely -- nothing
     // for either to act on yet.
     if (!isPrepRound) {
-      const eventPassed = Math.random() < 0.55;
+      // Completion Condition is now actually checked against real game state (eventConditionMet)
+      // instead of a flat 55% roll -- falls back to that same roll only for the handful of
+      // conditions needing infrastructure that doesn't exist (Assigned Posts/Garbage Day/Forced
+      // Disposal). No active event at all (vanishingly rare, only if the deck is somehow empty)
+      // still defaults to the old flat rate.
+      const eventPassed = activeEvent ? eventConditionMet(game, activeEvent, this.placementsThisRound, diffRank) : Math.random() < 0.55;
       this.log(`  Event ${eventPassed ? "PASSED" : "FAILED"}${activeEvent ? ` (${activeEvent["Event name"]})` : ""}`);
       for (const p of game.players) {
         if (eventPassed) p.stats.eventsPassed += 1;
@@ -549,10 +582,16 @@ export class GameEngine {
       this.log(`  [Rank Trickle] Every player +1 Rank -> [${game.players.map((p) => RANK_ORDER[p.rank - 1]).join(", ")}]`);
     }
 
-    // README 4.5/7.2: the commander is whoever placed the FIRST worker at Command this round
-    // (a real race now that placement is turn-based -- see runWorkerPlacementAndIncome). Falls
-    // back to round-robin only on the rare round nobody chooses Command at all.
-    if (this.nextCommanderSeatIndex !== null) {
+    // Leadership Crisis Event: "Group blind votes on next commander" -- overrides the normal
+    // handoff with a random pick (a blind vote has no real preference signal to simulate for
+    // bots anyway, so this is the same outcome a true vote mechanic would produce on average).
+    if (game.forceCommanderChange) {
+      game.commanderIdx = Math.floor(Math.random() * game.players.length);
+      this.log(`  [Event] Leadership Crisis -- the table blind-votes ${game.players[game.commanderIdx].name} in as next commander`);
+    } else if (this.nextCommanderSeatIndex !== null) {
+      // README 4.5/7.2: the commander is whoever placed the FIRST worker at Command this round
+      // (a real race now that placement is turn-based -- see runWorkerPlacementAndIncome). Falls
+      // back to round-robin only on the rare round nobody chooses Command at all.
       const idx = game.players.findIndex((p) => p.seatIndex === this.nextCommanderSeatIndex);
       game.commanderIdx = idx !== -1 ? idx : (game.commanderIdx + 1) % game.players.length;
     } else {
@@ -603,7 +642,18 @@ export class GameEngine {
         const placedSoFar = Object.fromEntries(
           LOCATIONS.map((l) => [l, locWorkers[l].map((q) => ({ seatIndex: q.seatIndex, name: q.name }))])
         ) as Record<Location, { seatIndex: number; name: string }[]>;
-        const loc = await this.decisions.chooseWorkerPlacement(p, game, placedSoFar);
+        let loc = await this.decisions.chooseWorkerPlacement(p, game, placedSoFar);
+        // Renovations Event: "cannot send workers to locations with upgrades" -- redirect to the
+        // first still-upgrade-free location rather than re-prompting (the prompt itself still
+        // offers every location; this engine doesn't have a way to filter a provider's choices
+        // before the fact without changing the DecisionProvider contract again).
+        if (game.locationsWithUpgradesBlocked && game.locationUpgradesBuilt[loc].length > 0) {
+          const fallback = LOCATIONS.find((l) => game.locationUpgradesBuilt[l].length === 0);
+          if (fallback) {
+            this.log(`  [Event] Renovations blocks ${p.name} from ${loc} (has upgrades) -- redirected to ${fallback}`);
+            loc = fallback;
+          }
+        }
         locWorkers[loc].push(p);
         remaining.set(p.seatIndex, remaining.get(p.seatIndex)! - 1);
         this.placementsThisRound[p.seatIndex].push(loc);
@@ -633,10 +683,27 @@ export class GameEngine {
       }
     }
 
+    const eventName = game.activeEvent?.["Event name"];
+    const eventSev = eventSeverity(game);
     for (const loc of LOCATIONS) {
       const workers = locWorkers[loc];
+      // Crowded Worksite Event: "Income blocked if another worker at location" -- scaled by
+      // progress-bracket severity: early game it's a coin flip per location, late game it's the
+      // guaranteed full block the card text describes.
+      if (eventName === "Crowded Worksite" && workers.length > 1 && Math.random() < eventSev) {
+        this.log(`  [Event] Crowded Worksite blocks income at ${loc} (${workers.length} workers sharing)`);
+        continue;
+      }
+      // Saboteur investigation/Capacity Threshold/Isolation Orders Events: a dice-picked location
+      // is disabled (no income) for the round -- same severity scaling.
+      if (game.disabledLocation === loc && workers.length && Math.random() < eventSev) {
+        this.log(`  [Event] ${loc} is disabled this round -- no income for ${workers.map((w) => w.name).join(", ")}`);
+        continue;
+      }
       workers.forEach((p, idx) => {
         const full = idx < 2;
+        // Forced Contribution Event: "Income +1 if another worker at location."
+        if (eventName === "Forced Contribution" && workers.length > 1) p.res.Tech += 1;
         if (loc === "Barracks") {
           const totalRank = game.shopUnits.reduce((s, u) => s + RANK_NUM[u.Rank], 0) + (4 - game.shopUnits.length);
           const amt = full ? totalRank : Math.floor(totalRank / 2);
@@ -651,18 +718,24 @@ export class GameEngine {
           p.res.Organic += full ? 1 : 0;
           const wounded = [...(p.active ? [p.active] : []), ...p.reserve].filter((u) => u.curHp < u.maxHp);
           const isDoctor = p.tactician?.Name === "The Doctor";
-          const targetsPerWorker = isDoctor ? 2 : 1; // "Medical bay heals double" when your workers are there
-          for (const target of wounded.slice(0, targetsPerWorker)) {
+          // Emergency Triage Event: "Unlock all med bay slots this round" -- no per-worker heal cap.
+          const emergencyTriage = game.activeEvent?.["Event name"] === "Emergency Triage";
+          const targetsPerWorker = emergencyTriage ? Infinity : isDoctor ? 2 : 1; // "Medical bay heals double" when your workers are there
+          for (const target of wounded.slice(0, targetsPerWorker === Infinity ? wounded.length : targetsPerWorker)) {
+            // Medical Focus Event: "Medbay costs organics to heal" instead of granting them.
+            if (game.medicalBayCostsOrganic && p.res.Organic < 2) continue;
             const healed = healUnit(target);
             if (healed) {
-              p.res.Organic += 2 + (isDoctor ? p.rank : 0);
+              if (game.medicalBayCostsOrganic) p.res.Organic -= 2;
+              else p.res.Organic += 2 + (isDoctor ? p.rank : 0);
               p.stats.healsGiven += 1;
               this.log(`  ${p.name} heals ${target.card.Name} at Medical Bay (+${healed} HP)`);
             }
           }
         } else if (loc === "Containment Block") {
           const containedRank = this.containedEnemies.reduce((s, r) => s + ENEMY_RANK_NUM[r], 0);
-          const amt = full ? containedRank + 1 : Math.floor((containedRank + 1) / 2);
+          const capacityMult = game.containmentCapacityDoubled ? 2 : 1;
+          const amt = (full ? containedRank + 1 : Math.floor((containedRank + 1) / 2)) * capacityMult;
           p.res.Alien += amt;
         } else if (loc === "Battlefield") {
           game.commandPool.Organic += full ? 1 : 0;
@@ -967,12 +1040,14 @@ export class GameEngine {
         applyUnitCombatMods(c, ui);
         applyTacticianCombatMods(c, p);
         applyBossBoardWideMods(game, c, false);
+        applyEventCombatMods(game, c, false, ui);
         return c;
       });
       const eCombatants = p.laneEnemyReserve.map((e) => {
         const c = new Combatant(e);
         applyEnemyCombatMods(c, e);
         applyBossBoardWideMods(game, c, true);
+        applyEventCombatMods(game, c, true);
         return c;
       });
       if (!eCombatants.length) {
@@ -984,6 +1059,7 @@ export class GameEngine {
       if (kills > 0) {
         lanesWithKill.push(p);
         p.stats.kills += kills;
+        game.killsThisRound.set(p.seatIndex, (game.killsThisRound.get(p.seatIndex) ?? 0) + kills);
         const killedCombatants = eCombatants.filter((c) => !enemySurvivors.includes(c));
         if (killedCombatants.length) {
           const lastKilledIdx = eCombatants.lastIndexOf(killedCombatants[killedCombatants.length - 1]);
@@ -1028,6 +1104,7 @@ export class GameEngine {
           }
           p.graveyard.push(ui);
           p.stats.deaths += 1;
+          game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
         }
       });
       p.active = newUnits.length ? newUnits[0] : null;
@@ -1055,6 +1132,7 @@ export class GameEngine {
         applyUnitCombatMods(c, ui);
         applyTacticianCombatMods(c, p);
         applyBossBoardWideMods(game, c, false);
+        applyEventCombatMods(game, c, false, ui);
         return c;
       });
       const { overrun: overrun2, playerSurvivors: rSurv, enemySurvivors: eSurv2 } = resolveLaneCombat(
@@ -1071,6 +1149,7 @@ export class GameEngine {
         } else {
           p.graveyard.push(ui);
           p.stats.deaths += 1;
+          game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
         }
       });
       p.active = null;

@@ -10,7 +10,7 @@ import {
   type PlacedWorker,
   type PlanningWindowCtx,
 } from "./engine/decisions.js";
-import type { CommandCard, GearCard, UnitCard } from "./engine/data.js";
+import type { CommandCard, EventCard, GearCard, UnitCard } from "./engine/data.js";
 import {
   affordableGear,
   affordableUnits,
@@ -33,6 +33,7 @@ const BATTLEFIELD_TIMEOUT_MS = 30000;
 const COMMANDERS_CALL_TIMEOUT_MS = 30000;
 const ACCUSATION_TIMEOUT_MS = 20000;
 const ACCUSATION_VOTE_TIMEOUT_MS = 20000;
+const EVENT_CHOICE_TIMEOUT_MS = 20000;
 
 interface PendingPlacement {
   socketId: string;
@@ -93,6 +94,20 @@ export function resolveAccusationVote(socketId: string, requestId: string, belie
   if (!req || req.socketId !== socketId) return;
   pendingAccusationVote.delete(requestId);
   req.resolve(Boolean(believed));
+}
+
+interface PendingEventChoice {
+  socketId: string;
+  resolve: (index: number | null) => void;
+}
+
+const pendingEventChoice = new Map<string, PendingEventChoice>();
+
+export function resolveEventChoice(socketId: string, requestId: string, index: number) {
+  const req = pendingEventChoice.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingEventChoice.delete(requestId);
+  req.resolve(typeof index === "number" ? index : null);
 }
 
 function serializeHand(
@@ -481,5 +496,45 @@ export class MixedDecisionProvider implements DecisionProvider {
       });
     });
     return believed ?? false;
+  }
+
+  /** The commander picks which of the 2 drawn Events becomes active this round -- a single
+   * request/response prompt, same shape as chooseWorkerPlacement. Not responding within
+   * EVENT_CHOICE_TIMEOUT_MS falls back to the bot heuristic (favor the milder card). */
+  async chooseActiveEvent(commander: GamePlayer, game: GameState, drawn: EventCard[]): Promise<number> {
+    if (drawn.length <= 1) return 0;
+    const seat = this.room.seats.find((s) => s?.seatIndex === commander.seatIndex);
+    if (!seat || seat.isBot) return this.bot.chooseActiveEvent(commander, game, drawn);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.chooseActiveEvent(commander, game, drawn);
+
+    const requestId = randomUUID();
+    const index = await new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingEventChoice.delete(requestId);
+        resolve(null);
+      }, EVENT_CHOICE_TIMEOUT_MS);
+      pendingEventChoice.set(requestId, {
+        socketId: socket.id,
+        resolve: (i) => {
+          clearTimeout(timer);
+          resolve(i);
+        },
+      });
+      socket.emit("eventChoice:prompt", {
+        requestId,
+        timeoutMs: EVENT_CHOICE_TIMEOUT_MS,
+        options: drawn.map((e) => ({
+          name: e["Event name"],
+          roundEffect: e["Round Effect"],
+          completionCondition: e["Completion Condition"],
+          completionReward: e["Completion Reward"],
+          failurePenalty: e["Failure Penalty"],
+        })),
+      });
+    });
+
+    if (index === null || index < 0 || index >= drawn.length) return this.bot.chooseActiveEvent(commander, game, drawn);
+    return index;
   }
 }

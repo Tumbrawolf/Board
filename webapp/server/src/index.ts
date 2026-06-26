@@ -8,6 +8,7 @@ import {
   resolveAccusationChoice,
   resolveAccusationVote,
   resolveCommandersCallChoice,
+  resolveEventChoice,
   resolvePlacementChoice,
 } from "./humanDecisions.js";
 import type { RoomSettings } from "./types.js";
@@ -103,6 +104,10 @@ io.on("connection", (socket) => {
 
   socket.on("accusationVote:choose", ({ requestId, believed }: { requestId: string; believed: boolean }) => {
     resolveAccusationVote(socket.id, requestId, believed);
+  });
+
+  socket.on("eventChoice:choose", ({ requestId, index }: { requestId: string; index: number }) => {
+    resolveEventChoice(socket.id, requestId, index);
   });
 
   socket.on("room:toggleReady", ({ ready }: { ready: boolean }, ack) => {

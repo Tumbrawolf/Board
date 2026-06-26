@@ -1,5 +1,6 @@
 import { LOCATIONS, RANK_NUM, type Location } from "./constants.js";
-import type { CommandCard, GearCard, UnitCard } from "./data.js";
+import type { CommandCard, EventCard, GearCard, UnitCard } from "./data.js";
+import { isMildEvent } from "./events.js";
 import {
   affordableGear,
   affordableUnits,
@@ -123,6 +124,11 @@ export interface DecisionProvider {
    * suspicion either way -- this distinction is just to make bot-initiated accusations, which
    * never actually happen given chooseAccusation's bot behavior, resolve sensibly if ever used). */
   castAccusationVote(voter: GamePlayer, game: GameState, accuser: GamePlayer, accused: GamePlayer): Promise<boolean>;
+
+  /** The commander draws 2 Events each round and picks which becomes active -- previously a
+   * random pick in both this engine and sim.py (the comment said "chooses," the code never did).
+   * Returns the chosen card's index into `drawn` (0 or 1). */
+  chooseActiveEvent(commander: GamePlayer, game: GameState, drawn: EventCard[]): Promise<number>;
 }
 
 const BOT_LOCATION_PRIORITY: Location[] = [
@@ -206,7 +212,7 @@ export class BotDecisionProvider implements DecisionProvider {
     const pendingHand = [...player.gearHand];
     player.gearHand = [];
     for (const g of pendingHand) {
-      if (player.active) equipGearOntoActiveMutation(player, g, ctx.log);
+      if (player.active) equipGearOntoActiveMutation(game, player, g, ctx.log);
       else player.gearHand.push(g);
     }
 
@@ -270,5 +276,16 @@ export class BotDecisionProvider implements DecisionProvider {
   async castAccusationVote(_voter: GamePlayer, _game: GameState, accuser: GamePlayer, _accused: GamePlayer): Promise<boolean> {
     if (!accuser.isBot) return true;
     return Math.random() < 0.5;
+  }
+
+  /** Favors whichever of the 2 drawn cards is "mild" (the original 8 resource-conversion-only
+   * events, no disruptive Round Effect) over a disruptive one. If both or neither are mild,
+   * picks randomly between them -- no finer-grained harshness ranking exists for the rest. */
+  async chooseActiveEvent(_commander: GamePlayer, _game: GameState, drawn: EventCard[]): Promise<number> {
+    if (drawn.length === 1) return 0;
+    const mild = drawn.map((e) => isMildEvent(e["Event name"]));
+    if (mild[0] && !mild[1]) return 0;
+    if (mild[1] && !mild[0]) return 1;
+    return Math.floor(Math.random() * drawn.length);
   }
 }

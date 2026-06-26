@@ -1,5 +1,6 @@
 import { toInt, type GearCard } from "./data.js";
 import { Combatant } from "./combat.js";
+import { eventSeverity } from "./events.js";
 import { canAfford, canUseEffect, GEAR_COST_KEYS, healUnit, makeUnitInstance, pay, recordEffectUse, weakestPlayer, type RoundTempState } from "./state.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
 
@@ -140,8 +141,21 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
       if (!name || !card.Active?.trim() || PRECOMBAT_ONLY_ACTIVE.has(name)) continue;
       if (name === "Emergency Extractor" && ui.curHp >= Math.floor(ui.maxHp / 2)) continue;
       const isConsumable = card.Type === "Consumable";
-      if (!isConsumable && !canAfford(p.res, card, GEAR_COST_KEYS)) continue;
-      if (!isConsumable) pay(p.res, card, GEAR_COST_KEYS);
+      // Armor/Production/Weapons/Supply Chain Freeze Events: double this round's Active
+      // activation cost for a specific Gear Type (or "any" for Supply Chain Collapse) -- scaled
+      // by progress-bracket severity, same as Forced Re-Armament's equip-cost doubling.
+      const doubled = game.gearActiveCostDoubledType === card.Type || game.gearActiveCostDoubledType === "any";
+      const costMult = 1 + eventSeverity(game);
+      const payCard = doubled
+        ? {
+            ...card,
+            "Organic Cost": Math.ceil(toInt(card["Organic Cost"]) * costMult),
+            "Tech Cost": Math.ceil(toInt(card["Tech Cost"]) * costMult),
+            "Alien Cost": Math.ceil(toInt(card["Alien Cost"]) * costMult),
+          }
+        : card;
+      if (!isConsumable && !canAfford(p.res, payCard, GEAR_COST_KEYS)) continue;
+      if (!isConsumable) pay(p.res, payCard, GEAR_COST_KEYS);
       applyGearActive(game, name, ui, p, log, tempState);
       if (isConsumable) ui.equipped = ui.equipped.filter((x) => x !== g);
       log(`  ${p.name} activates ${ui.card.Name}'s ${name}${isConsumable ? " (consumable)" : " (paid again)"}`);

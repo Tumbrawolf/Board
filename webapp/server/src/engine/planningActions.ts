@@ -1,6 +1,7 @@
 import { RANK_NUM, UPGRADE_SLOT_CAP, type Location } from "./constants.js";
 import type { CommandCard, GearCard, UnitCard } from "./data.js";
 import { toInt } from "./data.js";
+import { eventSeverity } from "./events.js";
 import { refillShopGear, refillShopUnit } from "./shop.js";
 import {
   GEAR_COST_KEYS,
@@ -67,7 +68,7 @@ function equipSlotCap(active: GamePlayer["active"], type: string): number {
   return hasExpander ? 2 : 1;
 }
 
-export function equipGearOntoActiveMutation(p: GamePlayer, g: any, log: (t: string) => void): boolean {
+export function equipGearOntoActiveMutation(game: GameState, p: GamePlayer, g: any, log: (t: string) => void): boolean {
   if (!p.active) {
     p.gearHand.push(g);
     return false;
@@ -82,7 +83,9 @@ export function equipGearOntoActiveMutation(p: GamePlayer, g: any, log: (t: stri
       return false;
     }
   }
-  const cost = RANK_NUM[g["Rank Name"]] ?? 1;
+  // Forced Re-Armament Event: "Equipment costs doubled" this round -- scaled by progress-bracket
+  // severity (0.4-1.0): early game it's only a 1.4x bump, late game the full 2x the card says.
+  const cost = (RANK_NUM[g["Rank Name"]] ?? 1) * (game.equipCostDoubled ? 1 + eventSeverity(game) : 1);
   if (p.res.Tech < cost) {
     p.gearHand.push(g);
     log(`  ${p.name} can't afford ${cost} Tech to equip ${g.Name} -- held in hand`);
@@ -107,7 +110,7 @@ export function buyGearMutation(game: GameState, p: GamePlayer, choice: GearCard
   pay(p.res, tacticianDiscountedCost(p, choice as any, "gear"), GEAR_COST_KEYS);
   game.shopGear.splice(game.shopGear.indexOf(choice as any), 1);
   refillShopGear(game);
-  equipGearOntoActiveMutation(p, choice, log);
+  equipGearOntoActiveMutation(game, p, choice, log);
 }
 
 /** Both roles share this gate: a card with a capped one-time effect (Strategic Withdrawal) that's
