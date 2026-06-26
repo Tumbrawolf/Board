@@ -1,5 +1,5 @@
 import { toInt } from "./data.js";
-import { equippedBonus } from "./combat.js";
+import { Combatant, equippedBonus } from "./combat.js";
 import { tryChronostasisSave } from "./gear.js";
 import type { BossActive, GamePlayer, GameState } from "./types.js";
 
@@ -13,8 +13,24 @@ export function applyBossPassive(boss: BossActive, target: GamePlayer) {
   } else if (name === "Plate Host") {
     boss.armorBonus = boss.armorBonus || 1;
   }
-  // 'Rust Elemental' (avoid mutating a shared card dict) and 'The Culling' (delete lower-rank
-  // units) have no analogous risk/hook in this engine -- documented no-ops, same as sim.py.
+}
+
+/** Rust Elemental ("No Armor for Allies or Enemies") and The Culling ("Enemies Delete units of
+ * lower Rank") both apply board-wide, to every Combatant built this round, not just the one lane
+ * Boss combat itself targets -- so these are checked at Combatant-construction time instead of
+ * inside applyBossPassive (which only ever sees the Boss's own single target lane).
+ *
+ * The Culling is approximated as "enemies delete every unit they kill" rather than truly
+ * comparing each individual matchup's Rank -- a single Combatant has no per-opponent-pair state
+ * to express "only delete THIS specific lower-rank target," and a lane can hold multiple
+ * player units of different Ranks fighting the same enemy in sequence. Same kind of
+ * approximate-the-intent simplification already used elsewhere here (e.g. Chemical Warfare
+ * truncating to 1 enemy instead of true 1-HP-all). */
+export function applyBossBoardWideMods(game: GameState, c: Combatant, isEnemy: boolean) {
+  const name = game.bossActive?.card.Name;
+  if (!name) return;
+  if (name === "Rust Elemental") c.armor = 0;
+  if (name === "The Culling" && isEnemy) c.deleteOnKill = true;
 }
 
 /** T1-T5 escalation. Tier is a LIVE lookup (recalculated every round), but each tier's stat

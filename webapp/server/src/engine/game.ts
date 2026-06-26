@@ -26,7 +26,7 @@ import { applyBattlefieldActive, applyCommandActive } from "./commandCards.js";
 import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, tryReviveOnce } from "./units.js";
 import { applyEnemyCombatMods } from "./enemies.js";
 import { applyGearCombatMods, applyPrecombatGear, tryChronostasisSave } from "./gear.js";
-import { applyBossTier, resolveBossExchange } from "./bosses.js";
+import { applyBossBoardWideMods, applyBossTier, resolveBossExchange } from "./bosses.js";
 import { applyEventResolution, applyEventRoundEffect } from "./events.js";
 import { applyMissionReward, missionRequirementMet } from "./missions.js";
 import { checkSecretObjectives } from "./secretObjectives.js";
@@ -966,11 +966,13 @@ export class GameEngine {
         applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
         applyUnitCombatMods(c, ui);
         applyTacticianCombatMods(c, p);
+        applyBossBoardWideMods(game, c, false);
         return c;
       });
       const eCombatants = p.laneEnemyReserve.map((e) => {
         const c = new Combatant(e);
         applyEnemyCombatMods(c, e);
+        applyBossBoardWideMods(game, c, true);
         return c;
       });
       if (!eCombatants.length) {
@@ -1052,6 +1054,7 @@ export class GameEngine {
         applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
         applyUnitCombatMods(c, ui);
         applyTacticianCombatMods(c, p);
+        applyBossBoardWideMods(game, c, false);
         return c;
       });
       const { overrun: overrun2, playerSurvivors: rSurv, enemySurvivors: eSurv2 } = resolveLaneCombat(
