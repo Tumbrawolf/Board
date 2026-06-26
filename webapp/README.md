@@ -218,6 +218,30 @@ those grids stack to 1 column on narrow viewports, and global button hover/focus
 missing entirely. This pass was done from code alone (no browser available while working) — it
 hasn't been visually verified yet.
 
+## Lobby settings: 3 of 4 now actually wired into the engine
+
+For a while, only **Difficulty** affected the actual game -- the lobby's **Secret Objective mix**
+and 3 **optional rules** synced live across clients and looked functional, but the engine never
+read them. Fixed for 3 of the 4:
+
+- **Secret Objective mix**: "none" excludes Saboteur/Chaos from dealing; "guaranteedSaboteur"/
+  "guaranteedChaos" ensure at least one dealt card has that alignment; "full" is unchanged.
+- **Commander's Call**: the commander now picks which workers get a contested location's
+  full-income slot(s) (`CommandersCallPanel.svelte` for a human commander; a "favor the
+  currently-weakest player" heuristic for a bot one), replacing the default arrival-order pick.
+- **Tiered Mission Draw**: Rank 1-3 missions always draw freely; Rank 4+ missions need a shared
+  1d8 roll (capped to highest player Rank + 1) to be eligible at all that round. **Worth knowing**:
+  a 30-game batch comparison found this one has a real cost here (~33% win rate baseline -> ~20%
+  with it on) -- the tabletop rule's whole point is avoiding a small table's mission draft going
+  completely dead, but this engine draws missions per-player on demand with a Rank+1 eligibility
+  cap that already prevents that outcome, so turning this on only inherits the rule's cost (Rank
+  4+ missions getting harder to draw) without the benefit it was designed to provide. Not a bug,
+  but a real difficulty increase beyond what the tabletop version implies.
+
+**Vote of No Confidence is not yet wired** -- it's a substantially bigger, more novel feature
+(an accusation + escrow + resolution mechanic, not just a dealing/draw-rate tweak) and is being
+scoped separately before building it.
+
 ## Running it locally
 
 Two processes, in two terminals:

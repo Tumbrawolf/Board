@@ -40,7 +40,17 @@
       <li><strong>Battlefield</strong> — feeds the shared Command Pool directly.</li>
       <li><strong>Command</strong> — Alien income scaled by your Rank; also makes you eligible to build/activate Command Cards this round, and makes you next round's commander if you're first there.</li>
     </ul>
-    <p>The first worker at a location earns full income; additional workers that round earn half.</p>
+    <p>The first worker at a location earns full income; additional workers that round earn half. With the <strong>Commander's Call</strong> optional rule on, the commander picks who gets the full-income slot(s) instead of it being decided by placement order.</p>
+  </section>
+
+  <section>
+    <h2>Lobby settings</h2>
+    <ul>
+      <li><strong>Secret Objective mix</strong> — "Full" deals everyone's 2 Secret Objectives with no guarantees; "None" excludes Saboteur/Chaos entirely (a purely cooperative game); "Guaranteed Saboteur"/"Guaranteed Chaos" ensure at least one player is dealt that alignment.</li>
+      <li><strong>Tiered Mission Draw</strong> (optional) — Rank 1-3 missions always draw freely; Rank 4+ missions need a shared roll to be eligible that round. Makes higher-Rank missions harder to come by.</li>
+      <li><strong>Commander's Call</strong> (optional) — see above.</li>
+      <li><strong>Vote of No Confidence</strong> (optional) — not yet available in this web version.</li>
+    </ul>
   </section>
 
   <section>
