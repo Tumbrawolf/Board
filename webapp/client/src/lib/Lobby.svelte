@@ -4,6 +4,7 @@
   import BoardView from "./BoardView.svelte";
   import PlanningPanel from "./PlanningPanel.svelte";
   import BattlefieldCardPanel from "./BattlefieldCardPanel.svelte";
+  import CommandersCallPanel from "./CommandersCallPanel.svelte";
   import RulesPage from "./RulesPage.svelte";
   import FirstUseTip from "./FirstUseTip.svelte";
 
@@ -353,6 +354,8 @@
           </div>
         </div>
       {/if}
+
+      <CommandersCallPanel />
 
       {#if gameSnapshot}
         <div class="trackers">

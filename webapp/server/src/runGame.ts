@@ -45,12 +45,22 @@ export async function runGame(io: Server, room: RoomState, gameId: number, looku
     },
     (player) => {
       io.to(room.code).emit("game:log", { text: `  [Battlefield card window timed out] ${player.name} -- defaulting to a bot pick` });
+    },
+    (player) => {
+      io.to(room.code).emit("game:log", { text: `  [Commander's Call timed out] ${player.name} -- defaulting to a bot pick` });
     }
   );
 
-  engine = new GameEngine(seats, room.settings.difficulty, decisions, (text) => {
-    io.to(room.code).emit("game:log", { text });
-  });
+  engine = new GameEngine(
+    seats,
+    room.settings.difficulty,
+    decisions,
+    (text) => {
+      io.to(room.code).emit("game:log", { text });
+    },
+    room.settings.antagonistMix,
+    room.settings.optionalRules
+  );
   engine.onPlacement = (seatIndex, location) => {
     io.to(room.code).emit("placement:placed", { seatIndex, location });
   };

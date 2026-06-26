@@ -9,11 +9,13 @@ import {
   bossTierFromProgress,
   enemyRankFromProgress,
   hoardCount,
+  type AntagonistMix,
   type Difficulty,
   type EnemyRank,
   type Location,
+  type OptionalRules,
 } from "./constants.js";
-import { loadGameData, toInt, type CommandCard, type EnemyCard, type EventCard, type UnitCard } from "./data.js";
+import { loadGameData, toInt, type CommandCard, type EnemyCard, type EventCard, type SecretObjectiveCard, type UnitCard } from "./data.js";
 import {
   combatantFromUnit,
   equippedBonus,
@@ -48,6 +50,30 @@ import {
   weakestPlayer,
 } from "./state.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
+
+/** Reorders the Secret Objective deck so that, once the caller pops `dealCount` cards off the
+ * END of the returned array (one deal per player x 2), the antagonistMix setting's guarantee
+ * holds: "none" excludes Saboteur/Chaos from the dealt set entirely, "guaranteedSaboteur"/
+ * "guaranteedChaos" ensures at least 1 dealt card has that alignment, "full" (default) leaves
+ * the deck untouched -- the original behavior, no guarantees either way. */
+function applyAntagonistMix(deck: SecretObjectiveCard[], mix: AntagonistMix, dealCount: number): SecretObjectiveCard[] {
+  const isAntagonist = (c: SecretObjectiveCard) => c.Alignment === "Saboteur" || c.Alignment === "Chaos";
+  if (mix === "none") {
+    const clean = deck.filter((c) => !isAntagonist(c));
+    const dirty = deck.filter(isAntagonist);
+    return [...dirty, ...clean]; // clean cards sit at the end -> popped first
+  }
+  if (mix === "guaranteedSaboteur" || mix === "guaranteedChaos") {
+    const wantAlign = mix === "guaranteedSaboteur" ? "Saboteur" : "Chaos";
+    const wanted = deck.filter((c) => c.Alignment === wantAlign);
+    const others = shuffle(deck.filter((c) => c.Alignment !== wantAlign));
+    if (!wanted.length || dealCount < 1) return deck;
+    const dealt = shuffle([wanted[0], ...others.slice(0, dealCount - 1)]);
+    const remaining = [...others.slice(dealCount - 1), ...wanted.slice(1)];
+    return [...remaining, ...dealt]; // dealt set sits at the end -> popped first, guarantee included
+  }
+  return deck; // "full" -- unchanged
+}
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -90,8 +116,17 @@ export class GameEngine {
    * live board updates during the placement phase -- separate from onLog since this is
    * structured data, not a text line. */
   onPlacement?: (seatIndex: number, location: Location) => void;
+  private optionalRules: OptionalRules;
 
-  constructor(seats: SeatInput[], difficulty: Difficulty, decisions: DecisionProvider, onLog: LogFn) {
+  constructor(
+    seats: SeatInput[],
+    difficulty: Difficulty,
+    decisions: DecisionProvider,
+    onLog: LogFn,
+    antagonistMix: AntagonistMix = "full",
+    optionalRules: OptionalRules = { tieredMissionDraw: false, voteOfNoConfidence: false, commandersCall: false }
+  ) {
+    this.optionalRules = optionalRules;
     const data = loadGameData();
     this.unitDeckFull = shuffle(data.units);
     this.gearDeckFull = shuffle(data.gear) as any;
@@ -106,7 +141,7 @@ export class GameEngine {
     this.locationUpgradesBuilt = Object.fromEntries(LOCATIONS.map((l) => [l, []])) as any;
 
     const missionDeck = shuffle(data.missions);
-    const secretObjectiveDeck = shuffle(data.secretObjectives);
+    const secretObjectiveDeck = applyAntagonistMix(shuffle(data.secretObjectives), antagonistMix, seats.length * 2);
     const tacticianDeck = shuffle(data.tacticians);
 
     const players: GamePlayer[] = seats.map((s) => ({
@@ -257,9 +292,29 @@ export class GameEngine {
       this.log(`  [Boss active] ${game.bossActive.card.Name} at T${tier}, HP ${game.bossActive.hpCur}/${game.bossActive.card.HP}`);
     }
 
+    // Tiered Mission Draw (optional rule, README #19): Rank 1-3 missions are always available;
+    // Rank 4+ missions need a 1d8 roll (scaled down to highest player Rank + 1 on overshoot) to
+    // even be in the draw pool this round -- one shared roll for the whole round, same as the
+    // commander rolling once for the table in the original draft mechanic. This engine draws
+    // missions per-player on demand rather than as a one-time shared draft (a pre-existing
+    // simplification, not something this rule changes), so the roll's effect here is "raises or
+    // caps which Mission Ranks are eligible to be drawn at all this round" rather than literally
+    // gating a shared pool -- same intent (small tables don't get stuck holding only above-Rank
+    // missions), adapted to this engine's draw model.
+    let highTierMissionCap = Infinity;
+    if (this.optionalRules.tieredMissionDraw) {
+      const highestPlayerRank = Math.max(...game.players.map((q) => q.rank));
+      const roll = 1 + Math.floor(Math.random() * 8);
+      highTierMissionCap = Math.min(roll, highestPlayerRank + 1);
+      this.log(`  [Tiered Mission Draw] Rolled ${roll}, capped to ${highTierMissionCap} -- Rank 4+ missions above that stay out of this round's draws.`);
+    }
+
     for (const p of game.players) {
       if (p.missions.length < 3 && game.missionDeck.length) {
-        const candidates = game.missionDeck.filter((m) => RANK_NUM[m["Player Rank"]] <= p.rank + 1);
+        let candidates = game.missionDeck.filter((m) => RANK_NUM[m["Player Rank"]] <= p.rank + 1);
+        if (this.optionalRules.tieredMissionDraw) {
+          candidates = candidates.filter((m) => RANK_NUM[m["Player Rank"]] <= 3 || RANK_NUM[m["Player Rank"]] <= highTierMissionCap);
+        }
         if (candidates.length) {
           const m = candidates[Math.floor(Math.random() * candidates.length)];
           game.missionDeck.splice(game.missionDeck.indexOf(m), 1);
@@ -537,6 +592,24 @@ export class GameEngine {
         }
         this.log(`  ${p.name} places a worker at ${loc}`);
         this.onPlacement?.(p.seatIndex, loc);
+      }
+    }
+
+    // Commander's Call (optional rule): the commander picks who gets a contested location's
+    // full-income slot(s), instead of the default arrival-order assignment below. Only locations
+    // with more workers than full slots (2) have an actual choice to make.
+    if (this.optionalRules.commandersCall) {
+      const contested = LOCATIONS.filter((loc) => locWorkers[loc].length > 2).map((loc) => ({
+        location: loc,
+        workers: locWorkers[loc],
+        fullSlots: 2,
+      }));
+      if (contested.length) {
+        const reordered = await this.decisions.chooseFullIncomeOrder(commander, game, contested);
+        contested.forEach((c, i) => {
+          locWorkers[c.location] = reordered[i];
+          this.log(`  [Commander's Call] ${commander.name} assigns full income at ${c.location} to ${reordered[i].slice(0, c.fullSlots).map((p) => p.name).join(", ")}`);
+        });
       }
     }
 

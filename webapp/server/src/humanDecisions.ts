@@ -5,6 +5,7 @@ import {
   BotDecisionProvider,
   type BattlefieldWindowCtx,
   type CommandCardChoice,
+  type ContestedLocation,
   type DecisionProvider,
   type PlacedWorker,
   type PlanningWindowCtx,
@@ -29,6 +30,7 @@ import type { RoomState } from "./types.js";
 const PLACEMENT_TIMEOUT_MS = 30000;
 const PLANNING_TIMEOUT_MS = 60000;
 const BATTLEFIELD_TIMEOUT_MS = 30000;
+const COMMANDERS_CALL_TIMEOUT_MS = 30000;
 
 interface PendingPlacement {
   socketId: string;
@@ -45,6 +47,22 @@ export function resolvePlacementChoice(socketId: string, requestId: string, loca
   if (!req || req.socketId !== socketId) return;
   pending.delete(requestId);
   req.resolve(LOCATIONS.includes(location as Location) ? (location as Location) : null);
+}
+
+interface PendingCommandersCall {
+  socketId: string;
+  resolve: (assignments: Record<string, number[]> | null) => void;
+}
+
+const pendingCommandersCall = new Map<string, PendingCommandersCall>();
+
+/** Called from the server's `commandersCall:choose` socket handler -- same stale/spoofed-drop
+ * convention as resolvePlacementChoice. */
+export function resolveCommandersCallChoice(socketId: string, requestId: string, assignments: Record<string, number[]>) {
+  const req = pendingCommandersCall.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingCommandersCall.delete(requestId);
+  req.resolve(assignments);
 }
 
 function serializeHand(
@@ -88,7 +106,8 @@ export class MixedDecisionProvider implements DecisionProvider {
      * re-broadcast game:state/game:privateState immediately instead of waiting for round-end. */
     private onStateChange: () => void = () => {},
     private onPlanningTimeout: (player: GamePlayer) => void = () => {},
-    private onBattlefieldTimeout: (player: GamePlayer) => void = () => {}
+    private onBattlefieldTimeout: (player: GamePlayer) => void = () => {},
+    private onCommandersCallTimeout: (player: GamePlayer) => void = () => {}
   ) {}
 
   async chooseWorkerPlacement(
@@ -310,5 +329,65 @@ export class MixedDecisionProvider implements DecisionProvider {
         timeoutMs: BATTLEFIELD_TIMEOUT_MS,
       });
     });
+  }
+
+  /** Commander's Call (optional rule): a single request/response prompt, same shape as
+   * chooseWorkerPlacement, sent only when at least one location actually has a contested
+   * full-income choice this round. */
+  async chooseFullIncomeOrder(commander: GamePlayer, game: GameState, contested: ContestedLocation[]): Promise<GamePlayer[][]> {
+    if (!contested.length) return [];
+    const seat = this.room.seats.find((s) => s?.seatIndex === commander.seatIndex);
+    if (!seat || seat.isBot) return this.bot.chooseFullIncomeOrder(commander, game, contested);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.chooseFullIncomeOrder(commander, game, contested);
+
+    const requestId = randomUUID();
+    const assignments = await new Promise<Record<string, number[]> | null>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingCommandersCall.delete(requestId);
+        resolve(null);
+      }, COMMANDERS_CALL_TIMEOUT_MS);
+      pendingCommandersCall.set(requestId, {
+        socketId: socket.id,
+        resolve: (a) => {
+          clearTimeout(timer);
+          resolve(a);
+        },
+      });
+      socket.emit("commandersCall:prompt", {
+        requestId,
+        timeoutMs: COMMANDERS_CALL_TIMEOUT_MS,
+        locations: contested.map((c) => ({
+          location: c.location,
+          fullSlots: c.fullSlots,
+          workers: c.workers.map((p, i) => ({ index: i, seatIndex: p.seatIndex, name: p.name })),
+        })),
+      });
+    });
+
+    if (!assignments) {
+      this.onCommandersCallTimeout(commander);
+      return this.bot.chooseFullIncomeOrder(commander, game, contested);
+    }
+
+    const results: GamePlayer[][] = [];
+    for (const c of contested) {
+      const chosenIdx = (assignments[c.location] ?? []).filter(
+        (i) => Number.isInteger(i) && i >= 0 && i < c.workers.length
+      );
+      const uniqueChosen = [...new Set(chosenIdx)];
+      if (uniqueChosen.length !== c.fullSlots) {
+        // Malformed/incomplete response for this one location -- fall back to the bot heuristic
+        // for just this location rather than discarding the rest of a valid response.
+        const [fallback] = await this.bot.chooseFullIncomeOrder(commander, game, [c]);
+        results.push(fallback);
+        continue;
+      }
+      const chosenSet = new Set(uniqueChosen);
+      const chosen = uniqueChosen.map((i) => c.workers[i]);
+      const rest = c.workers.filter((_, i) => !chosenSet.has(i));
+      results.push([...chosen, ...rest]);
+    }
+    return results;
   }
 }

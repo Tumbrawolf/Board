@@ -31,6 +31,16 @@ export const ENEMY_RANK_NUM: Record<string, number> = Object.fromEntries(
 
 export type Difficulty = "Easy" | "Normal" | "Hard";
 
+/** Mirrors the lobby's RoomSettings shape (server/types.ts), redeclared here so the engine stays
+ * self-contained and doesn't reach up into the room/lobby layer for its own types. */
+export type AntagonistMix = "none" | "guaranteedSaboteur" | "guaranteedChaos" | "full";
+
+export interface OptionalRules {
+  tieredMissionDraw: boolean;
+  voteOfNoConfidence: boolean;
+  commandersCall: boolean;
+}
+
 export const OVERRUN_START: Record<Difficulty, number> = { Easy: 15, Normal: 10, Hard: 5 };
 
 export const HOARD_TABLE: Record<Difficulty, { base: number; mid: number; late: number }> = {

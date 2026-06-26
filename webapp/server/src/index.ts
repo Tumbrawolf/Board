@@ -4,7 +4,7 @@ import { Server } from "socket.io";
 import { RoomManager } from "./rooms.js";
 import { recordGameStart } from "./db.js";
 import { runGame } from "./runGame.js";
-import { resolvePlacementChoice } from "./humanDecisions.js";
+import { resolveCommandersCallChoice, resolvePlacementChoice } from "./humanDecisions.js";
 import type { RoomSettings } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -84,6 +84,13 @@ io.on("connection", (socket) => {
   socket.on("placement:choose", ({ requestId, location }: { requestId: string; location: string }) => {
     resolvePlacementChoice(socket.id, requestId, location);
   });
+
+  socket.on(
+    "commandersCall:choose",
+    ({ requestId, assignments }: { requestId: string; assignments: Record<string, number[]> }) => {
+      resolveCommandersCallChoice(socket.id, requestId, assignments ?? {});
+    }
+  );
 
   socket.on("room:toggleReady", ({ ready }: { ready: boolean }, ack) => {
     if (!data.roomCode || !data.clientId) {

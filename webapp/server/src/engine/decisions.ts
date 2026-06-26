@@ -23,6 +23,15 @@ export interface PlacedWorker {
   name: string;
 }
 
+/** One location's worker list, as seen by the Commander's Call decision -- `workers` is in
+ * placement order (the index a provider returns in chooseFullIncomeOrder's result refers to
+ * positions in THIS array, since the same player can appear more than once). */
+export interface ContestedLocation {
+  location: Location;
+  workers: GamePlayer[];
+  fullSlots: number;
+}
+
 /** Stage 4's Planning window: a player's Shop/Equip purchases are applied immediately (they only
  * ever depend on the player's own resources + shop contention), but their Command Card choices
  * are just RECORDED here (card name -> build/activate/skip) and re-validated/applied later, once
@@ -95,6 +104,13 @@ export interface DecisionProvider {
    * runPlanningWindow, choices apply immediately -- there's no later step that changes what's
    * legal here. */
   runBattlefieldCardWindow(player: GamePlayer, game: GameState, ctx: BattlefieldWindowCtx): Promise<void>;
+
+  /** Commander's Call (optional rule): instead of the default "first N workers to arrive get the
+   * location's full-income slot(s)", the commander picks which workers get them, across every
+   * location that actually has a contested choice this round. Returns one reordered copy of
+   * `workers` per contested location, in the SAME order as the input array -- the first
+   * `fullSlots` entries of each are the chosen full-income workers. */
+  chooseFullIncomeOrder(commander: GamePlayer, game: GameState, contested: ContestedLocation[]): Promise<GamePlayer[][]>;
 }
 
 const BOT_LOCATION_PRIORITY: Location[] = [
@@ -216,5 +232,22 @@ export class BotDecisionProvider implements DecisionProvider {
         nonCommanderActivateCardMutation(game, card, player, ctx.log, ctx.dispatch);
       }
     }
+  }
+
+  /** Bot/default heuristic for Commander's Call: favor whichever workers belong to the
+   * currently-weakest players (lowest total resources) for the full-income slots, same logic the
+   * design's own playtest examples used for a thoughtful commander -- rather than just keeping
+   * the arrival-order default, which is what NOT having this optional rule on already does. */
+  async chooseFullIncomeOrder(_commander: GamePlayer, _game: GameState, contested: ContestedLocation[]): Promise<GamePlayer[][]> {
+    return contested.map(({ workers }) =>
+      workers
+        .map((p, i) => ({ p, i }))
+        .sort((a, b) => {
+          const totalA = a.p.res.Organic + a.p.res.Tech + a.p.res.Alien;
+          const totalB = b.p.res.Organic + b.p.res.Tech + b.p.res.Alien;
+          return totalA !== totalB ? totalA - totalB : a.i - b.i;
+        })
+        .map(({ p }) => p)
+    );
   }
 }
