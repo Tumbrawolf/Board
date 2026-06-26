@@ -31,6 +31,11 @@ import { applyEventResolution, applyEventRoundEffect } from "./events.js";
 import { applyMissionReward, missionRequirementMet } from "./missions.js";
 import { checkSecretObjectives } from "./secretObjectives.js";
 import { payEscrow, resolveAccusation } from "./accusations.js";
+import {
+  applyTacticianCombatMods,
+  applyTacticianPrecombat,
+  tacticianContainmentBuildDiscount,
+} from "./tactician.js";
 import { type CommandCardChoice, type DecisionProvider } from "./decisions.js";
 import {
   buildCardMutation,
@@ -553,6 +558,13 @@ export class GameEngine {
     } else {
       game.commanderIdx = (game.commanderIdx + 1) % game.players.length;
     }
+    // The Kingmaker: "You cannot be the commander -- if you would become commander, make
+    // another player commander instead." Redirects to the next player in seat order.
+    if (game.players[game.commanderIdx].tactician?.Name === "The Kingmaker") {
+      const kingmaker = game.players[game.commanderIdx];
+      game.commanderIdx = (game.commanderIdx + 1) % game.players.length;
+      this.log(`  [The Kingmaker] ${kingmaker.name} cannot be commander -- passes the role to ${game.players[game.commanderIdx].name}`);
+    }
 
     if (game.playerProgress >= 10) {
       this.log(`\n#### PLAYERS WIN on Round ${game.roundNum}! Player Progress reached 10. ####`);
@@ -742,22 +754,25 @@ export class GameEngine {
     const game = this.game;
     const interactive = this.decisions.isInteractiveSeat(commander);
     for (const card of [...commander.hand].filter((c) => cardEligibleForPlanning(game, c))) {
+      // The Jailer: "Containment Block upgrades cost no Alien" -- a cost-adjusted copy used only
+      // for the build affordability check/charge, same pattern as tacticianDiscountedCost.
+      const buildCard = tacticianContainmentBuildDiscount(commander, card.Building as Location, card);
       let choice: CommandCardChoice;
       if (interactive) {
         const requested = this.pendingCardChoices[commander.seatIndex]?.get(card.Name) ?? "skip";
-        if (requested === "build" && !canBuildCard(game, card)) {
+        if (requested === "build" && !canBuildCard(game, buildCard)) {
           this.log(`  ${commander.name} wanted to build ${card.Name} but it's no longer affordable/slot-full -- skipped`);
           choice = "skip";
         } else {
           choice = requested;
         }
       } else {
-        choice = await this.decisions.chooseCommandCardAction(commander, game, card, canBuildCard(game, card), true);
+        choice = await this.decisions.chooseCommandCardAction(commander, game, card, canBuildCard(game, buildCard), true);
       }
       if (choice === "skip") continue;
       commander.hand.splice(commander.hand.indexOf(card), 1);
       if (choice === "build") {
-        buildCardMutation(game, card, (t) => this.log(t), () => {
+        buildCardMutation(game, buildCard, (t) => this.log(t), () => {
           this.containmentSlots = 2;
         });
       } else {
@@ -780,26 +795,38 @@ export class GameEngine {
         (this.placementsThisRound[p.seatIndex].includes("Command") ||
           this.placementsThisRound[p.seatIndex].includes("Battlefield"))
     );
+    const usedFreeCardThisRound = new Set<number>();
     for (const actor of eligible) {
       const interactive = this.decisions.isInteractiveSeat(actor);
       for (const card of [...actor.hand].filter((c) => cardEligibleForPlanning(game, c))) {
+        // The Tactician: "effects on command cards are free for the 1st card per turn."
+        const freeCard = actor.tactician?.Name === "The Tactician" && !usedFreeCardThisRound.has(actor.seatIndex);
+        const canActivate = freeCard || canActivateAsNonCommander(game, actor, card);
         let activate: boolean;
         if (interactive) {
           const requested = this.pendingCardChoices[actor.seatIndex]?.get(card.Name) ?? "skip";
-          activate = requested === "activate" && canActivateAsNonCommander(game, actor, card);
+          activate = requested === "activate" && canActivate;
           if (requested === "activate" && !activate) {
             this.log(`  ${actor.name} wanted to activate ${card.Name} but can no longer afford it -- skipped`);
           }
         } else {
-          const choice = await this.decisions.chooseCommandCardAction(actor, game, card, false, canActivateAsNonCommander(game, actor, card));
+          const choice = await this.decisions.chooseCommandCardAction(actor, game, card, false, canActivate);
           activate = choice === "activate";
         }
         if (!activate) continue;
         actor.hand.splice(actor.hand.indexOf(card), 1);
-        nonCommanderActivateCardMutation(game, card, actor, (t) => this.log(t), (c, loc) => {
-          this.dispatchEffect(c, loc, commander, tempState, diffRank);
-          game.commandDeck.unshift(c);
-        });
+        if (freeCard) {
+          usedFreeCardThisRound.add(actor.seatIndex);
+          const loc = card.Building as Location;
+          this.log(`  [Active Effect] ${loc}: ${actor.name} activates ${card.Name} for free (The Tactician) -> ${card["Active Effect"]}`);
+          this.dispatchEffect(card, loc, commander, tempState, diffRank);
+          game.commandDeck.unshift(card);
+        } else {
+          nonCommanderActivateCardMutation(game, card, actor, (t) => this.log(t), (c, loc) => {
+            this.dispatchEffect(c, loc, commander, tempState, diffRank);
+            game.commandDeck.unshift(c);
+          });
+        }
       }
     }
   }
@@ -932,11 +959,13 @@ export class GameEngine {
     for (const p of game.players) {
       applyPrecombatGear(game, p, (t) => this.log(t), tempState);
       applyPrecombatUnit(p, tempState);
+      applyTacticianPrecombat(p);
       const pUnits = [...(p.active ? [p.active] : []), ...p.reserve];
       const pCombatants = pUnits.map((ui) => {
         const c = combatantFromUnit(ui);
         applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
         applyUnitCombatMods(c, ui);
+        applyTacticianCombatMods(c, p);
         return c;
       });
       const eCombatants = p.laneEnemyReserve.map((e) => {
@@ -1022,6 +1051,7 @@ export class GameEngine {
         const c = combatantFromUnit(ui);
         applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
         applyUnitCombatMods(c, ui);
+        applyTacticianCombatMods(c, p);
         return c;
       });
       const { overrun: overrun2, playerSurvivors: rSurv, enemySurvivors: eSurv2 } = resolveLaneCombat(
