@@ -348,7 +348,7 @@ export class MixedDecisionProvider implements DecisionProvider {
           buildCardMutation(game, card, ctx.log, () => {});
         } else if (ctx.isCommander) {
           player.hand.splice(player.hand.indexOf(card), 1);
-          commanderActivateCardMutation(card, player, ctx.log, ctx.dispatch);
+          commanderActivateCardMutation(game, card, player, ctx.log, ctx.dispatch);
         } else {
           if (!ctx.eligibleToActivateAsNonCommander || !canActivateAsNonCommander(game, player, card)) {
             ack?.({ ok: false, error: "Can't afford to activate that right now." });

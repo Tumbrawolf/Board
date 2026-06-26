@@ -245,7 +245,7 @@ export class BotDecisionProvider implements DecisionProvider {
       if (choice === "build") {
         buildCardMutation(game, card, ctx.log, () => {});
       } else if (ctx.isCommander) {
-        commanderActivateCardMutation(card, player, ctx.log, ctx.dispatch);
+        commanderActivateCardMutation(game, card, player, ctx.log, ctx.dispatch);
       } else {
         nonCommanderActivateCardMutation(game, card, player, ctx.log, ctx.dispatch);
       }

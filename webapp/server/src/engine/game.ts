@@ -233,6 +233,15 @@ export class GameEngine {
       containmentCapacityDoubled: false,
       killsThisRound: new Map(),
       deathsThisRound: new Map(),
+      retiresThisRound: new Map(),
+      disposalPile: 0,
+      disposalPileRoundStart: 0,
+      recyclePile: [],
+      recyclePileRoundStart: 0,
+      assignedPostLocations: new Map(),
+      assignedPostsPersist: false,
+      retireGivesNoResource: false,
+      containedThisRound: 0,
     };
 
     refillShopUnit(this.game);
@@ -330,6 +339,15 @@ export class GameEngine {
     game.containmentCapacityDoubled = false;
     game.killsThisRound = new Map();
     game.deathsThisRound = new Map();
+    game.retiresThisRound = new Map();
+    game.containedThisRound = 0;
+    // Assigned Posts' Failure Penalty ("Effect persists after event") keeps last round's dice-
+    // rolled assignment alive for one extra round instead of clearing it here -- consumed once.
+    if (game.assignedPostsPersist) {
+      game.assignedPostsPersist = false;
+    } else {
+      game.assignedPostLocations = new Map();
+    }
     if (!isPrepRound) {
       if (!game.eventDeck.length) game.eventDeck = shuffle(loadGameData().events);
       const drawn = [];
@@ -343,6 +361,11 @@ export class GameEngine {
       }
       if (activeEvent) {
         this.log(`  [Event] Active this round: ${activeEvent["Event name"]} -- ${activeEvent["Round Effect"]}`);
+        // Disposal/Recycle pile snapshots -- the Completion Condition for both cards measures
+        // "did this shrink by half this round," so the count needs capturing before this round's
+        // Round Effect / Command-Card activations have a chance to change it.
+        if (activeEvent["Event name"] === "Forced Disposal") game.disposalPileRoundStart = game.disposalPile;
+        if (activeEvent["Event name"] === "Garbage Day") game.recyclePileRoundStart = game.recyclePile.length;
         applyEventRoundEffect(game, activeEvent, (t) => this.log(t));
       }
     }
@@ -365,16 +388,21 @@ export class GameEngine {
       this.log(`  [Tiered Mission Draw] Rolled ${roll}, capped to ${highTierMissionCap} -- Rank 4+ missions above that stay out of this round's draws.`);
     }
 
+    // Lead by example Event: "Players draw additional missions this turn" -- one extra draw
+    // attempt per player this round (still capped at the normal 3-mission hand limit).
+    const missionDrawsThisRound = activeEvent?.["Event name"] === "Lead by example" ? 2 : 1;
     for (const p of game.players) {
-      if (p.missions.length < 3 && game.missionDeck.length) {
-        let candidates = game.missionDeck.filter((m) => RANK_NUM[m["Player Rank"]] <= p.rank + 1 || game.missionRankReqRemoved);
-        if (this.optionalRules.tieredMissionDraw) {
-          candidates = candidates.filter((m) => RANK_NUM[m["Player Rank"]] <= 3 || RANK_NUM[m["Player Rank"]] <= highTierMissionCap);
-        }
-        if (candidates.length) {
-          const m = candidates[Math.floor(Math.random() * candidates.length)];
-          game.missionDeck.splice(game.missionDeck.indexOf(m), 1);
-          p.missions.push(m);
+      for (let draw = 0; draw < missionDrawsThisRound; draw++) {
+        if (p.missions.length < 3 && game.missionDeck.length) {
+          let candidates = game.missionDeck.filter((m) => RANK_NUM[m["Player Rank"]] <= p.rank + 1 || game.missionRankReqRemoved);
+          if (this.optionalRules.tieredMissionDraw) {
+            candidates = candidates.filter((m) => RANK_NUM[m["Player Rank"]] <= 3 || RANK_NUM[m["Player Rank"]] <= highTierMissionCap);
+          }
+          if (candidates.length) {
+            const m = candidates[Math.floor(Math.random() * candidates.length)];
+            game.missionDeck.splice(game.missionDeck.indexOf(m), 1);
+            p.missions.push(m);
+          }
         }
       }
     }
@@ -520,11 +548,10 @@ export class GameEngine {
     // README #32: Round 0's Cleanup skips Event Resolution and Promotions entirely -- nothing
     // for either to act on yet.
     if (!isPrepRound) {
-      // Completion Condition is now actually checked against real game state (eventConditionMet)
-      // instead of a flat 55% roll -- falls back to that same roll only for the handful of
-      // conditions needing infrastructure that doesn't exist (Assigned Posts/Garbage Day/Forced
-      // Disposal). No active event at all (vanishingly rare, only if the deck is somehow empty)
-      // still defaults to the old flat rate.
+      // Completion Condition is now a real, fully keyword/state-matched check (eventConditionMet)
+      // for every one of the 40 Events -- no card falls back to a coin flip any more. No active
+      // event at all (vanishingly rare, only if the deck is somehow empty) still has nothing to
+      // check, so that one case alone keeps the old flat rate.
       const eventPassed = activeEvent ? eventConditionMet(game, activeEvent, this.placementsThisRound, diffRank) : Math.random() < 0.55;
       this.log(`  Event ${eventPassed ? "PASSED" : "FAILED"}${activeEvent ? ` (${activeEvent["Event name"]})` : ""}`);
       for (const p of game.players) {
@@ -532,6 +559,13 @@ export class GameEngine {
         else p.stats.eventsFailed += 1;
       }
       if (activeEvent) applyEventResolution(game, activeEvent, eventPassed, commander);
+      // Research drive's Failure Penalty ("Disable a Containment Block slot") touches
+      // GameEngine's private containmentSlots, which events.ts (a free function over GameState)
+      // can't reach -- handled here instead, same pattern as onContainmentBuilt.
+      if (!eventPassed && activeEvent?.["Event name"] === "Research drive" && this.containmentSlots > 0) {
+        this.containmentSlots -= 1;
+        this.log(`  [Research drive] A Containment Block slot is disabled (${this.containmentSlots} left)`);
+      }
 
       if (eventPassed) {
         const eligible = game.players.filter((p) => p.rank < commander.rank);
@@ -685,6 +719,15 @@ export class GameEngine {
 
     const eventName = game.activeEvent?.["Event name"];
     const eventSev = eventSeverity(game);
+    // Command Requisition Event: "Generated resources go to the command instead" -- every normal
+    // income grant this round lands in the shared pool rather than the worker's own stock (the
+    // card's other clause, "players can spend command resources," is handled at the shop/equip
+    // payment sites in planningActions.ts).
+    const commandRequisitionActive = eventName === "Command Requisition";
+    const grantIncome = (p: GamePlayer, key: "Organic" | "Tech" | "Alien", amt: number) => {
+      if (commandRequisitionActive) game.commandPool[key] += amt;
+      else p.res[key] += amt;
+    };
     for (const loc of LOCATIONS) {
       const workers = locWorkers[loc];
       // Crowded Worksite Event: "Income blocked if another worker at location" -- scaled by
@@ -707,15 +750,15 @@ export class GameEngine {
         if (loc === "Barracks") {
           const totalRank = game.shopUnits.reduce((s, u) => s + RANK_NUM[u.Rank], 0) + (4 - game.shopUnits.length);
           const amt = full ? totalRank : Math.floor(totalRank / 2);
-          p.res.Organic += amt;
-          p.res.Tech += Math.floor(amt / 2);
+          grantIncome(p, "Organic", amt);
+          grantIncome(p, "Tech", Math.floor(amt / 2));
         } else if (loc === "Armory") {
           const totalRank = game.shopGear.reduce((s, g) => s + RANK_NUM[(g as any)["Rank Name"]], 0) + (2 - game.shopGear.length);
           const amt = full ? totalRank * 2 : Math.floor((totalRank * 2) / 2);
-          p.res.Tech += amt;
-          p.res.Organic += Math.floor(amt / 2);
+          grantIncome(p, "Tech", amt);
+          grantIncome(p, "Organic", Math.floor(amt / 2));
         } else if (loc === "Medical Bay") {
-          p.res.Organic += full ? 1 : 0;
+          grantIncome(p, "Organic", full ? 1 : 0);
           const wounded = [...(p.active ? [p.active] : []), ...p.reserve].filter((u) => u.curHp < u.maxHp);
           const isDoctor = p.tactician?.Name === "The Doctor";
           // Emergency Triage Event: "Unlock all med bay slots this round" -- no per-worker heal cap.
@@ -727,7 +770,7 @@ export class GameEngine {
             const healed = healUnit(target);
             if (healed) {
               if (game.medicalBayCostsOrganic) p.res.Organic -= 2;
-              else p.res.Organic += 2 + (isDoctor ? p.rank : 0);
+              else grantIncome(p, "Organic", 2 + (isDoctor ? p.rank : 0));
               p.stats.healsGiven += 1;
               this.log(`  ${p.name} heals ${target.card.Name} at Medical Bay (+${healed} HP)`);
             }
@@ -736,13 +779,14 @@ export class GameEngine {
           const containedRank = this.containedEnemies.reduce((s, r) => s + ENEMY_RANK_NUM[r], 0);
           const capacityMult = game.containmentCapacityDoubled ? 2 : 1;
           const amt = (full ? containedRank + 1 : Math.floor((containedRank + 1) / 2)) * capacityMult;
-          p.res.Alien += amt;
+          grantIncome(p, "Alien", amt);
         } else if (loc === "Battlefield") {
+          // Already command-pool income by default -- Command Requisition has nothing to redirect here.
           game.commandPool.Organic += full ? 1 : 0;
           game.commandPool.Tech += full ? 1 : 0;
           game.commandPool.Alien += full ? 2 : 1;
         } else if (loc === "Command") {
-          p.res.Alien += full ? p.rank : Math.floor(p.rank / 2);
+          grantIncome(p, "Alien", full ? p.rank : Math.floor(p.rank / 2));
         }
       });
     }
@@ -807,14 +851,49 @@ export class GameEngine {
       const obsolete = p.reserve.filter((u) => p.rank - RANK_NUM[u.card.Rank] >= 2);
       for (const u of obsolete) {
         p.reserve.splice(p.reserve.indexOf(u), 1);
-        const refundKeys = ["Organic Cost", "Tech Cost", "Alien Cost"] as const;
-        const biggest = refundKeys.reduce((a, b) => (toInt((u.card as any)[b]) > toInt((u.card as any)[a]) ? b : a));
-        p.res[biggest.split(" ")[0] as keyof typeof p.res] += toInt((u.card as any)[biggest]);
+        // Honorable Discharge's Failure Penalty ("Retire costs no longer gives resource") is a
+        // standing rule change once triggered, not a one-round effect -- checked here too so it
+        // also applies to this engine's other retire path (obsolete reserve units), not just
+        // deaths redirected into retirement.
+        if (!game.retireGivesNoResource) {
+          const refundKeys = ["Organic Cost", "Tech Cost", "Alien Cost"] as const;
+          const biggest = refundKeys.reduce((a, b) => (toInt((u.card as any)[b]) > toInt((u.card as any)[a]) ? b : a));
+          p.res[biggest.split(" ")[0] as keyof typeof p.res] += toInt((u.card as any)[biggest]);
+        }
         game.unitDeck.push(u.card);
         p.gearHand.push(...u.equipped.filter((g) => "Rank Name" in (g as any)));
         p.stats.unitsRetired += 1;
-        this.log(`  ${p.name} retires ${u.card.Name} (Rank ${u.card.Rank}) for a partial refund`);
+        game.retiresThisRound.set(p.seatIndex, (game.retiresThisRound.get(p.seatIndex) ?? 0) + 1);
+        this.log(`  ${p.name} retires ${u.card.Name} (Rank ${u.card.Rank})${game.retireGivesNoResource ? "" : " for a partial refund"}`);
       }
+    }
+  }
+
+  /** Honorable Discharge Event: "Units Retire on death this round" -- redirects what would
+   * normally be a graveyard death into the same retire-for-partial-refund treatment
+   * runRetireFromDuty uses for obsolete reserve units, so the card's own Completion Condition
+   * ("Retire Between 5 and 10 units this turn") has a real per-round count to check instead of
+   * an approximation. Falls through to the normal graveyard/death bookkeeping otherwise, also
+   * feeding Forced Disposal's disposalPile (a real, non-random pile this engine didn't track
+   * before -- see types.ts). */
+  private retireOrGraveyard(p: GamePlayer, ui: UnitInstance) {
+    const game = this.game;
+    if (game.activeEvent?.["Event name"] === "Honorable Discharge") {
+      if (!game.retireGivesNoResource) {
+        const refundKeys = ["Organic Cost", "Tech Cost", "Alien Cost"] as const;
+        const biggest = refundKeys.reduce((a, b) => (toInt((ui.card as any)[b]) > toInt((ui.card as any)[a]) ? b : a));
+        p.res[biggest.split(" ")[0] as keyof typeof p.res] += toInt((ui.card as any)[biggest]);
+      }
+      game.unitDeck.push(ui.card);
+      p.gearHand.push(...ui.equipped.filter((g) => "Rank Name" in (g as any)));
+      p.stats.unitsRetired += 1;
+      game.retiresThisRound.set(p.seatIndex, (game.retiresThisRound.get(p.seatIndex) ?? 0) + 1);
+      this.log(`  [Honorable Discharge] ${ui.card.Name} retires instead of dying`);
+    } else {
+      p.graveyard.push(ui);
+      p.stats.deaths += 1;
+      game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
+      game.disposalPile += 1;
     }
   }
 
@@ -849,7 +928,7 @@ export class GameEngine {
           this.containmentSlots = 2;
         });
       } else {
-        commanderActivateCardMutation(card, commander, (t) => this.log(t), (c, loc) => {
+        commanderActivateCardMutation(game, card, commander, (t) => this.log(t), (c, loc) => {
           this.dispatchEffect(c, loc, commander, tempState, diffRank);
           game.commandDeck.unshift(c);
         });
@@ -1102,9 +1181,7 @@ export class GameEngine {
             );
             p.gearHand.push(kept as any);
           }
-          p.graveyard.push(ui);
-          p.stats.deaths += 1;
-          game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
+          this.retireOrGraveyard(p, ui);
         }
       });
       p.active = newUnits.length ? newUnits[0] : null;
@@ -1147,9 +1224,7 @@ export class GameEngine {
           ui.curShields = c.curShields;
           newReinforcements.push(ui);
         } else {
-          p.graveyard.push(ui);
-          p.stats.deaths += 1;
-          game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
+          this.retireOrGraveyard(p, ui);
         }
       });
       p.active = null;
@@ -1195,6 +1270,7 @@ export class GameEngine {
 
     if (lanesWithKill.length && this.containmentSlots > 0 && this.containedEnemies.length < this.containmentSlots) {
       this.containedEnemies.push(diffRank);
+      game.containedThisRound += 1;
       this.log(`  [Containment] stores a ${diffRank} (${this.containedEnemies.length}/${this.containmentSlots} cells filled)`);
     }
 

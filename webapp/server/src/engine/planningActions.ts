@@ -21,24 +21,56 @@ import type { GamePlayer, GameState } from "./types.js";
  * silently drift from the other's rules. Extracted unchanged from the bodies of game.ts's old
  * runPurchasing/resolveHand/resolveNonCommanderHands -- no behavior change, just decomposition. */
 
+/** Command Requisition: "players can spend command resources" -- while active, shop purchases
+ * can draw their shortfall from game.commandPool on top of the player's own resources, same
+ * fromSelf/remainder split nonCommanderActivateCardMutation already uses for Command Card costs.
+ * No-op (falls through to the plain canAfford/pay) the rest of the time. */
+function commandRequisitionActive(game: GameState): boolean {
+  return game.activeEvent?.["Event name"] === "Command Requisition";
+}
+
+function canAffordIncludingCommand(game: GameState, p: GamePlayer, card: UnitCard | GearCard, keys: readonly string[]): boolean {
+  if (!commandRequisitionActive(game)) return canAfford(p.res, card, keys);
+  return keys.every((k) => {
+    const key = k.split(" ")[0] as keyof typeof p.res;
+    return p.res[key] + game.commandPool[key] >= toInt((card as any)[k]);
+  });
+}
+
+function payIncludingCommand(game: GameState, p: GamePlayer, card: UnitCard | GearCard, keys: readonly string[]) {
+  if (!commandRequisitionActive(game)) {
+    pay(p.res, card, keys);
+    return;
+  }
+  for (const k of keys) {
+    const key = k.split(" ")[0] as keyof typeof p.res;
+    const cost = toInt((card as any)[k]);
+    const fromSelf = Math.min(p.res[key], cost);
+    p.res[key] -= fromSelf;
+    game.commandPool[key] -= cost - fromSelf;
+  }
+}
+
 export function affordableUnits(game: GameState, p: GamePlayer): UnitCard[] {
   return game.shopUnits.filter(
     (u) =>
       (RANK_NUM[u.Rank] <= p.rank || tacticianBypassesRankCheck(p, u)) &&
-      canAfford(p.res, tacticianDiscountedCost(p, u, "unit"), UNIT_COST_KEYS)
+      canAffordIncludingCommand(game, p, tacticianDiscountedCost(p, u, "unit"), UNIT_COST_KEYS)
   );
 }
 
 export function affordableGear(game: GameState, p: GamePlayer): GearCard[] {
   return game.shopGear.filter(
-    (g) => RANK_NUM[(g as any)["Rank Name"]] <= p.rank && canAfford(p.res, tacticianDiscountedCost(p, g as any, "gear"), GEAR_COST_KEYS)
+    (g) =>
+      RANK_NUM[(g as any)["Rank Name"]] <= p.rank &&
+      canAffordIncludingCommand(game, p, tacticianDiscountedCost(p, g as any, "gear"), GEAR_COST_KEYS)
   );
 }
 
 /** Pays for and takes delivery of a shop unit -- to the team scout pool if it's a Scout-type
  * upgrade over the pool's current best, else to the buyer's own active/reserve. */
 export function buyUnitMutation(game: GameState, p: GamePlayer, choice: UnitCard, log: (t: string) => void) {
-  pay(p.res, tacticianDiscountedCost(p, choice, "unit"), UNIT_COST_KEYS);
+  payIncludingCommand(game, p, tacticianDiscountedCost(p, choice, "unit"), UNIT_COST_KEYS);
   game.shopUnits.splice(game.shopUnits.indexOf(choice), 1);
   refillShopUnit(game);
   const ui = makeUnitInstance(choice);
@@ -86,12 +118,16 @@ export function equipGearOntoActiveMutation(game: GameState, p: GamePlayer, g: a
   // Forced Re-Armament Event: "Equipment costs doubled" this round -- scaled by progress-bracket
   // severity (0.4-1.0): early game it's only a 1.4x bump, late game the full 2x the card says.
   const cost = (RANK_NUM[g["Rank Name"]] ?? 1) * (game.equipCostDoubled ? 1 + eventSeverity(game) : 1);
-  if (p.res.Tech < cost) {
+  // Command Requisition: shortfall can come out of the command pool too, same as shop purchases.
+  const commandReq = commandRequisitionActive(game);
+  if (p.res.Tech + (commandReq ? game.commandPool.Tech : 0) < cost) {
     p.gearHand.push(g);
     log(`  ${p.name} can't afford ${cost} Tech to equip ${g.Name} -- held in hand`);
     return false;
   }
-  p.res.Tech -= cost;
+  const fromSelf = Math.min(p.res.Tech, cost);
+  p.res.Tech -= fromSelf;
+  if (commandReq) game.commandPool.Tech -= cost - fromSelf;
   p.active.equipped.push(g);
   const hpBonus = toInt(g.HP);
   p.active.maxHp += hpBonus;
@@ -107,7 +143,7 @@ export function equipGearOntoActiveMutation(game: GameState, p: GamePlayer, g: a
 }
 
 export function buyGearMutation(game: GameState, p: GamePlayer, choice: GearCard, log: (t: string) => void) {
-  pay(p.res, tacticianDiscountedCost(p, choice as any, "gear"), GEAR_COST_KEYS);
+  payIncludingCommand(game, p, tacticianDiscountedCost(p, choice as any, "gear"), GEAR_COST_KEYS);
   game.shopGear.splice(game.shopGear.indexOf(choice as any), 1);
   refillShopGear(game);
   equipGearOntoActiveMutation(game, p, choice, log);
@@ -153,8 +189,17 @@ export function buildCardMutation(game: GameState, card: CommandCard, log: (t: s
   log(`  [Upgrade built] ${loc}: ${card.Name}`);
 }
 
+/** Garbage Day: Command Cards normally just vanish once dispatched -- while this Event is
+ * active, push the activated card into game.recyclePile instead, so "restore from recycle" (the
+ * Round Effect) and the Completion Condition (recycle pile shrank by half) have a real, played
+ * card to draw from rather than nothing. No-op the rest of the time. */
+function recycleIfGarbageDay(game: GameState, card: CommandCard) {
+  if (game.activeEvent?.["Event name"] === "Garbage Day") game.recyclePile.push(card);
+}
+
 /** A commander's own hand activates for free -- no resource cost at all, matching sim.py. */
 export function commanderActivateCardMutation(
+  game: GameState,
   card: CommandCard,
   commander: GamePlayer,
   log: (t: string) => void,
@@ -163,6 +208,7 @@ export function commanderActivateCardMutation(
   const loc = card.Building as Location;
   log(`  [Active Effect] ${loc}: ${commander.name} activates ${card.Name} for free (commander) -> ${card["Active Effect"]}`);
   dispatch(card, loc);
+  recycleIfGarbageDay(game, card);
 }
 
 export function nonCommanderActivateCardMutation(
@@ -181,4 +227,5 @@ export function nonCommanderActivateCardMutation(
   }
   log(`  [Active Effect] ${loc}: ${actor.name} (non-commander) activates ${card.Name} -> ${card["Active Effect"]}`);
   dispatch(card, loc);
+  recycleIfGarbageDay(game, card);
 }

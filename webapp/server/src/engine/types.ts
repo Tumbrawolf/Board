@@ -149,4 +149,39 @@ export interface GameState {
    * Conditions that reference "this round" specifically (Kill Contest, Annihilation Clause). */
   killsThisRound: Map<number, number>;
   deathsThisRound: Map<number, number>;
+  /** Per-round retired-unit counts by seatIndex -- fed by both the normal end-of-round obsolete-
+   * reserve retirement (runRetireFromDuty) and Honorable Discharge's "units retire on death
+   * instead of dying" Round Effect. Used by Honorable Discharge's own Completion Condition. */
+  retiresThisRound: Map<number, number>;
+  /** Forced Disposal's "Disposal" pile -- a persistent count of units that have died (not
+   * retired) over the whole game, fed at the same 2 death sites as deathsThisRound. No such pile
+   * exists anywhere else in this game (not in sim.py, not on any other card) -- built specifically
+   * for this Event so its Completion Condition can be a real "did it shrink by half" check instead
+   * of a coin flip. disposalPileRoundStart snapshots the count when this Event becomes active, so
+   * the Condition/Reward/Penalty can measure the round's actual delta. */
+  disposalPile: number;
+  disposalPileRoundStart: number;
+  /** Garbage Day's "Recycle" pile -- the Command Cards a commander/non-commander activates
+   * normally just vanish after dispatch; while this Event is tracked, the same activation call
+   * sites also push the card here instead of letting it disappear, so "restore from recycle" has
+   * something real to draw from and the Condition has a real count to check. Same "no existing
+   * system, built minimally for this one card" status as disposalPile. */
+  recyclePile: CommandCard[];
+  recyclePileRoundStart: number;
+  /** Assigned Posts' "Roll Dice to select locations" -- one location rolled per seatIndex when
+   * the Event becomes active. Normally cleared at the next round's Event-flag reset like every
+   * other per-round Event flag; assignedPostsPersist (set by this card's own Failure Penalty,
+   * "Effect persists after event") skips that one clear so the assignment carries into the next
+   * round instead. */
+  assignedPostLocations: Map<number, Location>;
+  assignedPostsPersist: boolean;
+  /** Honorable Discharge's Failure Penalty ("Retire costs no longer gives resource") -- a
+   * standing rule change once triggered (the card text says "no longer," not "this round"), so
+   * unlike the other per-round Event flags this one is never reset. */
+  retireGivesNoResource: boolean;
+  /** Research drive's Completion Condition ("Capture more than you kill") -- the private
+   * containedEnemies count lives on GameEngine, not GameState, so events.ts (a free function)
+   * had no way to see it and fell back to an approximation. Exposed here as a real per-round
+   * count instead. */
+  containedThisRound: number;
 }

@@ -265,6 +265,101 @@ end-to-end with correct escrow/rank/card consequences), and a standalone unit ch
 "Rejected" branch (can't occur naturally with only 1 human seat, since bots always believe a
 human accuser).
 
+## Full-implementation pass: every Gear/Tactician/Boss item gets a real hook, Events get fixed
+
+Stage 4 ported Missions/Events/Bosses/Secret Objectives/Tactician faithfully to `sim.py`'s level
+of completeness, which left a known list of "no clean hook, documented no-op" items behind: 11
+Gear cards, 9 of 15 Tactician roles, 2 Boss passives, and all 32 Events beyond the original 8
+(still a flat 55% pass/fail roll with no real Round Effect/Condition/Penalty). This pass went
+beyond sim.py's own scope and built real infrastructure for nearly all of them rather than
+skipping or approximating:
+
+- **Gear** (`engine/gear.ts`): all 11 previously no-op items now have real mechanics — an equip
+  slot-cap system (`planningActions.ts`'s `equipSlotCap`) for the items that needed one, Uranium
+  Rounds' consecutive-hit tracking, Night Vision's precombat reveal bonus, Reanimator's
+  battlefield revive off `game.lastKilledEnemy`, Expanded Backpack/Resupply Drone/Smoke
+  Launcher/Night Vision/Reanimator Actives.
+- **Tactician** (`engine/tactician.ts`): 7 more roles now have real dispatch — Pathfinder bypasses
+  the Rank-gate on unit purchases, Jailer discounts Containment builds, Breaker/Bastion get real
+  combat-time `shredArmor`/shield hooks. Reclaimer and Chessmaster stayed documented no-ops (no
+  Recycling pile or distinct Reassign action exists in this model to hook into).
+- **Bosses** (`engine/bosses.ts`): Rust Elemental (zero-out all combatants' armor for the round)
+  and The Culling (enemies become delete-on-kill) — both board-wide effects, so they're applied at
+  Combatant-construction time in `game.ts` rather than inside the single-lane `applyBossPassive`.
+- **Events** (`engine/events.ts`): all 32 cards wired up real Round Effects/Conditions/Penalties —
+  see below, this one wasn't a clean win.
+
+**The Events pass caused a severe regression, root-caused and fixed.** Making all 32 Events real
+dropped bot win rate from a stable ~40% baseline to 7-18% (n=80 batches). Git-stash bisection
+confirmed the regression was isolated to this change; cluster-by-cluster isolation testing (7
+event clusters disabled one at a time) found no single cluster was dominant — the harm was broadly
+distributed, and Round Effects firing every round (not the Penalty/Condition channel) turned out
+to be the dominant cost. Four fixes landed together:
+
+1. **Skip Failure Penalty when the Round Effect already deals real harm.** Only the original 8
+   events still roll a Penalty on top of their Round Effect — the 32 new ones don't double up.
+2. **Real Completion Condition checking** (`eventConditionMet`) replacing the flat 55% roll, using
+   two new per-round delta trackers (`game.killsThisRound`/`deathsThisRound`) since the existing
+   stat fields are cumulative-only and couldn't answer "did this happen *this round*."
+3. **Progress-bracket severity scaling** (`eventSeverity`): binary Round Effects (stun/block/strip,
+   no natural "amount" to scale) now gate behind `Math.random() < severity`, where severity is
+   0.4/0.7/1.0 keyed off `game.enemyProgress` — easing harm early, ramping it up as the game
+   progresses. This alone was the highest-leverage fix, ~8%→24% on n=80.
+4. **Real commander choice for event selection** (`chooseActiveEvent`) — fixed a long-standing
+   discrepancy where a code comment claimed "commander chooses" but the actual logic (in both
+   `sim.py` and this port) was `random.choice(drawn)`. Two Events are now drawn and the commander
+   picks which becomes active; bots favor the milder of the original 8 via a heuristic, human
+   seats get a 20-second Socket.IO prompt (`client/EventChoicePanel.svelte`) with the same
+   bot-heuristic fallback on timeout used by every other decision point.
+
+**Result**: 25% win rate on n=80, no crashes — a genuine multi-fold recovery from the regression,
+though still below the pristine ~40% baseline. The gap is the real cost of Events no longer being
+a no-op: harsher Round Effects can still land even with severity scaling and a real choice point,
+which is the intended tradeoff rather than a bug.
+
+## Follow-up audit: the first Events pass still had 6 cards with no real Round Effect, 3 with a coin flip
+
+A direct re-check of all 40 Events against the actual CSV text (not just the summary above) found
+the first pass hadn't actually reached 100%, despite this file saying so: 3 cards' Completion
+Condition (Assigned Posts, Garbage Day, Forced Disposal) still fell back to a flat
+`Math.random() < 0.55`, and 6 cards' Round Effect text was never wired to a single line of game
+logic at all (Command Requisition, Lead by example, Chain of Command, Honorable Discharge, plus
+Assigned Posts' own Round Effect). Built real mechanics for all of them:
+
+- **Command Requisition**: "Generated resources go to command instead" now actually redirects the
+  worker-placement income loop to `game.commandPool`; "players can spend command resources" lets
+  Unit/Gear purchases and equip costs draw their shortfall from the command pool too
+  (`planningActions.ts`'s `canAffordIncludingCommand`/`payIncludingCommand`).
+- **Lead by example**: players get a real second mission-draw attempt this round, not just the
+  promote/demote Reward/Penalty that already existed.
+- **Chain of Command**: a real combat-time mod sets every player unit's HP and Damage equal to
+  its Rank value (`RANK_NUM`), via `applyEventCombatMods` at the same Combatant-construction sites
+  every other combat-time Event effect uses.
+- **Honorable Discharge**: unit deaths this round are redirected into the same retire-for-partial-
+  refund treatment `runRetireFromDuty` already uses for obsolete reserve units
+  (`retireOrGraveyard` in `game.ts`), so its own Completion Condition ("Retire 5-10 units") has a
+  real per-round count to check.
+- **Assigned Posts**: a real per-player dice-rolled location assignment
+  (`game.assignedPostLocations`), checked against where players actually placed that round.
+
+The 3 coin-flip Conditions needed inventing two pile systems this engine (and `sim.py`) never had
+at all -- a "Disposal" pile (fed by units that die, not retire) and a "Recycle" pile (fed by
+Command Cards that get activated instead of vanishing). Built both at minimal scope: real running
+counts/contents, a snapshot at the start of the round the card is active so "shrank by half" is an
+exact comparison, and an auto-apply convention for the spend/restore side (no UI decision point
+exists for either, so the commander auto-clears/restores when affordable, same convention Gear
+Actives already use). Two Penalties stayed honest no-ops rather than guessed at: Garbage Day's
+"Delete items on death" needs to know about deaths before Event resolution runs, which happens
+after combat already finished for the round -- a structural ordering conflict, not a missing
+hook. Research drive's "roll dice on capture-vs-kill odds" sub-mechanic would need an
+interrupt-the-kill branch inside `resolveLaneCombat` itself; left undone since the card's actual
+Completion Condition (capture more than you kill) is checked exactly either way, via a real
+`containedThisRound` counter exposed for it.
+
+Re-verified after all of this: clean `tsc`/`svelte-check`, 18-23% win rate across two more n=80
+batches (consistent with the 25% above, within the noise band already established for this
+sample size), no crashes.
+
 ## Running it locally
 
 Two processes, in two terminals:

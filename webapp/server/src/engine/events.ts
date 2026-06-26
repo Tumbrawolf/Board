@@ -1,5 +1,5 @@
-import type { EventCard } from "./data.js";
-import { ENEMY_RANK_NUM, LOCATIONS, RANK_ORDER, type EnemyRank, type Location } from "./constants.js";
+import { toInt, type EventCard } from "./data.js";
+import { ENEMY_RANK_NUM, RANK_NUM, LOCATIONS, RANK_ORDER, type EnemyRank, type Location } from "./constants.js";
 import type { Combatant } from "./combat.js";
 import { weakestPlayer } from "./state.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
@@ -19,13 +19,15 @@ export function eventSeverity(game: GameState): number {
 
 /** Keyword/state-matched Completion Condition checking -- replaces the flat 55% roll that used
  * to decide pass/fail regardless of play (a pre-existing gap in sim.py too, never wired to
- * anything real). Same approximation standard as missions.ts's missionRequirementMet: most
- * conditions check real, currently-tracked state directly; the handful needing a true per-round
- * delta this engine doesn't track (cumulative stats only, not "this round" deltas -- donations,
- * retires, heals, gear-equips) fall back to "has this ever happened" as a loose proxy, same as
- * Mission Requirements already do for similarly untracked conditions. Falls back to a 55% coin
- * flip only for the few conditions with no real signal to check at all (Assigned Posts, Garbage
- * Day, Forced Disposal -- need a "rolled location"/Recycling/Disposal pile that doesn't exist). */
+ * anything real). Every one of the 40 Events now has a real, deterministic check against actual
+ * game state -- no card falls back to a random roll. Same approximation standard as missions.ts's
+ * missionRequirementMet for the handful of conditions whose exact tabletop wording needs a true
+ * per-round delta this engine doesn't separately track (e.g. Lead by example's "Mission of
+ * combined rank = Rank total of players" checks "any mission completed" rather than matching the
+ * exact rank arithmetic) -- those are still real, current-state checks, just a looser match of
+ * the card's precise wording, the same documented standard Mission Requirements already use. The
+ * `default` branch below is unreachable for any of the 40 real event names; it exists only so an
+ * unrecognized name fails closed (false) instead of crashing or guessing. */
 export function eventConditionMet(
   game: GameState,
   event: EventCard,
@@ -90,20 +92,41 @@ export function eventConditionMet(
       return game.players.every((p) => workersAt("Medical Bay") >= 1) && workersAt("Medical Bay") >= game.players.length;
     case "Medical Focus":
       return game.players.some((p) => p.stats.healsGiven > 0);
-    case "Honorable Discharge":
-      return game.players.reduce((s, p) => s + p.stats.unitsRetired, 0) >= 5;
-    case "Research drive":
-      // "Capture more than you kill" -- no access to GameEngine's private containedEnemies
-      // tracker from here, so approximated as "a clean round, no kills at all" (the only other
-      // way every dead enemy could be accounted for without killing).
-      return [...game.killsThisRound.values()].reduce((s, n) => s + n, 0) === 0;
+    case "Honorable Discharge": {
+      // "Retire Between 5 and 10 units this turn" -- a real per-round count (retiresThisRound),
+      // not the old cumulative-game-total proxy.
+      const retiredThisRound = [...game.retiresThisRound.values()].reduce((s, n) => s + n, 0);
+      return retiredThisRound >= 5 && retiredThisRound <= 10;
+    }
+    case "Research drive": {
+      // "Capture more than you kill" -- containedThisRound is a real per-round count exposed on
+      // GameState specifically for this check (see types.ts), not an approximation.
+      const totalKills = [...game.killsThisRound.values()].reduce((s, n) => s + n, 0);
+      return game.containedThisRound > totalKills;
+    }
     case "Chain of Command":
       return game.players.every((p) => p.rank >= ENEMY_RANK_NUM[diffRank]);
     case "Kill Contest":
-      // No per-unit kill tracking exists, only per-player -- approximated as "one player's lane
-      // alone got 3+ kills this round" (close to "a unit", since most lanes have 1 active unit
-      // doing the killing).
+      // "Single Unit gets 3 kills" -- no per-unit (as opposed to per-player-lane) kill
+      // attribution exists in resolveLaneCombat, so this checks "one player's lane alone got 3+
+      // kills this round" instead -- exact whenever that lane has only 1 active unit (the common
+      // case), a real state-based proxy (not a coin flip) the rest of the time.
       return game.players.some((p) => (game.killsThisRound.get(p.seatIndex) ?? 0) >= 3);
+    case "Assigned Posts":
+      // "Place worker at location rolled for each player" -- assignedPostLocations is the real
+      // dice roll from this card's own Round Effect (see applyEventRoundEffect below).
+      return game.players.every((p) => {
+        const assigned = game.assignedPostLocations.get(p.seatIndex);
+        return Boolean(assigned) && (placementsThisRound[p.seatIndex] ?? []).includes(assigned!);
+      });
+    case "Garbage Day":
+      // "Recycle is half total from start of round" -- recyclePile is a real pile of actually-
+      // activated Command Cards (see recycleIfGarbageDay in planningActions.ts), not a guess.
+      return game.recyclePile.length <= game.recyclePileRoundStart / 2;
+    case "Forced Disposal":
+      // "Disposal is half total from start of round" -- disposalPile is a real running count of
+      // units that have died (not retired) this game, fed at the same sites as deathsThisRound.
+      return game.disposalPile <= game.disposalPileRoundStart / 2;
     case "Saboteur investigation":
       return game.disabledLocation ? workersAt(game.disabledLocation) === 0 : false;
     case "Capacity Threshold":
@@ -128,11 +151,8 @@ export function eventConditionMet(
     case "Leadership Crisis":
       return game.forceCommanderChange;
     default:
-      // Assigned Posts/Garbage Day/Forced Disposal: need a "rolled location"/Recycling/Disposal
-      // pile that doesn't exist as a real system here -- fall back to the same flat-rate roll
-      // every event used before this function existed, rather than guessing at a proxy with no
-      // real signal behind it.
-      return Math.random() < 0.55;
+      // Unreachable for any of the 40 real Event names -- fails closed rather than guessing.
+      return false;
   }
 }
 
@@ -181,11 +201,12 @@ function unequipAllOfType(p: GamePlayer, type: string | null, severity: number, 
   }
 }
 
-/** Round Effect column -- ongoing for the round while this Event is active. The mechanically
- * tractable subset has real hooks; a handful (Forced Disposal/Garbage Day/Research drive) need
- * shared piles (Disposal/Recycling/Containment-as-units) that don't exist as real systems here,
- * so those get a flat resource approximation instead -- documented per-card below, same standard
- * as everywhere else cards need infrastructure that isn't there. */
+/** Round Effect column -- ongoing for the round while this Event is active. Command Requisition
+ * (income redirect + command-pool spending), Lead by example (extra mission draw), Chain of
+ * Command (HP/Dmg = rank), and Honorable Discharge (retire instead of dying) are all real too,
+ * just applied from their own natural hook point elsewhere (game.ts's income loop/mission
+ * draw/death handling, events.ts's applyEventCombatMods) rather than from this function -- see
+ * each one's own comment at its actual call site. */
 export function applyEventRoundEffect(game: GameState, event: EventCard, log: (t: string) => void) {
   const name = event["Event name"];
   const w = weakestPlayer(game);
@@ -236,15 +257,47 @@ export function applyEventRoundEffect(game: GameState, event: EventCard, log: (t
   } else if (name === "Leadership Crisis") {
     game.forceCommanderChange = true;
   } else if (name === "Research drive") {
+    // "Containment Block cells hold 2 each" is real (containmentCapacityDoubled, already applied
+    // at the Containment Block income site in game.ts); the "roll dice when a unit falls below
+    // half HP, odds capture even a kill" sub-mechanic would need an interrupt-the-kill branch
+    // inside resolveLaneCombat itself -- left as a documented gap rather than guessed at, since
+    // the Condition this Event actually cares about (containedThisRound vs killsThisRound, see
+    // eventConditionMet) is real either way.
     game.containmentCapacityDoubled = true;
   } else if (name === "Forced Disposal") {
+    // "Can clear Disposal for Organics = Rank" -- no UI exists for an opt-in spend choice here
+    // (same convention as Gear Actives auto-activating when affordable), so the commander
+    // auto-clears up to their Rank worth of the pile if they can afford the Organic cost.
     const commander = game.players[game.commanderIdx];
-    commander.res.Organic += commander.rank;
-  } else if (name === "Garbage Day") {
-    for (const p of game.players) {
-      p.res.Organic += 2;
-      p.res.Tech += 1;
+    const rank = commander.rank;
+    if (commander.res.Organic >= rank && game.disposalPile > 0) {
+      commander.res.Organic -= rank;
+      const cleared = Math.min(game.disposalPile, rank);
+      game.disposalPile -= cleared;
+      log(`  [Event] ${commander.name} clears ${cleared} from Disposal (Organic -${rank})`);
     }
+  } else if (name === "Garbage Day") {
+    // "Can Restore cards from recycle for their tech cost" -- same auto-apply convention as
+    // Forced Disposal above: the commander restores the cheapest-Tech card in the pile if they
+    // can afford it, once per round.
+    const commander = game.players[game.commanderIdx];
+    if (game.recyclePile.length) {
+      const cheapest = game.recyclePile.reduce((a, b) => (toInt((b as any).Tech) < toInt((a as any).Tech) ? b : a));
+      const cost = toInt((cheapest as any).Tech);
+      if (commander.res.Tech >= cost) {
+        commander.res.Tech -= cost;
+        game.recyclePile.splice(game.recyclePile.indexOf(cheapest), 1);
+        commander.hand.push(cheapest);
+        log(`  [Event] ${commander.name} restores ${cheapest.Name} from Recycle (Tech -${cost})`);
+      }
+    }
+  } else if (name === "Assigned Posts") {
+    game.assignedPostLocations = new Map(game.players.map((p) => [p.seatIndex, LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)]]));
+    log(
+      `  [Event] Assigned Posts rolls: ${game.players
+        .map((p) => `${p.name}->${game.assignedPostLocations.get(p.seatIndex)}`)
+        .join(", ")}`
+    );
   } else if (name === "System Lockdown") {
     for (const loc of Object.keys(game.locationUpgradesBuilt) as (keyof typeof game.locationUpgradesBuilt)[]) {
       game.locationUpgradesBuilt[loc] = [];
@@ -284,6 +337,12 @@ export function applyEventCombatMods(game: GameState, c: Combatant, isEnemy: boo
     else if (Math.random() < severity) c.curShields = 0;
   }
   if (name === "Annihilation Clause" && Math.random() < severity) c.deleteOnKill = true;
+  if (name === "Chain of Command" && !isEnemy && ui) {
+    const rankVal = RANK_NUM[ui.card.Rank] ?? 1;
+    c.hp = rankVal;
+    c.curHp = rankVal;
+    c.dmg = rankVal;
+  }
   if (!isEnemy && ui && name in TYPE_STUN_EVENTS && name !== "Combined Arms Training") {
     if (!ui.card.Type.includes(TYPE_STUN_EVENTS[name]) && Math.random() < severity) c.dmg = 0;
   }
@@ -293,9 +352,14 @@ export function applyEventCombatMods(game: GameState, c: Combatant, isEnemy: boo
   }
 }
 
-/** Completion Reward / Failure Penalty -- covers the clearest, most mechanically tractable
- * effects; the underlying pass/fail roll stays the established flat 55% rate, same as sim.py
- * (no real Completion Condition evaluation -- that's a documented gap in the source too). */
+/** Events whose Round Effect is a beneficial opportunity (clear Disposal, restore from Recycle,
+ * retire instead of dying, double Containment capacity) rather than disruptive harm -- Fix 1's
+ * blanket "skip Penalty, the Round Effect already hurt enough" rule doesn't apply to these, since
+ * there's no harm to double up on. They keep a real Penalty on failure same as the original 8. */
+const BENEFICIAL_ROUND_EFFECT_EVENTS = new Set(["Forced Disposal", "Garbage Day", "Honorable Discharge", "Research drive"]);
+
+/** Completion Reward / Failure Penalty -- the pass/fail roll itself is now a real Completion
+ * Condition check (eventConditionMet), not a coin flip. */
 export function applyEventResolution(game: GameState, event: EventCard, passed: boolean, commander: GamePlayer) {
   const name = event["Event name"];
   const w = weakestPlayer(game);
@@ -322,11 +386,21 @@ export function applyEventResolution(game: GameState, event: EventCard, passed: 
     } else if (name === "Chain of Command") {
       const promo = game.players.reduce((a, b) => (b.rank < a.rank ? b : a));
       promo.rank = Math.min(RANK_ORDER.length, promo.rank + 1);
-    } else if (["Command Requisition", "Assigned Posts"].includes(name)) {
+    } else if (name === "Command Requisition") {
+      // "Roll Dice 3 times generate resources = the numbers rolled once per resource" -- goes to
+      // the command pool, matching this card's own "everything routes through command" theme.
       for (let i = 0; i < 3; i++) {
         const roll = 1 + Math.floor(Math.random() * 6);
         const res = (["Organic", "Tech", "Alien"] as const)[roll % 3];
         game.commandPool[res] += roll;
+      }
+    } else if (name === "Assigned Posts") {
+      // "...generate resources at those location for all players regardless of worker" -- unlike
+      // Command Requisition, this goes to every player individually, not the command pool.
+      for (let i = 0; i < 3; i++) {
+        const roll = 1 + Math.floor(Math.random() * 6);
+        const res = (["Organic", "Tech", "Alien"] as const)[roll % 3];
+        for (const p of game.players) p.res[res] += roll;
       }
     } else if (name in typeStunBonus) {
       const { type, amt } = typeStunBonus[name];
@@ -335,24 +409,50 @@ export function applyEventResolution(game: GameState, event: EventCard, passed: 
         if (p.active && p.active.card.Type.includes(type)) p.active.curShields += amt * count;
       }
     } else if (name === "Honorable Discharge") {
-      for (const p of game.players) p.res.Organic += 3; // "refund value duplicated to command" approximated as a flat resource nudge
+      // "Retired units refund value duplicated to command" -- a real multiple of however many
+      // units actually retired this round (retiresThisRound), not a flat nudge.
+      const retired = [...game.retiresThisRound.values()].reduce((s, n) => s + n, 0);
+      game.commandPool.Organic += retired * 3;
     } else if (name === "Forced Disposal") {
-      game.commandPool.Alien += game.players.reduce((s, p) => s + p.stats.kills, 0);
+      // "Command gains Alien = units disposed of this round" -- the real delta the Round Effect
+      // actually cleared this round (disposalPileRoundStart - disposalPile), not total kills.
+      game.commandPool.Alien += Math.max(0, game.disposalPileRoundStart - game.disposalPile);
     }
     // 'Stockpiled Reserves': covered generically by Mission's own Resource/Instant dispatch elsewhere, same as sim.py.
+    // 'Garbage Day': "Ongoing effect" -- no concrete numeric reward in the card text to apply beyond the Round Effect itself.
+    // 'Research drive': "Containment Block keeps storage stack upgrade" -- no mechanical hook here (containmentSlots is already permanent once built).
   } else {
     // Skip Failure Penalty for every event whose Round Effect already did real harm this round
-    // -- see this file's top comment for why (confirmed by batch testing: this single change
-    // recovers most of the win-rate cost of fully implementing Events). Only the original 8
-    // (mild resource conversions, no disruptive Round Effect) still apply a real Penalty.
-    if (!ORIGINAL_EIGHT_EVENTS.has(name)) return;
+    // (the original 32) -- see this file's top comment for why. Events whose Round Effect is a
+    // beneficial opportunity instead of harm (BENEFICIAL_ROUND_EFFECT_EVENTS) keep a real Penalty
+    // same as the original 8, since there's no double-harm concern to avoid for those.
+    if (!ORIGINAL_EIGHT_EVENTS.has(name) && !BENEFICIAL_ROUND_EFFECT_EVENTS.has(name)) return;
     if (name === "Lead by example") {
       for (const p of game.players) p.rank = Math.max(1, p.rank - 1);
     } else if (name === "Chain of Command") {
       const demote = game.players.reduce((a, b) => (b.rank > a.rank ? b : a));
       demote.rank = Math.max(1, demote.rank - 1);
+    } else if (name === "Assigned Posts") {
+      game.assignedPostsPersist = true;
+    } else if (name === "Honorable Discharge") {
+      // "Retire costs no longer gives resource" -- a standing rule change, not a one-round hit.
+      game.retireGivesNoResource = true;
     }
     // Tax Fault/Cheap Knockoffs/Food Shortage failure penalties: cost-increase penalties have no
     // shop-cost-modifier hook to apply against here, same documented gap as sim.py.
+    // Garbage Day's Penalty ("Delete items on death") describes THIS round's deaths, but
+    // resolution runs after combat has already finished for the round -- there's no real way to
+    // apply it retroactively without rearchitecting when Event resolution happens relative to
+    // combat, so it's left a documented no-op rather than guessed at.
+    // Forced Disposal's Penalty ("Command loses Alien = units disposed of this round") and
+    // Research drive's ("Disable a Containment Block slot") are applied at their own call sites
+    // in game.ts instead -- the former needs the same disposalPileRoundStart delta the Reward
+    // branch uses (computed here, but commandPool.Alien shouldn't go negative from a single
+    // card -- handled as a clamped loss there); the latter touches GameEngine's private
+    // containmentSlots, which this free function can't reach.
+    if (name === "Forced Disposal") {
+      const cleared = Math.max(0, game.disposalPileRoundStart - game.disposalPile);
+      game.commandPool.Alien = Math.max(0, game.commandPool.Alien - cleared);
+    }
   }
 }
