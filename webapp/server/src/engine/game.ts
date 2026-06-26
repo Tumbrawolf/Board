@@ -216,6 +216,7 @@ export class GameEngine {
       status: "running",
       log: [],
       effectUses: new Map(),
+      lastKilledEnemy: null,
     };
 
     refillShopUnit(this.game);
@@ -853,7 +854,8 @@ export class GameEngine {
   ): Promise<number> {
     const game = this.game;
 
-    let revealCount = 2;
+    let revealCount = 2 + (game.nightVisionRevealBonus ?? 0);
+    game.nightVisionRevealBonus = 0;
     if (game.teamScoutPool.length) {
       const scout = game.teamScoutPool.reduce((a, b) =>
         scoutValue(b) > scoutValue(a) ? b : a
@@ -898,6 +900,29 @@ export class GameEngine {
     // No on_reveal dispatch in Stage 2 (multi-lane Reveal damage isn't ported yet) -- enemies are
     // plain stat-lines until the engine grows enemy-text dispatch in a later stage.
 
+    // Airburst Rounds ("Attacks splash onto adjacent lanes"): a precombat pass against
+    // neighboring lanes' enemy pools (adjacency = game.players array index +/-1, circular),
+    // before any lane's own combat starts, since this engine resolves lanes one at a time, not
+    // simultaneously -- splash is approximated as a once-per-round flat-damage filter on the
+    // neighbor's whole enemy pool, the same idiom already used by every other "deal damage to
+    // the enemy pool" Gear effect here (e.g. Grenades), since individual enemies aren't
+    // HP-tracked outside an active combat resolution.
+    for (let i = 0; i < game.players.length; i++) {
+      const p = game.players[i];
+      const active = p.active;
+      if (!active?.equipped.some((g) => (g as any).Name === "Airburst Rounds")) continue;
+      const splashDmg = Math.max(1, Math.floor((toInt(active.card.Damage) + equippedBonus(active, "Damage")) / 2));
+      for (const offset of [-1, 1]) {
+        const neighbor = game.players[(i + offset + game.players.length) % game.players.length];
+        if (neighbor === p || !neighbor.laneEnemyReserve.length) continue;
+        const before = neighbor.laneEnemyReserve.length;
+        neighbor.laneEnemyReserve = neighbor.laneEnemyReserve.filter((e) => toInt(e.HP) > splashDmg);
+        if (neighbor.laneEnemyReserve.length < before) {
+          this.log(`  [Airburst Rounds] ${p.name}'s splash thins ${neighbor.name}'s adjacent lane (${before - neighbor.laneEnemyReserve.length} enemy(s) cleared)`);
+        }
+      }
+    }
+
     let overrunLanes = 0;
     const overranPlayers = new Set<GamePlayer>();
     const lanesWon = new Set<GamePlayer>();
@@ -910,7 +935,7 @@ export class GameEngine {
       const pUnits = [...(p.active ? [p.active] : []), ...p.reserve];
       const pCombatants = pUnits.map((ui) => {
         const c = combatantFromUnit(ui);
-        applyGearCombatMods(c, ui);
+        applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
         applyUnitCombatMods(c, ui);
         return c;
       });
@@ -928,6 +953,11 @@ export class GameEngine {
       if (kills > 0) {
         lanesWithKill.push(p);
         p.stats.kills += kills;
+        const killedCombatants = eCombatants.filter((c) => !enemySurvivors.includes(c));
+        if (killedCombatants.length) {
+          const lastKilledIdx = eCombatants.lastIndexOf(killedCombatants[killedCombatants.length - 1]);
+          game.lastKilledEnemy = p.laneEnemyReserve[lastKilledIdx] ?? game.lastKilledEnemy;
+        }
       }
       if (overrun) {
         overrunLanes += 1;
@@ -990,7 +1020,7 @@ export class GameEngine {
       if (!target) continue;
       const rCombatants = reinforcements.map((ui) => {
         const c = combatantFromUnit(ui);
-        applyGearCombatMods(c, ui);
+        applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
         applyUnitCombatMods(c, ui);
         return c;
       });

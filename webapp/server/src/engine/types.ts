@@ -121,4 +121,11 @@ export interface GameState {
   status: GameStatus;
   log: GameLogEntry[];
   effectUses: Map<string, number>;
+  /** Reanimator's "return the last killed enemy to combat under your control" -- the most
+   * recent enemy card killed in normal lane combat (Boss kills and contained enemies don't set
+   * this, only the everyday per-lane Combat Cycle). Consumed (set back to null) once revived. */
+  lastKilledEnemy: EnemyCard | null;
+  /** Night Vision's "Roll D6, Reveal that many enemies" -- added to the round's base scout
+   * reveal count, reset to 0 each round. */
+  nightVisionRevealBonus?: number;
 }

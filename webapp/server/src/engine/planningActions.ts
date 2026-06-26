@@ -53,10 +53,32 @@ export function buyUnitMutation(game: GameState, p: GamePlayer, choice: UnitCard
 /** Equips a gear card (from the shop or from gearHand) onto the player's active unit, paying its
  * Tech cost. Returns false (and holds the card in gearHand) if there's no active unit yet or the
  * player can't afford the equip cost right now. */
+const SLOT_LIMITED_TYPES = new Set(["Weapon", "Armor", "Utility"]);
+/** Ammo Pouches/Extra Holster raise their own unit's Utility/Weapon slot cap from 1 to 2 --
+ * the entire reason either item exists. No other Gear has a stated slot effect, so every other
+ * type just uses the flat base cap (Consumable/Experimental are uncapped: they're typically
+ * one-shot or rare enough not to need a limit). */
+function equipSlotCap(active: GamePlayer["active"], type: string): number {
+  if (!active || !SLOT_LIMITED_TYPES.has(type)) return Infinity;
+  const expander = type === "Utility" ? "Ammo Pouches" : type === "Weapon" ? "Extra Holster" : null;
+  const hasExpander = expander && active.equipped.some((eq) => (eq as any).Name === expander);
+  return hasExpander ? 2 : 1;
+}
+
 export function equipGearOntoActiveMutation(p: GamePlayer, g: any, log: (t: string) => void): boolean {
   if (!p.active) {
     p.gearHand.push(g);
     return false;
+  }
+  const gType = g.Type as string | undefined;
+  if (gType && SLOT_LIMITED_TYPES.has(gType)) {
+    const sameTypeCount = p.active.equipped.filter((eq) => (eq as any).Type === gType).length;
+    const cap = equipSlotCap(p.active, gType);
+    if (sameTypeCount >= cap) {
+      p.gearHand.push(g);
+      log(`  ${p.name} has no free ${gType} slot for ${g.Name} (${sameTypeCount}/${cap} used) -- held in hand`);
+      return false;
+    }
   }
   const cost = RANK_NUM[g["Rank Name"]] ?? 1;
   if (p.res.Tech < cost) {

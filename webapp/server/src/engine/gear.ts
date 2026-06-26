@@ -1,6 +1,6 @@
 import { toInt, type GearCard } from "./data.js";
 import { Combatant } from "./combat.js";
-import { canAfford, canUseEffect, GEAR_COST_KEYS, healUnit, pay, recordEffectUse, weakestPlayer, type RoundTempState } from "./state.js";
+import { canAfford, canUseEffect, GEAR_COST_KEYS, healUnit, makeUnitInstance, pay, recordEffectUse, weakestPlayer, type RoundTempState } from "./state.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
 
 /** Name-keyed dispatch tables, ported 1:1 from Working/sim.py -- Gear has fewer cards with more
@@ -24,7 +24,7 @@ function unitsOf(p: GamePlayer): UnitInstance[] {
   return [...(p.active ? [p.active] : []), ...p.reserve];
 }
 
-export function applyGearCombatMods(c: Combatant, ui: UnitInstance) {
+export function applyGearCombatMods(c: Combatant, ui: UnitInstance, commanderRank = 1) {
   const names = new Set(ui.equipped.filter((g) => "Name" in (g as any)).map((g) => (g as any).Name as string));
   if ([...names].some((n) => GEAR_IGNORE_ARMOR.has(n))) c.ignoreArmor = true;
   if ([...names].some((n) => GEAR_DOUBLE_VS_SHIELDS.has(n))) c.shieldMultiplier = 2;
@@ -36,6 +36,18 @@ export function applyGearCombatMods(c: Combatant, ui: UnitInstance) {
   if ((ui.charges["Holographic Decoys"] ?? 0) > 0) {
     ui.charges["Holographic Decoys"] -= 1;
     c.firstHitPrevented = true;
+  }
+  // Uranium Rounds: "+2 damage for consecutive hits" -- the exact same stacking counter the
+  // Unit-side consecutive_damage keyword already tracks every round in applyPrecombatUnit,
+  // just consumed by name here instead of by tag.
+  if (names.has("Uranium Rounds")) c.dmg += (ui.charges["consecutive_hits"] ?? 0) * 2;
+  // Prototype Weapons: "This item stats * (2x rank of commander)" -- equippedBonus() already
+  // counted this item's printed Damage once; add the rest of the multiplier on top so the total
+  // scales with the CURRENT commander's rank every round, not a one-time equip-time snapshot.
+  const proto = ui.equipped.find((g) => (g as any).Name === "Prototype Weapons") as any;
+  if (proto) {
+    const base = toInt(proto.Damage);
+    c.dmg += base * (2 * commanderRank - 1);
   }
 }
 
@@ -99,6 +111,24 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
       if (name === "Shield Projector") ui.curShields += 60;
       if (name === "Slayer Suit") ui.curShields += 5;
       if (name === "Exosuit") tempState.tempBuff(ui, { Armor: 3 });
+      // Night Vision Passive: "Unit gets a free attack against Revealed enemies" -- there's no
+      // separate "Revealed" flag on enemy instances (they're plain stat-lines, no Reveal-trigger
+      // dispatch exists yet), so this approximates the free attack as a flat one-round damage
+      // bonus equal to the unit's own printed Damage, granted every round it's equipped.
+      if (name === "Night Vision") tempState.tempBuff(ui, { Damage: toInt(ui.card.Damage) });
+      // Reanimator Passive: "Can be played at any time, Return last killed enemy to combat
+      // under your control with this item equipped" -- consumes game.lastKilledEnemy once,
+      // adding it to this player's reserve as a controlled unit (same instancing as any other
+      // unit, equipped with this same Reanimator so it carries over to its next death too).
+      if (name === "Reanimator" && game.lastKilledEnemy) {
+        const revived = makeUnitInstance({ ...(game.lastKilledEnemy as any), Rank: "Conscript" } as any);
+        revived.equipped.push(g);
+        ui.equipped = ui.equipped.filter((eq) => eq !== g);
+        if (!p.active) p.active = revived;
+        else p.reserve.push(revived);
+        log(`  [Reanimator] ${p.name} returns ${game.lastKilledEnemy.Name} to combat under their control`);
+        game.lastKilledEnemy = null;
+      }
     }
   }
 
@@ -120,9 +150,13 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
 }
 
 /** Active Effects for equipped Gear. Ported close to 1:1 from sim.py's apply_gear_active,
- * including its own existing simplifications. A few items (Expanded Backpack, Resupply Drone,
- * Smoke Launcher, Night Vision, Reanimator) have no clean mechanical hook -- documented no-ops,
- * same as the source. */
+ * including its own existing simplifications. Expanded Backpack/Resupply Drone/Smoke Launcher/
+ * Night Vision/Reanimator were sim.py-side no-ops (no cooldown/scouting/status-effect subsystem
+ * existed) -- now implemented here with reasonable mechanical analogs to the closest systems
+ * that DO exist in this engine (effectUses' per-effect cap counters, the round's scout reveal
+ * count, tempState's temp-buff list, item-transfer same as Nanite Tech). This is intentionally
+ * beyond what sim.py itself ever did for these 5 -- see the webapp README for the audit that
+ * found them. */
 function applyGearActive(
   game: GameState,
   name: string,
@@ -273,10 +307,60 @@ function applyGearActive(
     case "Shadow Tech":
       if (w.laneEnemyReserve.length) w.laneEnemyReserve = w.laneEnemyReserve.slice(1);
       break;
+    case "Expanded Backpack": {
+      // "Reset the cooldown of another equipped item" -- refunds 1 use to one of THIS unit's
+      // other equipped items that's currently tracked against a per-unit use cap (Chronostasis
+      // is the only such item today; this generalizes automatically if more get one later).
+      const other2 = ui.equipped.find((g2) => (g2 as any).Name && (g2 as any).Name !== "Expanded Backpack");
+      if (other2) {
+        const key = `${(other2 as any).Name}-${ui.id}`;
+        const used = game.effectUses.get(key) ?? 0;
+        if (used > 0) game.effectUses.set(key, used - 1);
+      }
+      break;
+    }
+    case "Resupply Drone":
+      // "Refresh the active effects of each lane" -- refunds 1 use to every currently-tracked
+      // capped effect game-wide (Recon Satellite, Saboteur Cell, Strategic Withdrawal,
+      // Chronostasis instances, etc.), approximating a team-wide refresh.
+      for (const [key, used] of game.effectUses) {
+        if (used > 0) game.effectUses.set(key, used - 1);
+      }
+      break;
+    case "Smoke Launcher":
+      // "Move this effect to target lane" -- transfers the item itself to the weakest player's
+      // active unit, same item-transfer pattern as Nanite Tech.
+      if (w.active && w.active !== ui) {
+        const owned = unitsOf(p);
+        if (owned.includes(ui)) {
+          ui.equipped = ui.equipped.filter((g2) => (g2 as any).Name !== "Smoke Launcher");
+          w.active.equipped.push({ Name: "Smoke Launcher", Damage: 0, HP: 0, Armor: 0, Shields: 0 } as any);
+        }
+      }
+      break;
+    case "Night Vision": {
+      // "Roll D6, Reveal that many enemies" -- feeds the round's scout reveal count, same
+      // resource as Civilian Survivalist/"Python"'s reveal bonuses.
+      const roll = roll1to6();
+      game.nightVisionRevealBonus = (game.nightVisionRevealBonus ?? 0) + roll;
+      log(`  ${p.name}'s Night Vision rolls a ${roll} -- +${roll} enemies revealed this round`);
+      break;
+    }
+    case "Reanimator":
+      // Active: "Remove status effects from this unit" -- this unit's temp debuffs (negative
+      // tempBuffs, e.g. Quantum Plates' Armor penalty) are cleared early instead of waiting for
+      // Cleanup's normal tempState.clear().
+      tempState.tempBuffs = tempState.tempBuffs.filter(({ ui: u, buff }) => {
+        if (u !== ui) return true;
+        const isDebuff = Object.values(buff).some((v) => typeof v === "number" && v < 0);
+        if (isDebuff) {
+          const idx = u.equipped.indexOf(buff as any);
+          if (idx !== -1) u.equipped.splice(idx, 1);
+        }
+        return !isDebuff;
+      });
+      break;
     default:
-      // Expanded Backpack, Resupply Drone, Smoke Launcher, Night Vision, Reanimator: no clean
-      // mechanical hook (cooldown/scouting/status-effect subsystems don't exist yet) -- no-op,
-      // same as sim.py.
       break;
   }
 }

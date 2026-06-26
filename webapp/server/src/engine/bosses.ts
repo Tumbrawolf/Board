@@ -41,10 +41,21 @@ export function applyBossTier(boss: BossActive, tier: number) {
 
 /** One damage exchange per round: the Boss hits a random target lane once, and every
  * enemy-free lane hits back once. Ported 1:1 from the main round loop's Boss combat block. */
+function hasEquipped(p: GameState["players"][number], gearName: string): boolean {
+  return Boolean(p.active?.equipped.some((g) => (g as any).Name === gearName)) ||
+    p.reserve.some((ui) => ui.equipped.some((g) => (g as any).Name === gearName));
+}
+
 export function resolveBossExchange(game: GameState, log: (t: string) => void) {
   const boss = game.bossActive;
   if (!boss) return;
-  const target = game.players[Math.floor(Math.random() * game.players.length)];
+  // Laser Designator ("Other units can target your lane when attacking") draws the Boss's
+  // attention preferentially; Smoke Launcher ("cannot be targeted by abilities") removes a lane
+  // from consideration entirely, unless every lane has it (then it can't matter either way).
+  const designated = game.players.filter((p) => hasEquipped(p, "Laser Designator"));
+  const eligible = game.players.filter((p) => !hasEquipped(p, "Smoke Launcher"));
+  const pool = designated.length ? designated : eligible.length ? eligible : game.players;
+  const target = pool[Math.floor(Math.random() * pool.length)];
   applyBossPassive(boss, target);
   const bossCard = boss.card;
   const bossDmg = toInt(bossCard.Damage) + boss.dmgBonus;
