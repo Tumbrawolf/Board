@@ -49,7 +49,7 @@
       <li><strong>Secret Objective mix</strong> — "Full" deals everyone's 2 Secret Objectives with no guarantees; "None" excludes Saboteur/Chaos entirely (a purely cooperative game); "Guaranteed Saboteur"/"Guaranteed Chaos" ensure at least one player is dealt that alignment.</li>
       <li><strong>Tiered Mission Draw</strong> (optional) — Rank 1-3 missions always draw freely; Rank 4+ missions need a shared roll to be eligible that round. Makes higher-Rank missions harder to come by.</li>
       <li><strong>Commander's Call</strong> (optional) — see above.</li>
-      <li><strong>Vote of No Confidence</strong> (optional) — not yet available in this web version.</li>
+      <li><strong>Vote of No Confidence</strong> (optional) — once per round, you can accuse another player of being Saboteur/Chaos-aligned. It costs an escrow up front; everyone except the accused votes Believed/Not Believed (ties go to Not Believed). Guess right and it's believed: the accused is exposed down to 1 clean Secret Objective, you get your escrow back plus a promotion. Guess wrong and it's believed anyway: you're demoted and lose a Secret Objective card of your own. Not believed either way: your escrow is refunded, but you have to reveal one of your own cards. Use it on real suspicion, not a guess.</li>
     </ul>
   </section>
 

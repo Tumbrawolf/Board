@@ -238,9 +238,32 @@ read them. Fixed for 3 of the 4:
   4+ missions getting harder to draw) without the benefit it was designed to provide. Not a bug,
   but a real difficulty increase beyond what the tabletop version implies.
 
-**Vote of No Confidence is not yet wired** -- it's a substantially bigger, more novel feature
-(an accusation + escrow + resolution mechanic, not just a dealing/draw-rate tweak) and is being
-scoped separately before building it.
+**Vote of No Confidence — done, all 4 lobby settings now wired.** The big one: a real accuse +
+escrow + vote + branching-resolution mechanic (README Feedback #14/#20), not just a dealing/
+draw-rate tweak. Each player gets one chance per round to accuse another of being Saboteur/
+Chaos-aligned (`DecisionProvider.chooseAccusation`) -- bots never initiate (no real basis to
+suspect anyone), so this only fires when a connected human chooses to
+(`client/VoteOfNoConfidencePanel.svelte`). Voting is majority-rules among everyone except the
+accused (ties go to Not Believed; the accuser's own vote always counts as Believed); bots vote
+Believed unconditionally if a human made the accusation, or randomly if a bot did. All 3
+resolution branches are ported from the rebalanced Feedback #20 rules in `engine/accusations.ts`:
+correct-and-believed (accused drops to 1 Secret Objective, accuser's escrow returns + promotion),
+false-and-believed (accuser demoted + drops to 1 Secret Objective, escrow forfeit to the command
+pool), and rejected (escrow fully refunded, accuser must reveal one of their own cards -- shown on
+the board view once it happens).
+
+**Known simplifications, worth knowing about**: the escrow amount (O5/T5/A5) is an assumption --
+the rules describe "escrowed resources/cards" without a stated number, and the full Rules.docx
+text wasn't available to check against. Which specific card gets discarded/revealed in the
+false-accusation and rejected branches picks deterministically (the first remaining card) rather
+than adding a second interactive sub-decision for the player who'd normally choose, to keep this
+already-large feature's scope bounded.
+
+Verified with a 30-game bot-only batch (no crash, no behavior change -- bots never trigger it, as
+designed), a live Socket.IO test with a human always accusing (both "Believed" branches confirmed
+end-to-end with correct escrow/rank/card consequences), and a standalone unit check of the
+"Rejected" branch (can't occur naturally with only 1 human seat, since bots always believe a
+human accuser).
 
 ## Running it locally
 
