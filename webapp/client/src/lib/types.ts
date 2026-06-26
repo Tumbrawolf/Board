@@ -88,6 +88,7 @@ export interface PlayerView {
   active: UnitView | null;
   reserve: UnitView[];
   laneEnemyReserve: EnemyView[];
+  revealedSecretObjective: string | null;
   stats: Record<string, number | string | null>;
 }
 

@@ -126,6 +126,7 @@ function snapshot(engine: GameEngine) {
         : null,
       reserve: p.reserve.map((u) => ({ id: u.id, name: u.card.Name, hp: u.curHp, maxHp: u.maxHp, shields: u.curShields })),
       laneEnemyReserve: p.laneEnemyReserve.map((e) => ({ name: e.Name, hp: toInt(e.HP), damage: toInt(e.Damage) })),
+      revealedSecretObjective: p.revealedSecretObjective,
       stats: p.stats,
     })),
   };

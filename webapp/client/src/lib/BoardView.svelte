@@ -53,6 +53,13 @@
       {:else}
         <div class="unit-row enemies"><span class="label">Enemies:</span> <em class="empty">clear</em></div>
       {/if}
+
+      {#if p.revealedSecretObjective}
+        <div class="unit-row revealed">
+          <span class="label">Revealed:</span>
+          <span class="unit">{p.revealedSecretObjective} (Secret Objective, via Vote of No Confidence)</span>
+        </div>
+      {/if}
     </div>
   {/each}
 
@@ -129,6 +136,10 @@
   }
   .enemies .unit {
     color: #a33;
+  }
+  .revealed .unit {
+    color: #8a6d00;
+    font-style: italic;
   }
   .shared {
     grid-column: 1 / -1;

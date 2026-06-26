@@ -47,6 +47,10 @@ export interface GamePlayer {
   tactician: TacticianCard | null;
   hasReconSatellite: boolean;
   hasLastStandBeacon: boolean;
+  /** Vote of No Confidence: set when one of this player's own Secret Objective cards has been
+   * publicly revealed (read-only knowledge for everyone else) -- the card itself is unaffected,
+   * still theirs, still counts toward their win condition. Not the same as losing a card. */
+  revealedSecretObjective: string | null;
   stats: {
     kills: number;
     deaths: number;
@@ -61,6 +65,9 @@ export interface GamePlayer {
     commanderRounds: number;
     unitsRetired: number;
     secretObjectiveComplete: string | null;
+    accusationsMade: number;
+    accusationsCorrect: number;
+    timesAccused: number;
   };
 }
 

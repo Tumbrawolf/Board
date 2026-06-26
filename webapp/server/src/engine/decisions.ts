@@ -111,6 +111,18 @@ export interface DecisionProvider {
    * `workers` per contested location, in the SAME order as the input array -- the first
    * `fullSlots` entries of each are the chosen full-income workers. */
   chooseFullIncomeOrder(commander: GamePlayer, game: GameState, contested: ContestedLocation[]): Promise<GamePlayer[][]>;
+
+  /** Vote of No Confidence (optional rule): does this player want to accuse someone of being
+   * Saboteur/Chaos-aligned this round? Returns the accused player's seatIndex, or null to skip.
+   * Bots never initiate (no real basis to suspect anyone) -- only a connected human seat can
+   * return non-null here; BotDecisionProvider always returns null. */
+  chooseAccusation(player: GamePlayer, game: GameState, others: GamePlayer[]): Promise<number | null>;
+
+  /** Vote of No Confidence: does this voter believe the accusation? Bots vote Believed
+   * unconditionally if a human made the accusation, or randomly if a bot did (no real basis for
+   * suspicion either way -- this distinction is just to make bot-initiated accusations, which
+   * never actually happen given chooseAccusation's bot behavior, resolve sensibly if ever used). */
+  castAccusationVote(voter: GamePlayer, game: GameState, accuser: GamePlayer, accused: GamePlayer): Promise<boolean>;
 }
 
 const BOT_LOCATION_PRIORITY: Location[] = [
@@ -249,5 +261,14 @@ export class BotDecisionProvider implements DecisionProvider {
         })
         .map(({ p }) => p)
     );
+  }
+
+  async chooseAccusation(_player: GamePlayer, _game: GameState, _others: GamePlayer[]): Promise<number | null> {
+    return null;
+  }
+
+  async castAccusationVote(_voter: GamePlayer, _game: GameState, accuser: GamePlayer, _accused: GamePlayer): Promise<boolean> {
+    if (!accuser.isBot) return true;
+    return Math.random() < 0.5;
   }
 }

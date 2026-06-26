@@ -4,7 +4,12 @@ import { Server } from "socket.io";
 import { RoomManager } from "./rooms.js";
 import { recordGameStart } from "./db.js";
 import { runGame } from "./runGame.js";
-import { resolveCommandersCallChoice, resolvePlacementChoice } from "./humanDecisions.js";
+import {
+  resolveAccusationChoice,
+  resolveAccusationVote,
+  resolveCommandersCallChoice,
+  resolvePlacementChoice,
+} from "./humanDecisions.js";
 import type { RoomSettings } from "./types.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -91,6 +96,14 @@ io.on("connection", (socket) => {
       resolveCommandersCallChoice(socket.id, requestId, assignments ?? {});
     }
   );
+
+  socket.on("accusation:choose", ({ requestId, accusedSeatIndex }: { requestId: string; accusedSeatIndex: number | null }) => {
+    resolveAccusationChoice(socket.id, requestId, accusedSeatIndex);
+  });
+
+  socket.on("accusationVote:choose", ({ requestId, believed }: { requestId: string; believed: boolean }) => {
+    resolveAccusationVote(socket.id, requestId, believed);
+  });
 
   socket.on("room:toggleReady", ({ ready }: { ready: boolean }, ack) => {
     if (!data.roomCode || !data.clientId) {

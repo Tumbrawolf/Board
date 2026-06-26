@@ -30,6 +30,7 @@ import { applyBossTier, resolveBossExchange } from "./bosses.js";
 import { applyEventResolution, applyEventRoundEffect } from "./events.js";
 import { applyMissionReward, missionRequirementMet } from "./missions.js";
 import { checkSecretObjectives } from "./secretObjectives.js";
+import { payEscrow, resolveAccusation } from "./accusations.js";
 import { type CommandCardChoice, type DecisionProvider } from "./decisions.js";
 import {
   buildCardMutation,
@@ -162,6 +163,7 @@ export class GameEngine {
       tactician: tacticianDeck.pop() ?? null,
       hasReconSatellite: false,
       hasLastStandBeacon: false,
+      revealedSecretObjective: null,
       stats: {
         kills: 0,
         deaths: 0,
@@ -176,6 +178,9 @@ export class GameEngine {
         commanderRounds: 0,
         unitsRetired: 0,
         secretObjectiveComplete: null,
+        accusationsMade: 0,
+        accusationsCorrect: 0,
+        timesAccused: 0,
       },
     }));
 
@@ -354,6 +359,8 @@ export class GameEngine {
         this.log(`  [Catch-up Resupply] ${p.name} (overrun last round) gets +3 Organic +3 Tech +2 Alien`);
       }
     }
+
+    await this.runVoteOfNoConfidence();
 
     this.runRetireFromDuty();
     // README/Stage 4: a connected human seat's Shop+Equip+Command-Card Planning window is open
@@ -652,6 +659,59 @@ export class GameEngine {
           p.res.Alien += full ? p.rank : Math.floor(p.rank / 2);
         }
       });
+    }
+  }
+
+  /** Vote of No Confidence (optional rule, README Feedback #14/#20). Each player gets one chance
+   * per round to accuse another of being Saboteur/Chaos-aligned -- a bot never initiates (no real
+   * basis to suspect anyone), so in practice this only ever fires when a connected human chooses
+   * to. The accuser's own vote always counts as Believed (it's their stated position); every
+   * other player except the accused votes; a tie defaults to Not Believed. Simplification worth
+   * knowing about: the rule gives the wrongly-accused player (false-believed branch) or the
+   * accused player (rejected branch) a choice of WHICH of the accuser's cards gets
+   * discarded/revealed -- this picks deterministically (the first remaining card) instead of
+   * adding a second interactive sub-decision, to keep this already-large feature's scope bounded. */
+  private async runVoteOfNoConfidence() {
+    if (!this.optionalRules.voteOfNoConfidence) return;
+    const game = this.game;
+    for (const accuser of game.players) {
+      const others = game.players.filter((p) => p !== accuser);
+      if (!others.length) continue;
+      const accusedSeat = await this.decisions.chooseAccusation(accuser, game, others);
+      if (accusedSeat === null) continue;
+      const accused = game.players.find((p) => p.seatIndex === accusedSeat && p !== accuser);
+      if (!accused) continue;
+
+      const escrowPaid = payEscrow(accuser);
+      this.log(
+        `  [Vote of No Confidence] ${accuser.name} accuses ${accused.name} of being Saboteur/Chaos-aligned! Escrow paid: O${escrowPaid.Organic}/T${escrowPaid.Tech}/A${escrowPaid.Alien}`
+      );
+
+      const voters = game.players.filter((p) => p !== accuser && p !== accused);
+      let believedCount = 1; // the accuser's own vote always counts as Believed
+      let notBelievedCount = 0;
+      for (const voter of voters) {
+        const vote = await this.decisions.castAccusationVote(voter, game, accuser, accused);
+        if (vote) believedCount += 1;
+        else notBelievedCount += 1;
+      }
+      const believed = believedCount > notBelievedCount;
+      this.log(`  [Vote of No Confidence] Vote: ${believedCount} Believed, ${notBelievedCount} Not Believed -> ${believed ? "BELIEVED" : "NOT BELIEVED"}`);
+
+      const result = resolveAccusation(
+        accuser,
+        accused,
+        believed,
+        escrowPaid,
+        game.commandPool,
+        () => {
+          const idx = game.secretObjectiveDeck.findIndex((c) => c.Alignment === "Allied");
+          return idx === -1 ? null : game.secretObjectiveDeck.splice(idx, 1)[0];
+        },
+        () => 0,
+        () => 0
+      );
+      for (const line of result.log) this.log(line);
     }
   }
 

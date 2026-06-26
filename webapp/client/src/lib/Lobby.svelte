@@ -5,6 +5,7 @@
   import PlanningPanel from "./PlanningPanel.svelte";
   import BattlefieldCardPanel from "./BattlefieldCardPanel.svelte";
   import CommandersCallPanel from "./CommandersCallPanel.svelte";
+  import VoteOfNoConfidencePanel from "./VoteOfNoConfidencePanel.svelte";
   import RulesPage from "./RulesPage.svelte";
   import FirstUseTip from "./FirstUseTip.svelte";
 
@@ -356,6 +357,7 @@
       {/if}
 
       <CommandersCallPanel />
+      <VoteOfNoConfidencePanel />
 
       {#if gameSnapshot}
         <div class="trackers">

@@ -31,6 +31,8 @@ const PLACEMENT_TIMEOUT_MS = 30000;
 const PLANNING_TIMEOUT_MS = 60000;
 const BATTLEFIELD_TIMEOUT_MS = 30000;
 const COMMANDERS_CALL_TIMEOUT_MS = 30000;
+const ACCUSATION_TIMEOUT_MS = 20000;
+const ACCUSATION_VOTE_TIMEOUT_MS = 20000;
 
 interface PendingPlacement {
   socketId: string;
@@ -63,6 +65,34 @@ export function resolveCommandersCallChoice(socketId: string, requestId: string,
   if (!req || req.socketId !== socketId) return;
   pendingCommandersCall.delete(requestId);
   req.resolve(assignments);
+}
+
+interface PendingAccusation {
+  socketId: string;
+  resolve: (accusedSeatIndex: number | null) => void;
+}
+
+const pendingAccusation = new Map<string, PendingAccusation>();
+
+export function resolveAccusationChoice(socketId: string, requestId: string, accusedSeatIndex: number | null) {
+  const req = pendingAccusation.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingAccusation.delete(requestId);
+  req.resolve(typeof accusedSeatIndex === "number" ? accusedSeatIndex : null);
+}
+
+interface PendingAccusationVote {
+  socketId: string;
+  resolve: (believed: boolean | null) => void;
+}
+
+const pendingAccusationVote = new Map<string, PendingAccusationVote>();
+
+export function resolveAccusationVote(socketId: string, requestId: string, believed: boolean) {
+  const req = pendingAccusationVote.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingAccusationVote.delete(requestId);
+  req.resolve(Boolean(believed));
 }
 
 function serializeHand(
@@ -389,5 +419,67 @@ export class MixedDecisionProvider implements DecisionProvider {
       results.push([...chosen, ...rest]);
     }
     return results;
+  }
+
+  /** Vote of No Confidence: does this player want to accuse someone this round? A single
+   * request/response prompt, same shape as chooseWorkerPlacement -- not responding within
+   * ACCUSATION_TIMEOUT_MS just means skip (accusing is always optional, never forced). */
+  async chooseAccusation(player: GamePlayer, game: GameState, others: GamePlayer[]): Promise<number | null> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === player.seatIndex);
+    if (!seat || seat.isBot) return this.bot.chooseAccusation(player, game, others);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.chooseAccusation(player, game, others);
+
+    const requestId = randomUUID();
+    return new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingAccusation.delete(requestId);
+        resolve(null);
+      }, ACCUSATION_TIMEOUT_MS);
+      pendingAccusation.set(requestId, {
+        socketId: socket.id,
+        resolve: (seatIndex) => {
+          clearTimeout(timer);
+          resolve(seatIndex);
+        },
+      });
+      socket.emit("accusation:prompt", {
+        requestId,
+        timeoutMs: ACCUSATION_TIMEOUT_MS,
+        others: others.map((p) => ({ seatIndex: p.seatIndex, name: p.name })),
+      });
+    });
+  }
+
+  /** Vote of No Confidence: does this voter believe the accusation? Not responding within
+   * ACCUSATION_VOTE_TIMEOUT_MS defaults to Not Believed -- same innocent-until-proven default
+   * used for tie-breaking the vote count itself. */
+  async castAccusationVote(voter: GamePlayer, game: GameState, accuser: GamePlayer, accused: GamePlayer): Promise<boolean> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === voter.seatIndex);
+    if (!seat || seat.isBot) return this.bot.castAccusationVote(voter, game, accuser, accused);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.castAccusationVote(voter, game, accuser, accused);
+
+    const requestId = randomUUID();
+    const believed = await new Promise<boolean | null>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingAccusationVote.delete(requestId);
+        resolve(null);
+      }, ACCUSATION_VOTE_TIMEOUT_MS);
+      pendingAccusationVote.set(requestId, {
+        socketId: socket.id,
+        resolve: (b) => {
+          clearTimeout(timer);
+          resolve(b);
+        },
+      });
+      socket.emit("accusationVote:prompt", {
+        requestId,
+        timeoutMs: ACCUSATION_VOTE_TIMEOUT_MS,
+        accuserName: accuser.name,
+        accusedName: accused.name,
+      });
+    });
+    return believed ?? false;
   }
 }
