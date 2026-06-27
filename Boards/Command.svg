@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 510" width="400" height="510">
+  <rect width="400" height="510" rx="10" fill="#2C3E2D"/>
+
+  <!-- Header -->
+  <rect width="400" height="50" rx="10" fill="#1A2E1B"/>
+  <rect y="42" width="400" height="8" fill="#1A2E1B"/>
+  <text x="18" y="33" font-family="Georgia,serif" font-size="20" font-weight="bold" fill="#E8DDB5" letter-spacing="2">COMMAND</text>
+  <text x="268" y="17" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1">WORKERS</text>
+  <circle cx="278" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <circle cx="302" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
+
+  <!-- UPGRADE SLOTS -->
+  <text x="18" y="70" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">UPGRADE SLOTS  ·  CAP: 2</text>
+  <rect x="115" y="78" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="154" y="138" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+  <rect x="207" y="78" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="246" y="138" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+
+  <!-- Divider -->
+  <line x1="12" y1="202" x2="388" y2="202" stroke="#3A5A3A" stroke-width="1"/>
+
+  <!-- COMMAND POOL -->
+  <text x="18" y="220" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">COMMAND POOL</text>
+  <text x="18" y="242" font-family="Arial,sans-serif" font-size="10" fill="#7AAA68">ORGANIC</text>
+  <rect x="18" y="248" width="364" height="40" rx="4" fill="#162018" stroke="#3A5A3A" stroke-width="1"/>
+  <text x="18" y="306" font-family="Arial,sans-serif" font-size="10" fill="#7A98AA">TECH</text>
+  <rect x="18" y="312" width="364" height="40" rx="4" fill="#162018" stroke="#3A5A3A" stroke-width="1"/>
+  <text x="18" y="370" font-family="Arial,sans-serif" font-size="10" fill="#9A7AAA">ALIEN</text>
+  <rect x="18" y="376" width="364" height="40" rx="4" fill="#162018" stroke="#3A5A3A" stroke-width="1"/>
+
+  <!-- Divider -->
+  <line x1="12" y1="428" x2="388" y2="428" stroke="#3A5A3A" stroke-width="1"/>
+
+  <!-- COMMAND CARDS DECK -->
+  <text x="18" y="446" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">COMMAND CARDS DECK</text>
+  <!-- draw pile -->
+  <rect x="145" y="457" width="55" height="77" rx="4" fill="#0E1810"/>
+  <rect x="141" y="453" width="55" height="77" rx="4" fill="#162018" stroke="#4A6A4A" stroke-width="1.5"/>
+  <text x="168" y="496" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DRAW</text>
+  <!-- discard pile -->
+  <rect x="204" y="453" width="55" height="77" rx="4" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="5,3"/>
+  <text x="231" y="496" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DISCARD</text>
+
+  <!-- Bottom strip -->
+  <rect y="494" width="400" height="16" rx="10" fill="#1A2E1B"/>
+</svg>

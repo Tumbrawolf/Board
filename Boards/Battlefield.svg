@@ -1,0 +1,144 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 730" width="860" height="730">
+
+  <!-- Board background -->
+  <rect width="860" height="730" rx="10" fill="#2C3E2D"/>
+
+  <!-- Header -->
+  <rect x="0" y="0" width="860" height="50" rx="10" fill="#1A2E1B"/>
+  <rect x="0" y="42" width="860" height="8" fill="#1A2E1B"/>
+  <text x="18" y="33" font-family="Georgia,serif" font-size="20" font-weight="bold" fill="#E8DDB5">BATTLEFIELD</text>
+  <text x="650" y="17" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78">WORKERS</text>
+  <circle cx="660" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <circle cx="684" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <circle cx="708" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
+
+  <!-- UPGRADE SLOTS -->
+  <text x="18" y="68" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78">UPGRADE SLOTS - CAP: 3</text>
+  <rect x="261" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="300" y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+  <rect x="351" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="390" y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+  <rect x="441" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="480" y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+
+  <!-- ENEMY DECK -->
+  <line x1="560" y1="58" x2="560" y2="196" stroke="#3A5A3A" stroke-width="1"/>
+  <text x="714" y="68" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" text-anchor="middle">ENEMY DECK</text>
+  <rect x="661" y="80" width="55" height="77" rx="4" fill="#0E1810"/>
+  <rect x="657" y="76" width="55" height="77" rx="4" fill="#12122A" stroke="#5555AA" stroke-width="1.5"/>
+  <text x="684" y="120" font-family="Arial,sans-serif" font-size="7" fill="#5555AA" text-anchor="middle">DRAW</text>
+  <rect x="720" y="76" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <text x="747" y="120" font-family="Arial,sans-serif" font-size="7" fill="#444488" text-anchor="middle">DISCARD</text>
+
+  <!-- Main horizontal divider -->
+  <line x1="10" y1="202" x2="850" y2="202" stroke="#5A7A5A" stroke-width="2"/>
+
+  <!-- Lane vertical dividers -->
+  <line x1="222" y1="202" x2="222" y2="718" stroke="#5A7A5A" stroke-width="2"/>
+  <line x1="434" y1="202" x2="434" y2="718" stroke="#5A7A5A" stroke-width="2"/>
+  <line x1="646" y1="202" x2="646" y2="718" stroke="#5A7A5A" stroke-width="2"/>
+
+  <!-- Lane title labels -->
+  <text x="116" y="220" font-family="Arial,sans-serif" font-size="11" font-weight="bold" fill="#E8DDB5" text-anchor="middle">LANE 1</text>
+  <text x="328" y="220" font-family="Arial,sans-serif" font-size="11" font-weight="bold" fill="#E8DDB5" text-anchor="middle">LANE 2</text>
+  <text x="540" y="220" font-family="Arial,sans-serif" font-size="11" font-weight="bold" fill="#E8DDB5" text-anchor="middle">LANE 3</text>
+  <text x="752" y="220" font-family="Arial,sans-serif" font-size="11" font-weight="bold" fill="#E8DDB5" text-anchor="middle">LANE 4</text>
+
+  <!-- ENEMY SIDE BACKGROUNDS -->
+  <rect x="10"  y="226" width="212" height="232" rx="0" fill="#1C1C2E"/>
+  <rect x="222" y="226" width="212" height="232" rx="0" fill="#1C1C2E"/>
+  <rect x="434" y="226" width="212" height="232" rx="0" fill="#1C1C2E"/>
+  <rect x="646" y="226" width="204" height="232" rx="0" fill="#1C1C2E"/>
+
+  <!-- Enemy section labels -->
+  <text x="116" y="241" font-family="Arial,sans-serif" font-size="8" fill="#8888CC" text-anchor="middle">ENEMY</text>
+  <text x="328" y="241" font-family="Arial,sans-serif" font-size="8" fill="#8888CC" text-anchor="middle">ENEMY</text>
+  <text x="540" y="241" font-family="Arial,sans-serif" font-size="8" fill="#8888CC" text-anchor="middle">ENEMY</text>
+  <text x="752" y="241" font-family="Arial,sans-serif" font-size="8" fill="#8888CC" text-anchor="middle">ENEMY</text>
+
+  <!-- Enemy ACTIVE slots -->
+  <rect x="77"  y="248" width="78" height="110" rx="5" fill="#12122A" stroke="#5555AA" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="116" y="308" font-family="Arial,sans-serif" font-size="8" fill="#5555AA" text-anchor="middle">active enemy</text>
+  <rect x="289" y="248" width="78" height="110" rx="5" fill="#12122A" stroke="#5555AA" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="328" y="308" font-family="Arial,sans-serif" font-size="8" fill="#5555AA" text-anchor="middle">active enemy</text>
+  <rect x="501" y="248" width="78" height="110" rx="5" fill="#12122A" stroke="#5555AA" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="540" y="308" font-family="Arial,sans-serif" font-size="8" fill="#5555AA" text-anchor="middle">active enemy</text>
+  <rect x="713" y="248" width="78" height="110" rx="5" fill="#12122A" stroke="#5555AA" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="752" y="308" font-family="Arial,sans-serif" font-size="8" fill="#5555AA" text-anchor="middle">active enemy</text>
+
+  <!-- Enemy RESERVE labels -->
+  <text x="116" y="373" font-family="Arial,sans-serif" font-size="7" fill="#5555AA" text-anchor="middle">RESERVE (max 3)</text>
+  <text x="328" y="373" font-family="Arial,sans-serif" font-size="7" fill="#5555AA" text-anchor="middle">RESERVE (max 3)</text>
+  <text x="540" y="373" font-family="Arial,sans-serif" font-size="7" fill="#5555AA" text-anchor="middle">RESERVE (max 3)</text>
+  <text x="752" y="373" font-family="Arial,sans-serif" font-size="7" fill="#5555AA" text-anchor="middle">RESERVE (max 3)</text>
+
+  <!-- Enemy RESERVE slots (55x77, 3 per lane) -->
+  <rect x="25"  y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="88"  y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="151" y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="237" y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="300" y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="363" y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="449" y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="512" y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="575" y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="661" y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="724" y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="787" y="380" width="55" height="77" rx="4" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="5,3"/>
+
+  <!-- VS divider -->
+  <line x1="10"  y1="464" x2="222" y2="464" stroke="#4A6A4A" stroke-width="1"/>
+  <line x1="222" y1="464" x2="434" y2="464" stroke="#4A6A4A" stroke-width="1"/>
+  <line x1="434" y1="464" x2="646" y2="464" stroke="#4A6A4A" stroke-width="1"/>
+  <line x1="646" y1="464" x2="850" y2="464" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="116" y="462" font-family="Arial,sans-serif" font-size="9" fill="#5A7A5A" text-anchor="middle">vs</text>
+  <text x="328" y="462" font-family="Arial,sans-serif" font-size="9" fill="#5A7A5A" text-anchor="middle">vs</text>
+  <text x="540" y="462" font-family="Arial,sans-serif" font-size="9" fill="#5A7A5A" text-anchor="middle">vs</text>
+  <text x="752" y="462" font-family="Arial,sans-serif" font-size="9" fill="#5A7A5A" text-anchor="middle">vs</text>
+
+  <!-- PLAYER SIDE BACKGROUNDS -->
+  <rect x="10"  y="470" width="212" height="242" rx="0" fill="#28200E"/>
+  <rect x="222" y="470" width="212" height="242" rx="0" fill="#28200E"/>
+  <rect x="434" y="470" width="212" height="242" rx="0" fill="#28200E"/>
+  <rect x="646" y="470" width="204" height="242" rx="0" fill="#28200E"/>
+
+  <!-- Player section labels -->
+  <text x="116" y="485" font-family="Arial,sans-serif" font-size="8" fill="#CC8844" text-anchor="middle">PLAYER</text>
+  <text x="328" y="485" font-family="Arial,sans-serif" font-size="8" fill="#CC8844" text-anchor="middle">PLAYER</text>
+  <text x="540" y="485" font-family="Arial,sans-serif" font-size="8" fill="#CC8844" text-anchor="middle">PLAYER</text>
+  <text x="752" y="485" font-family="Arial,sans-serif" font-size="8" fill="#CC8844" text-anchor="middle">PLAYER</text>
+
+  <!-- Player ACTIVE slots -->
+  <rect x="77"  y="492" width="78" height="110" rx="5" fill="#2A1208" stroke="#AA6622" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="116" y="552" font-family="Arial,sans-serif" font-size="8" fill="#AA6622" text-anchor="middle">active unit</text>
+  <rect x="289" y="492" width="78" height="110" rx="5" fill="#2A1208" stroke="#AA6622" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="328" y="552" font-family="Arial,sans-serif" font-size="8" fill="#AA6622" text-anchor="middle">active unit</text>
+  <rect x="501" y="492" width="78" height="110" rx="5" fill="#2A1208" stroke="#AA6622" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="540" y="552" font-family="Arial,sans-serif" font-size="8" fill="#AA6622" text-anchor="middle">active unit</text>
+  <rect x="713" y="492" width="78" height="110" rx="5" fill="#2A1208" stroke="#AA6622" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="752" y="552" font-family="Arial,sans-serif" font-size="8" fill="#AA6622" text-anchor="middle">active unit</text>
+
+  <!-- Player RESERVE labels -->
+  <text x="116" y="617" font-family="Arial,sans-serif" font-size="7" fill="#AA6622" text-anchor="middle">RESERVE (max 3)</text>
+  <text x="328" y="617" font-family="Arial,sans-serif" font-size="7" fill="#AA6622" text-anchor="middle">RESERVE (max 3)</text>
+  <text x="540" y="617" font-family="Arial,sans-serif" font-size="7" fill="#AA6622" text-anchor="middle">RESERVE (max 3)</text>
+  <text x="752" y="617" font-family="Arial,sans-serif" font-size="7" fill="#AA6622" text-anchor="middle">RESERVE (max 3)</text>
+
+  <!-- Player RESERVE slots -->
+  <rect x="25"  y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="88"  y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="151" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="237" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="300" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="363" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="449" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="512" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="575" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="661" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="724" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+  <rect x="787" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
+
+  <!-- Bottom strip -->
+  <rect x="0" y="714" width="860" height="16" rx="10" fill="#1A2E1B"/>
+
+</svg>

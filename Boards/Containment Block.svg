@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 380" width="400" height="380">
+  <rect width="400" height="380" rx="10" fill="#2C3E2D"/>
+
+  <!-- Header -->
+  <rect width="400" height="50" rx="10" fill="#1A2E1B"/>
+  <rect y="42" width="400" height="8" fill="#1A2E1B"/>
+  <text x="18" y="33" font-family="Georgia,serif" font-size="18" font-weight="bold" fill="#E8DDB5" letter-spacing="1.5">CONTAINMENT BLOCK</text>
+  <text x="300" y="17" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1">WORKERS</text>
+  <circle cx="310" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <circle cx="334" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
+
+  <!-- UPGRADE SLOTS -->
+  <text x="18" y="70" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">UPGRADE SLOTS  ·  CAP: 3</text>
+  <rect x="70"  y="78" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="109" y="138" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+  <rect x="161" y="78" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="200" y="138" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+  <rect x="252" y="78" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="291" y="138" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+
+  <!-- Divider -->
+  <line x1="12" y1="202" x2="388" y2="202" stroke="#3A5A3A" stroke-width="1"/>
+
+  <!-- HOLDING CELLS -->
+  <text x="18" y="220" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">HOLDING CELLS  ·  CAP: 2</text>
+  <rect x="115" y="228" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="154" y="288" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">enemy card</text>
+  <rect x="207" y="228" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="246" y="288" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">enemy card</text>
+
+  <!-- Bottom strip -->
+  <rect y="364" width="400" height="16" rx="10" fill="#1A2E1B"/>
+</svg>
