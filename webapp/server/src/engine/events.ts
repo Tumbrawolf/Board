@@ -120,13 +120,9 @@ export function eventConditionMet(
         return Boolean(assigned) && (placementsThisRound[p.seatIndex] ?? []).includes(assigned!);
       });
     case "Garbage Day":
-      // "Recycle is half total from start of round" -- recyclePile is a real pile of actually-
-      // activated Command Cards (see recycleIfGarbageDay in planningActions.ts), not a guess.
-      return game.recyclePile.length <= game.recyclePileRoundStart / 2;
-    case "Forced Disposal":
-      // "Disposal is half total from start of round" -- disposalPile is a real running count of
-      // units that have died (not retired) this game, fed at the same sites as deathsThisRound.
-      return game.disposalPile <= game.disposalPileRoundStart / 2;
+      // "Each player Recycled a card this round" -- recycledThisRound is a real per-round set of
+      // seatIndices that activated a Command Card (fed by recycleIfGarbageDay in planningActions.ts).
+      return game.players.every((p) => game.recycledThisRound.has(p.seatIndex));
     case "Saboteur investigation":
       return game.disabledLocation ? workersAt(game.disabledLocation) === 0 : false;
     case "Capacity Threshold":
@@ -201,6 +197,23 @@ function unequipAllOfType(p: GamePlayer, type: string | null, severity: number, 
   }
 }
 
+/** Garbage Day's restore mechanic -- shared between the active-event round effect and the
+ * permanent effect (once the Completion Reward fires, "Round effect permanent"). Auto-applies
+ * once per round: commander restores the cheapest-Tech card from the recycle pile to hand. */
+export function applyGarbageDayRestore(game: GameState, log: (t: string) => void) {
+  const commander = game.players[game.commanderIdx];
+  if (game.recyclePile.length) {
+    const cheapest = game.recyclePile.reduce((a, b) => (toInt((b as any).Tech) < toInt((a as any).Tech) ? b : a));
+    const cost = toInt((cheapest as any).Tech);
+    if (commander.res.Tech >= cost) {
+      commander.res.Tech -= cost;
+      game.recyclePile.splice(game.recyclePile.indexOf(cheapest), 1);
+      commander.hand.push(cheapest);
+      log(`  [Garbage Day] ${commander.name} restores ${(cheapest as any).Name} from Recycle to hand (Tech -${cost})`);
+    }
+  }
+}
+
 /** Round Effect column -- ongoing for the round while this Event is active. Command Requisition
  * (income redirect + command-pool spending), Lead by example (extra mission draw), Chain of
  * Command (HP/Dmg = rank), and Honorable Discharge (retire instead of dying) are all real too,
@@ -264,33 +277,8 @@ export function applyEventRoundEffect(game: GameState, event: EventCard, log: (t
     // the Condition this Event actually cares about (containedThisRound vs killsThisRound, see
     // eventConditionMet) is real either way.
     game.containmentCapacityDoubled = true;
-  } else if (name === "Forced Disposal") {
-    // "Can clear Disposal for Organics = Rank" -- no UI exists for an opt-in spend choice here
-    // (same convention as Gear Actives auto-activating when affordable), so the commander
-    // auto-clears up to their Rank worth of the pile if they can afford the Organic cost.
-    const commander = game.players[game.commanderIdx];
-    const rank = commander.rank;
-    if (commander.res.Organic >= rank && game.disposalPile > 0) {
-      commander.res.Organic -= rank;
-      const cleared = Math.min(game.disposalPile, rank);
-      game.disposalPile -= cleared;
-      log(`  [Event] ${commander.name} clears ${cleared} from Disposal (Organic -${rank})`);
-    }
   } else if (name === "Garbage Day") {
-    // "Can Restore cards from recycle for their tech cost" -- same auto-apply convention as
-    // Forced Disposal above: the commander restores the cheapest-Tech card in the pile if they
-    // can afford it, once per round.
-    const commander = game.players[game.commanderIdx];
-    if (game.recyclePile.length) {
-      const cheapest = game.recyclePile.reduce((a, b) => (toInt((b as any).Tech) < toInt((a as any).Tech) ? b : a));
-      const cost = toInt((cheapest as any).Tech);
-      if (commander.res.Tech >= cost) {
-        commander.res.Tech -= cost;
-        game.recyclePile.splice(game.recyclePile.indexOf(cheapest), 1);
-        commander.hand.push(cheapest);
-        log(`  [Event] ${commander.name} restores ${cheapest.Name} from Recycle (Tech -${cost})`);
-      }
-    }
+    applyGarbageDayRestore(game, log);
   } else if (name === "Assigned Posts") {
     game.assignedPostLocations = new Map(game.players.map((p) => [p.seatIndex, LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)]]));
     log(
@@ -356,7 +344,7 @@ export function applyEventCombatMods(game: GameState, c: Combatant, isEnemy: boo
  * retire instead of dying, double Containment capacity) rather than disruptive harm -- Fix 1's
  * blanket "skip Penalty, the Round Effect already hurt enough" rule doesn't apply to these, since
  * there's no harm to double up on. They keep a real Penalty on failure same as the original 8. */
-const BENEFICIAL_ROUND_EFFECT_EVENTS = new Set(["Forced Disposal", "Garbage Day", "Honorable Discharge", "Research drive"]);
+const BENEFICIAL_ROUND_EFFECT_EVENTS = new Set(["Garbage Day", "Honorable Discharge", "Research drive"]);
 
 /** Completion Reward / Failure Penalty -- the pass/fail roll itself is now a real Completion
  * Condition check (eventConditionMet), not a coin flip. */
@@ -413,13 +401,10 @@ export function applyEventResolution(game: GameState, event: EventCard, passed: 
       // units actually retired this round (retiresThisRound), not a flat nudge.
       const retired = [...game.retiresThisRound.values()].reduce((s, n) => s + n, 0);
       game.commandPool.Organic += retired * 3;
-    } else if (name === "Forced Disposal") {
-      // "Command gains Alien = units disposed of this round" -- the real delta the Round Effect
-      // actually cleared this round (disposalPileRoundStart - disposalPile), not total kills.
-      game.commandPool.Alien += Math.max(0, game.disposalPileRoundStart - game.disposalPile);
+    } else if (name === "Garbage Day") {
+      game.garbageDayPermanent = true;
     }
     // 'Stockpiled Reserves': covered generically by Mission's own Resource/Instant dispatch elsewhere, same as sim.py.
-    // 'Garbage Day': "Ongoing effect" -- no concrete numeric reward in the card text to apply beyond the Round Effect itself.
     // 'Research drive': "Containment Block keeps storage stack upgrade" -- no mechanical hook here (containmentSlots is already permanent once built).
   } else {
     // Skip Failure Penalty for every event whose Round Effect already did real harm this round
@@ -441,18 +426,8 @@ export function applyEventResolution(game: GameState, event: EventCard, passed: 
     // Tax Fault/Cheap Knockoffs/Food Shortage failure penalties: cost-increase penalties have no
     // shop-cost-modifier hook to apply against here, same documented gap as sim.py.
     // Garbage Day's Penalty ("Delete items on death") describes THIS round's deaths, but
-    // resolution runs after combat has already finished for the round -- there's no real way to
-    // apply it retroactively without rearchitecting when Event resolution happens relative to
-    // combat, so it's left a documented no-op rather than guessed at.
-    // Forced Disposal's Penalty ("Command loses Alien = units disposed of this round") and
-    // Research drive's ("Disable a Containment Block slot") are applied at their own call sites
-    // in game.ts instead -- the former needs the same disposalPileRoundStart delta the Reward
-    // branch uses (computed here, but commandPool.Alien shouldn't go negative from a single
-    // card -- handled as a clamped loss there); the latter touches GameEngine's private
-    // containmentSlots, which this free function can't reach.
-    if (name === "Forced Disposal") {
-      const cleared = Math.max(0, game.disposalPileRoundStart - game.disposalPile);
-      game.commandPool.Alien = Math.max(0, game.commandPool.Alien - cleared);
-    }
+    // resolution runs after combat has already finished for the round -- structural no-op.
+    // Research drive's ("Disable a Containment Block slot") is applied at its own call site
+    // in game.ts -- touches GameEngine's private containmentSlots, which this free function can't reach.
   }
 }

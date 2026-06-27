@@ -27,7 +27,7 @@ import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, tryRevive
 import { applyEnemyCombatMods } from "./enemies.js";
 import { applyGearCombatMods, applyPrecombatGear, tryChronostasisSave } from "./gear.js";
 import { applyBossBoardWideMods, applyBossTier, resolveBossExchange } from "./bosses.js";
-import { applyEventCombatMods, applyEventResolution, applyEventRoundEffect, eventConditionMet, eventSeverity } from "./events.js";
+import { applyEventCombatMods, applyEventResolution, applyEventRoundEffect, applyGarbageDayRestore, eventConditionMet, eventSeverity } from "./events.js";
 import { applyMissionReward, missionRequirementMet } from "./missions.js";
 import { checkSecretObjectives } from "./secretObjectives.js";
 import { payEscrow, resolveAccusation } from "./accusations.js";
@@ -210,7 +210,7 @@ export class GameEngine {
       gearDeck: this.gearDeckFull as any,
       commandDeck: this.commandDeckFull,
       missionDeck,
-      eventDeck: shuffle(data.events),
+      eventDeck: shuffle(data.events.filter((e) => e["Event name"] !== "Forced Disposal")),
       secretObjectiveDeck,
       tacticianDeck,
       bossDeck: shuffle(data.bosses),
@@ -234,10 +234,9 @@ export class GameEngine {
       killsThisRound: new Map(),
       deathsThisRound: new Map(),
       retiresThisRound: new Map(),
-      disposalPile: 0,
-      disposalPileRoundStart: 0,
       recyclePile: [],
-      recyclePileRoundStart: 0,
+      recycledThisRound: new Set(),
+      garbageDayPermanent: false,
       assignedPostLocations: new Map(),
       assignedPostsPersist: false,
       retireGivesNoResource: false,
@@ -340,16 +339,19 @@ export class GameEngine {
     game.killsThisRound = new Map();
     game.deathsThisRound = new Map();
     game.retiresThisRound = new Map();
+    game.recycledThisRound = new Set();
     game.containedThisRound = 0;
-    // Assigned Posts' Failure Penalty ("Effect persists after event") keeps last round's dice-
-    // rolled assignment alive for one extra round instead of clearing it here -- consumed once.
+    // Assigned Posts' Failure Penalty: re-roll locations each persist round, then force first
+    // worker placement in runWorkerPlacementAndIncome (detected by activeEvent !== "Assigned Posts"
+    // with assignedPostLocations non-empty). Consumed after 1 extra round.
     if (game.assignedPostsPersist) {
+      game.assignedPostLocations = new Map(game.players.map((p) => [p.seatIndex, LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)]]));
       game.assignedPostsPersist = false;
     } else {
       game.assignedPostLocations = new Map();
     }
     if (!isPrepRound) {
-      if (!game.eventDeck.length) game.eventDeck = shuffle(loadGameData().events);
+      if (!game.eventDeck.length) game.eventDeck = shuffle(loadGameData().events.filter((e) => e["Event name"] !== "Forced Disposal"));
       const drawn = [];
       for (let i = 0; i < Math.min(2, game.eventDeck.length); i++) drawn.push(game.eventDeck.pop()!);
       // Commander picks which of the 2 drawn cards becomes active -- previously a random pick in
@@ -361,15 +363,15 @@ export class GameEngine {
       }
       if (activeEvent) {
         this.log(`  [Event] Active this round: ${activeEvent["Event name"]} -- ${activeEvent["Round Effect"]}`);
-        // Disposal/Recycle pile snapshots -- the Completion Condition for both cards measures
-        // "did this shrink by half this round," so the count needs capturing before this round's
-        // Round Effect / Command-Card activations have a chance to change it.
-        if (activeEvent["Event name"] === "Forced Disposal") game.disposalPileRoundStart = game.disposalPile;
-        if (activeEvent["Event name"] === "Garbage Day") game.recyclePileRoundStart = game.recyclePile.length;
         applyEventRoundEffect(game, activeEvent, (t) => this.log(t));
       }
     }
     game.activeEvent = activeEvent;
+    // Garbage Day permanent effect: once earned, the restore-from-recycle mechanic applies every
+    // round even when some other event is active (Garbage Day itself already handles it above).
+    if (game.garbageDayPermanent && game.activeEvent?.["Event name"] !== "Garbage Day") {
+      applyGarbageDayRestore(game, (t) => this.log(t));
+    }
 
     // Tiered Mission Draw (optional rule, README #19): Rank 1-3 missions are always available;
     // Rank 4+ missions need a 1d8 roll (scaled down to highest player Rank + 1 on overshoot) to
@@ -667,6 +669,7 @@ export class GameEngine {
 
     const locWorkers: Record<Location, GamePlayer[]> = Object.fromEntries(LOCATIONS.map((l) => [l, []])) as any;
     this.nextCommanderSeatIndex = null;
+    const firstWorkerPlaced = new Set<number>();
     let anyRemaining = true;
     while (anyRemaining) {
       anyRemaining = false;
@@ -686,6 +689,20 @@ export class GameEngine {
           if (fallback) {
             this.log(`  [Event] Renovations blocks ${p.name} from ${loc} (has upgrades) -- redirected to ${fallback}`);
             loc = fallback;
+          }
+        }
+        // Assigned Posts Failure Penalty: first worker is forced to the dice-rolled location
+        // (locations re-rolled each persist round in the round reset above). Only applies in the
+        // persist round (activeEvent !== "Assigned Posts") -- during the event itself, placement
+        // is still voluntary so players can choose to complete it.
+        if (!firstWorkerPlaced.has(p.seatIndex)) {
+          firstWorkerPlaced.add(p.seatIndex);
+          const forced = game.assignedPostLocations.size > 0 && game.activeEvent?.["Event name"] !== "Assigned Posts"
+            ? game.assignedPostLocations.get(p.seatIndex)
+            : null;
+          if (forced) {
+            this.log(`  [Assigned Posts Penalty] ${p.name}'s first worker forced to ${forced}`);
+            loc = forced;
           }
         }
         locWorkers[loc].push(p);
@@ -873,9 +890,7 @@ export class GameEngine {
    * normally be a graveyard death into the same retire-for-partial-refund treatment
    * runRetireFromDuty uses for obsolete reserve units, so the card's own Completion Condition
    * ("Retire Between 5 and 10 units this turn") has a real per-round count to check instead of
-   * an approximation. Falls through to the normal graveyard/death bookkeeping otherwise, also
-   * feeding Forced Disposal's disposalPile (a real, non-random pile this engine didn't track
-   * before -- see types.ts). */
+   * an approximation. Falls through to normal graveyard/death bookkeeping otherwise. */
   private retireOrGraveyard(p: GamePlayer, ui: UnitInstance) {
     const game = this.game;
     if (game.activeEvent?.["Event name"] === "Honorable Discharge") {
@@ -893,7 +908,6 @@ export class GameEngine {
       p.graveyard.push(ui);
       p.stats.deaths += 1;
       game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
-      game.disposalPile += 1;
     }
   }
 

@@ -189,12 +189,15 @@ export function buildCardMutation(game: GameState, card: CommandCard, log: (t: s
   log(`  [Upgrade built] ${loc}: ${card.Name}`);
 }
 
-/** Garbage Day: Command Cards normally just vanish once dispatched -- while this Event is
- * active, push the activated card into game.recyclePile instead, so "restore from recycle" (the
- * Round Effect) and the Completion Condition (recycle pile shrank by half) have a real, played
- * card to draw from rather than nothing. No-op the rest of the time. */
-function recycleIfGarbageDay(game: GameState, card: CommandCard) {
-  if (game.activeEvent?.["Event name"] === "Garbage Day") game.recyclePile.push(card);
+/** Garbage Day: Command Cards pushed to the recycle pile when activated, so "restore from
+ * recycle to hand" has real cards to draw from. Active while the event is drawn OR after the
+ * Completion Reward fires (garbageDayPermanent). Tracks which players recycled this round for
+ * the Completion Condition ("each player Recycled a card this round"). */
+function recycleIfGarbageDay(game: GameState, card: CommandCard, playerSeatIndex: number) {
+  if (game.activeEvent?.["Event name"] === "Garbage Day" || game.garbageDayPermanent) {
+    game.recyclePile.push(card);
+    game.recycledThisRound.add(playerSeatIndex);
+  }
 }
 
 /** A commander's own hand activates for free -- no resource cost at all, matching sim.py. */
@@ -208,7 +211,7 @@ export function commanderActivateCardMutation(
   const loc = card.Building as Location;
   log(`  [Active Effect] ${loc}: ${commander.name} activates ${card.Name} for free (commander) -> ${card["Active Effect"]}`);
   dispatch(card, loc);
-  recycleIfGarbageDay(game, card);
+  recycleIfGarbageDay(game, card, commander.seatIndex);
 }
 
 export function nonCommanderActivateCardMutation(
@@ -227,5 +230,5 @@ export function nonCommanderActivateCardMutation(
   }
   log(`  [Active Effect] ${loc}: ${actor.name} (non-commander) activates ${card.Name} -> ${card["Active Effect"]}`);
   dispatch(card, loc);
-  recycleIfGarbageDay(game, card);
+  recycleIfGarbageDay(game, card, actor.seatIndex);
 }
