@@ -163,6 +163,19 @@ export interface GameState {
   /** Set when Garbage Day's Completion Reward fires ("Round effect permanent") -- keeps the
    * restore-from-recycle mechanic active every round even after the event card has expired. */
   garbageDayPermanent: boolean;
+  /** Forced Contribution reward/penalty accumulator: each point adds +1 Organic income per
+   * additional co-located worker (reward stacks positive, penalty stacks negative). Starts at 0,
+   * never resets -- reward/penalty are standing rule changes, same as retireGivesNoResource. */
+  locationSharingBonus: number;
+  /** Crowded Worksite: total resources donated to command this round (reset each round). Used by
+   * the Completion Condition ("Donate 10 resources to command"). */
+  donationsThisRound: number;
+  /** Crowded Worksite Completion Reward: when set, each worker income grant also adds 1 of the
+   * same resource to the command pool. Persistent once earned. */
+  crowdedWorksiteReward: boolean;
+  /** Crowded Worksite Failure Penalty: when set, only the first non-commander player to donate
+   * each round actually donates -- all subsequent donors are skipped. Persistent once triggered. */
+  donationCappedToOne: boolean;
   /** Assigned Posts' "Roll Dice to select locations" -- one location rolled per seatIndex when
    * the Event becomes active. Normally cleared at the next round's Event-flag reset like every
    * other per-round Event flag; assignedPostsPersist (set by this card's own Failure Penalty,
@@ -179,4 +192,21 @@ export interface GameState {
    * had no way to see it and fell back to an approximation. Exposed here as a real per-round
    * count instead. */
   containedThisRound: number;
+  /** Per-round total ability activations by seatIndex (gear actives, Tactician actives, command
+   * card activations). Reset each round. Used by "Activate an ability" mission requirements. */
+  activationsThisRound: Map<number, number>;
+  /** Per-ability-instance use count this round, keyed by "${unitId}-${abilityName}". Enforces
+   * the default once-per-turn limit for gear and Tactician actives. Reset each round. */
+  abilityUsesThisRound: Map<string, number>;
+  /** Persistent overrides to the default once-per-turn limit, keyed by
+   * "${unitId}-${abilityName}" (instance-specific) or just "${abilityName}" (name-wide).
+   * Set by mission rewards or card text that grants extra uses; never reset per round. */
+  abilityLimitOverrides: Map<string, number>;
+  /** The Breaker Tactician's Active ("Remove all Shields and Armor from active enemies") --
+   * seatIndices where the active fired this round. Consumed at enemy Combatant construction
+   * to zero curShields and apply max shredArmor for that lane. Reset each round. */
+  breakerActiveLanes: Set<number>;
+  /** The Kingmaker Tactician's Active ("Command cannot change next turn") -- skips the normal
+   * commander-handoff block at end of the round it is set, then cleared. */
+  commanderLocked: boolean;
 }

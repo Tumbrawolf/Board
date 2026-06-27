@@ -237,10 +237,19 @@ export class GameEngine {
       recyclePile: [],
       recycledThisRound: new Set(),
       garbageDayPermanent: false,
+      locationSharingBonus: 0,
+      donationsThisRound: 0,
+      crowdedWorksiteReward: false,
+      donationCappedToOne: false,
       assignedPostLocations: new Map(),
       assignedPostsPersist: false,
       retireGivesNoResource: false,
       containedThisRound: 0,
+      activationsThisRound: new Map(),
+      abilityUsesThisRound: new Map(),
+      abilityLimitOverrides: new Map(),
+      breakerActiveLanes: new Set(),
+      commanderLocked: false,
     };
 
     refillShopUnit(this.game);
@@ -340,7 +349,12 @@ export class GameEngine {
     game.deathsThisRound = new Map();
     game.retiresThisRound = new Map();
     game.recycledThisRound = new Set();
+    game.donationsThisRound = 0;
     game.containedThisRound = 0;
+    game.activationsThisRound = new Map();
+    game.abilityUsesThisRound = new Map();
+    game.breakerActiveLanes = new Set();
+    game.commanderLocked = false;
     // Assigned Posts' Failure Penalty: re-roll locations each persist round, then force first
     // worker placement in runWorkerPlacementAndIncome (detected by activeEvent !== "Assigned Posts"
     // with assignedPostLocations non-empty). Consumed after 1 extra round.
@@ -466,13 +480,21 @@ export class GameEngine {
     );
 
     commander.stats.commanderRounds += 1;
+    let hasDonatedThisRound = false;
     for (const p of game.players) {
       if (p !== commander) {
+        // Crowded Worksite Penalty: only the first donor each round actually donates.
+        if (game.donationCappedToOne && hasDonatedThisRound) continue;
+        let donatedTotal = 0;
         for (const res of ["Organic", "Tech", "Alien"] as const) {
           const donate = Math.floor(p.res[res] / 3);
           p.res[res] -= donate;
           game.commandPool[res] += donate;
-          if (donate) p.stats.donationsMade += donate;
+          if (donate) { p.stats.donationsMade += donate; donatedTotal += donate; }
+        }
+        if (donatedTotal > 0) {
+          game.donationsThisRound += donatedTotal;
+          hasDonatedThisRound = true;
         }
       }
     }
@@ -742,18 +764,16 @@ export class GameEngine {
     // payment sites in planningActions.ts).
     const commandRequisitionActive = eventName === "Command Requisition";
     const grantIncome = (p: GamePlayer, key: "Organic" | "Tech" | "Alien", amt: number) => {
-      if (commandRequisitionActive) game.commandPool[key] += amt;
-      else p.res[key] += amt;
+      if (commandRequisitionActive) {
+        game.commandPool[key] += amt;
+      } else {
+        p.res[key] += amt;
+        // Crowded Worksite Reward: each income grant also adds 1 of the same resource to command.
+        if (game.crowdedWorksiteReward && amt > 0) game.commandPool[key] += 1;
+      }
     };
     for (const loc of LOCATIONS) {
       const workers = locWorkers[loc];
-      // Crowded Worksite Event: "Income blocked if another worker at location" -- scaled by
-      // progress-bracket severity: early game it's a coin flip per location, late game it's the
-      // guaranteed full block the card text describes.
-      if (eventName === "Crowded Worksite" && workers.length > 1 && Math.random() < eventSev) {
-        this.log(`  [Event] Crowded Worksite blocks income at ${loc} (${workers.length} workers sharing)`);
-        continue;
-      }
       // Saboteur investigation/Capacity Threshold/Isolation Orders Events: a dice-picked location
       // is disabled (no income) for the round -- same severity scaling.
       if (game.disabledLocation === loc && workers.length && Math.random() < eventSev) {
@@ -764,6 +784,10 @@ export class GameEngine {
         const full = idx < 2;
         // Forced Contribution Event: "Income +1 if another worker at location."
         if (eventName === "Forced Contribution" && workers.length > 1) p.res.Tech += 1;
+        // Crowded Worksite Event: "-1 income per additional worker at location."
+        if (eventName === "Crowded Worksite" && workers.length > 1 && loc !== "Battlefield") {
+          p.res.Organic = Math.max(0, p.res.Organic - (workers.length - 1));
+        }
         if (loc === "Barracks") {
           const totalRank = game.shopUnits.reduce((s, u) => s + RANK_NUM[u.Rank], 0) + (4 - game.shopUnits.length);
           const amt = full ? totalRank : Math.floor(totalRank / 2);
@@ -804,6 +828,13 @@ export class GameEngine {
           game.commandPool.Alien += full ? 2 : 1;
         } else if (loc === "Command") {
           grantIncome(p, "Alien", full ? p.rank : Math.floor(p.rank / 2));
+        }
+        // Forced Contribution reward/penalty: persistent ±1 Organic per additional co-located
+        // worker, accumulated via locationSharingBonus (reward = +1, penalty = -1 per stack).
+        if (game.locationSharingBonus !== 0 && workers.length > 1 && loc !== "Battlefield") {
+          const sharing = game.locationSharingBonus * (workers.length - 1);
+          if (sharing > 0) grantIncome(p, "Organic", sharing);
+          else p.res.Organic = Math.max(0, p.res.Organic + sharing);
         }
       });
     }

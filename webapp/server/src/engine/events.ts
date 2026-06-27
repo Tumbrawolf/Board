@@ -47,7 +47,7 @@ export function eventConditionMet(
     case "Forced Contribution":
       return totalRes(game.commandPool) >= 20;
     case "Crowded Worksite":
-      return totalRes(game.commandPool) >= 10;
+      return game.donationsThisRound >= 10;
     case "Tax Fault":
       return totalRes(game.commandPool) >= 15;
     case "Cheap Knockoffs":
@@ -166,6 +166,8 @@ const ORIGINAL_EIGHT_EVENTS = new Set([
   "Cheap Knockoffs",
   "Food Shortage",
   "Tax Fault",
+  "Forced Contribution",
+  "Crowded Worksite",
   "Lead by example",
   "Chain of Command",
   "Command Requisition",
@@ -403,6 +405,10 @@ export function applyEventResolution(game: GameState, event: EventCard, passed: 
       game.commandPool.Organic += retired * 3;
     } else if (name === "Garbage Day") {
       game.garbageDayPermanent = true;
+    } else if (name === "Forced Contribution") {
+      game.locationSharingBonus += 1;
+    } else if (name === "Crowded Worksite") {
+      game.crowdedWorksiteReward = true;
     }
     // 'Stockpiled Reserves': covered generically by Mission's own Resource/Instant dispatch elsewhere, same as sim.py.
     // 'Research drive': "Containment Block keeps storage stack upgrade" -- no mechanical hook here (containmentSlots is already permanent once built).
@@ -419,6 +425,10 @@ export function applyEventResolution(game: GameState, event: EventCard, passed: 
       demote.rank = Math.max(1, demote.rank - 1);
     } else if (name === "Assigned Posts") {
       game.assignedPostsPersist = true;
+    } else if (name === "Forced Contribution") {
+      game.locationSharingBonus -= 1;
+    } else if (name === "Crowded Worksite") {
+      game.donationCappedToOne = true;
     } else if (name === "Honorable Discharge") {
       // "Retire costs no longer gives resource" -- a standing rule change, not a one-round hit.
       game.retireGivesNoResource = true;
