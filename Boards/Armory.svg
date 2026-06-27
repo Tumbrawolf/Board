@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 468" width="280" height="468">
-  <rect width="280" height="468" rx="10" fill="#2C3E2D"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 518" width="280" height="518">
+  <rect width="280" height="518" rx="10" fill="#2C3E2D"/>
 
   <!-- Header -->
   <rect width="280" height="50" rx="10" fill="#1A2E1B"/>
@@ -30,13 +30,13 @@
   <!-- GEAR DECK -->
   <text x="18" y="370" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">GEAR DECK</text>
   <!-- draw pile -->
-  <rect x="85" y="381" width="55" height="77" rx="4" fill="#0E1810"/>
-  <rect x="81" y="377" width="55" height="77" rx="4" fill="#162018" stroke="#4A6A4A" stroke-width="1.5"/>
-  <text x="108" y="420" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DRAW</text>
+  <rect x="62" y="382" width="78" height="110" rx="5" fill="#0E1810"/>
+  <rect x="58" y="378" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5"/>
+  <text x="97" y="438" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DRAW</text>
   <!-- discard pile -->
-  <rect x="144" y="377" width="55" height="77" rx="4" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="5,3"/>
-  <text x="171" y="420" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DISCARD</text>
+  <rect x="146" y="378" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="185" y="438" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DISCARD</text>
 
   <!-- Bottom strip -->
-  <rect y="452" width="280" height="16" rx="10" fill="#1A2E1B"/>
+  <rect y="502" width="280" height="16" rx="10" fill="#1A2E1B"/>
 </svg>
