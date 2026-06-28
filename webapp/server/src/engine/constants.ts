@@ -85,11 +85,11 @@ export const LOCATIONS = [
 export type Location = (typeof LOCATIONS)[number];
 
 export const UPGRADE_SLOT_CAP: Record<Location, number> = {
-  Barracks: 4,
-  Armory: 1,
-  "Medical Bay": 2,
+  Barracks: 3,
+  Armory: 3,
+  "Medical Bay": 3,
   "Containment Block": 3,
-  Command: 2,
+  Command: 3,
   Battlefield: 3,
 };
 
