@@ -7,6 +7,11 @@
   import CommandersCallPanel from "./CommandersCallPanel.svelte";
   import VoteOfNoConfidencePanel from "./VoteOfNoConfidencePanel.svelte";
   import EventChoicePanel from "./EventChoicePanel.svelte";
+  import TacticianActivePanel from "./TacticianActivePanel.svelte";
+  import GearDiscardPanel from "./GearDiscardPanel.svelte";
+  import LaneAssignmentPanel from "./LaneAssignmentPanel.svelte";
+  import LeadershipCrisisPanel from "./LeadershipCrisisPanel.svelte";
+  import PerfectInfoPanel from "./PerfectInfoPanel.svelte";
   import RulesPage from "./RulesPage.svelte";
   import FirstUseTip from "./FirstUseTip.svelte";
 
@@ -339,17 +344,22 @@
       </h2>
 
       {#if placementPrompt}
+        {@const disabledLoc = gameSnapshot?.disabledLocation ?? null}
         <div class="placement-prompt">
           <FirstUseTip
             tipId="placement"
             text="Each round you place workers one at a time, in turn order. Locations give different income -- check the Rules page for what each one does. Whoever places first at Command becomes next round's commander."
           />
+          {#if disabledLoc}
+            <p class="disabled-location-warning">{disabledLoc} is disabled this round — workers there earn no income.</p>
+          {/if}
           <p>Your turn — place a worker:</p>
           <div class="placement-options">
             {#each placementPrompt.locations as loc}
               {@const count = placementPrompt.placedSoFar[loc]?.length ?? 0}
-              <button onclick={() => choosePlacement(loc)}>
+              <button onclick={() => choosePlacement(loc)} class:disabled-loc={loc === disabledLoc}>
                 {loc}
+                {#if loc === disabledLoc}<span class="disabled-tag"> [disabled]</span>{/if}
                 {#if count}<span class="muted"> ({count} placed)</span>{/if}
               </button>
             {/each}
@@ -359,7 +369,12 @@
 
       <CommandersCallPanel />
       <VoteOfNoConfidencePanel />
+      <LeadershipCrisisPanel />
       <EventChoicePanel />
+      <TacticianActivePanel />
+      <GearDiscardPanel />
+      <LaneAssignmentPanel />
+      <PerfectInfoPanel />
 
       {#if gameSnapshot}
         <div class="trackers">
@@ -560,5 +575,23 @@
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
+  }
+  .disabled-location-warning {
+    color: #b03a2e;
+    font-weight: bold;
+    font-size: 0.9em;
+    margin: 0 0 0.4rem;
+    padding: 0.3rem 0.5rem;
+    background: #fdecea;
+    border-radius: 4px;
+  }
+  .placement-options button.disabled-loc {
+    opacity: 0.55;
+    border-color: #c0392b;
+    color: #7a1f1f;
+  }
+  .disabled-tag {
+    font-size: 0.8em;
+    color: #c0392b;
   }
 </style>

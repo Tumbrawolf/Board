@@ -12,10 +12,8 @@ Armory,Mad Science,Experimental Equipment can be purchased for alien cost alone,
 Armory,Experimental Science,Experimental Equipment added to deck,Double each players Alien supply,3,8,3
 Armory,Ethics Committee,"Experimental Equipment banned from game, Remove Alien costs from basic gear",Remove Alien costs for this round,3,8,3
 Containment Block,Containment Protocol,Unlocks the Containment cells,Add target enemy to your reserves,8,3,3
-Containment Block,Garrison,"Allows Units to be Garrisoned in the Containment center instead of enemies, allowing them to assist in combat while not being damaged. Units deal bonus damage = attack on garrisoned units for 1st attack","Recruit units from top of deck into each lane, return them to bottom of deck after combat",8,3,3
 Containment Block,Tag Team,Reserve units deal damage when active units attack,Swap your Reserve and Active units in all lanes,8,3,3
 Containment Block,Combat Stims,Once per turn: Abilities from Contained units can be used,Deal your choice of damage to a friendly to give double the damage deal as bonus Attack for this round,8,3,3
-Containment Block,Extraction,"Units here can no longer be used, instead Generate their cost/Reward each turn",Gain resources for the last 2 enemies or friendlies to die,8,3,3
 Containment Block,Countermeasures,"Roll Dice at start of round, prevent active abilities number of times in target lane = dice roll, on a 6",Prevent all enemy abilities in a target lane,8,3,3
 Containment Block,Exploitation,,"Triple Damage on next attack, die after attacking",8,3,3
 Containment Block,Necromancy,Prevent 1st death each combat,Revive a unit from graveyard,8,3,3
@@ -30,33 +28,29 @@ Command,Orders from Above,,"Draw 3 cards, Discard 2 cards and gain their cost in
 Command,Income Tax,,Half of player income is taken by the command pool this round.,3,5,5
 Command,Request Aid,,"Half resources this round, Double Resources on your next 2 rounds",3,5,5
 Command,Priority Operations,,Half the price of activating commands,3,5,5
-Command,Priority Construction,,Half the price of building upgrades,3,5,5
+Armory,Priority Construction,,Half the price of building upgrades,3,8,3
 Command,Take Credit,,"If a player would be promoted, Take their promotion instead",3,5,5
 Command,Pull Rank,,"If Commander Outranks all the Units or Items for sale at a location, Then they may take the lowest rank item for free once per location",3,5,5
 Command,Leader Speech,,Improve progress by 1,3,5,5
-Command,Nuke,,"Destroy everything in a lane, Enemy and Allies",3,5,5
+Battlefield,Nuke,,"Destroy everything in a lane, Enemy and Allies",5,5,5
 Command,Promotion,,"Target player gets +1 rank, cannot target self",3,5,5
-Command,Reinforcements,,"The two highest rank units in the shop are brought into play until end of turn, equip them with the highest rank item in the shop and scrap it at end of turn",3,5,5
-Command,Perfect information,,You can look at the monster stacks and rearrange them before combat,3,5,5
-Command,Field Testing,You can Purchase Gear directly onto units,"Equip item from shop to target unit, if it survives it keeps the item",3,5,5
-Command,Collaboration,Players can assist with others missions,Players can use the command pool to cover mission costs this round,3,5,5
-Command,Scouting update,your scouts produce additional resources,generate Scout resources immediately,3,5,5
-Command,Forward Command,Reserve units are immune,"Reserve units are immune this round, Take half Overrun Tracker damage this round",3,5,5
-Command,Eradicator Cannon,"Players can spend 2 Alien to deal 5 Damage to Boss, Double Alien cost each time this is used Ignores damage Prevention and Immunities","Discard this card, Draw 2 new cards, Kill target non boss enemy",3,5,5
-Battlefield,Ammo Stockpiles,Ability Tech costs reduced,Ability Tech costs removed this turn,5,5,5
+Barracks,Reinforcements,,"The two highest rank units in the shop are brought into play until end of turn, equip them with the highest rank item in the shop and scrap it at end of turn",5,5,3
+Containment Block,Perfect information,,You can look at the monster stacks and rearrange them before combat,8,3,3
+Armory,Field Testing,You can Purchase Gear directly onto units,"Equip item from shop to target unit, if it survives it keeps the item",3,8,3
+Containment Block,Scouting update,your scouts produce additional resources,generate Scout resources immediately,8,3,3
+Barracks,Forward Command,Reserve units are immune,"Reserve units are immune this round, Take half Overrun Tracker damage this round",5,5,3
+Armory,Eradicator Cannon,"Players can spend 2 Alien to deal 5 Damage to Boss, Double Alien cost each time this is used Ignores damage Prevention and Immunities","Discard this card, Draw 2 new cards, Kill target non boss enemy",3,8,3
 Battlefield,Air Strike,,Deal 10 damage to active enemies,5,5,5
 Battlefield,Chemical Warfare,,"Reduce All active non boss enemies to 1HP, double their attack",5,5,5
 Battlefield,You Shall Not Pass,,The Next Friendly unit to die deals its combined Attack/HP as damage in retaliation,5,5,5
-Battlefield,Suppression,,Prevent activated effects of a target lane,5,5,5
-Battlefield,Barrier Systems,Prevent the 1st damage each unit would take.,Prevent the next 10 damage to target lane,5,5,5
+Containment Block,Suppression,,Prevent activated effects of a target lane,8,3,3
+Medical Bay,Barrier Systems,Prevent the 1st damage each unit would take.,Prevent the next 10 damage to target lane,8,3,3
 Battlefield,Land Mines,,"Reveal Enemies Take 10 damage when revealing this round, if this would kill a enemy ignore their reveal",5,5,5
-Battlefield,Final Stand,,Target Active Unit cannot die this round,5,5,5
+Medical Bay,Final Stand,,Target any unit - it cannot die this round,8,3,3
 Battlefield,Defense Turrets,Deal 5 damage when enemy is Revealed,15 damage to all reveal effect enemies,5,5,5
-Battlefield,Covering Fire,,You can swap units to reserves from active,5,5,5
-Battlefield,Whites of their eyes,,You deal and take double damage on 1st attack of combat,5,5,5
-Battlefield,Punch Through,,"your excess damage on kill is applied to the boss, does nothing if no boss present",5,5,5
-Battlefield,Tranq rounds,Reduce enemy damage by 2 per rank of the unit,reduce enemy damage by half this round,5,5,5
+Battlefield,Whites of their eyes,,Target lane deals and takes double damage on the 1st attack of combat,5,5,5
+Battlefield,Punch Through,,When you kill a unit in your lane deal a free hit to the boss equal to that unit's attack (no retaliation),5,5,5
+Medical Bay,Tranq rounds,Reduce enemy damage by 2 per rank of the unit,reduce enemy damage by half this round,8,3,3
 Battlefield,Bunkers,Units can only be damaged by units in their lanes active slot,The 1st Damage ability per lane is prevented,5,5,5
-Battlefield,Security Drones,If a lane has no units deployed to the active slot at combat start you can produce 1/1 drones for that lane = commander rank,Add 8 1/1 Drones split evenly to bottom of your reserve piles,5,5,5
-Command,Strategic Withdrawal,,"Once per game: Reduce Enemy Progress by 3, but lose 1 Player Progress this round",3,5,5
-Battlefield,Early Warning Network,Reduce damage taken by all lanes from multi-lane enemy Reveal/Passive effects by 2 (minimum 1 still gets through),"This round, multi-lane enemy Reveal/Passive effects deal half damage (rounded down) to every lane they hit",5,5,5
+Armory,Security Drones,If a lane has no units deployed to the active slot at combat start you can produce 1/1 drones for that lane = commander rank,Add 8 1/1 Drones split evenly to bottom of your reserve piles,3,8,3
+Battlefield,Strategic Withdrawal,,"Once per game: Reduce Enemy Progress by 3, but lose 1 Player Progress this round",5,5,5

@@ -1,5 +1,6 @@
-import { LOCATIONS, RANK_NUM, type Location } from "./constants.js";
+import { ENEMY_RANK_NUM, GEAR_HAND_LIMIT, LOCATIONS, RANK_NUM, type EnemyRank, type Location } from "./constants.js";
 import type { CommandCard, EventCard, GearCard, UnitCard } from "./data.js";
+import type { EnemyCard } from "./data.js";
 import { isMildEvent } from "./events.js";
 import {
   affordableGear,
@@ -14,10 +15,76 @@ import {
   nonCommanderActivateCardMutation,
   equipGearOntoActiveMutation,
 } from "./planningActions.js";
-import { reorderActive } from "./state.js";
+import { lanePower, reorderActive } from "./state.js";
 import type { GamePlayer, GameState } from "./types.js";
 
 export type CommandCardChoice = "build" | "activate" | "skip";
+
+// ── Tactician active targeting ────────────────────────────────────────────────
+
+export interface TacticianLaneEnemy {
+  seatIndex: number;
+  playerName: string;
+  enemies: { name: string; hp: number; armor: number; idx: number }[];
+}
+
+export interface TacticianGearOption {
+  unitId: string;
+  unitName: string;
+  gearName: string;
+  gearType: string;
+  /** Index into the unit's equipped array. */
+  equippedIdx: number;
+}
+
+export type TacticianActiveKind =
+  | "enemy_pick"           // Gunsmith: pick 1 enemy from any lane
+  | "gear_pick"            // Bulwark (Armor) / Engineer (Utility): pick 1 gear from own units
+  | "player_pick"          // Kingmaker: pick 1 player to become commander
+  | "card_action"          // Tactician: choose how to use the drawn card
+  | "shop_pick"            // Drillmaster/Specialist: pick among tied-rank units
+  | "recycle_pick"         // Reclaimer: pick gear from recycle pile
+  | "swap_enemies"         // Chessmaster: pick 2 enemies from 2 different lanes to swap
+  | "combat_stims_passive" // Combat Stims passive: pick a contained enemy to trigger its Reveal
+  | "combat_stims_active"; // Combat Stims active: pick damage amount (idx = damage, options via shopOptions)
+
+export interface TacticianActivePrompt {
+  tacticianName: string;
+  kind: TacticianActiveKind;
+  /** Lanes with enemies (enemy_pick, swap_enemies). */
+  laneEnemies?: TacticianLaneEnemy[];
+  /** Gear options on the player's own units (gear_pick). */
+  gearOptions?: TacticianGearOption[];
+  /** Other players available to pick (player_pick). */
+  playerOptions?: { seatIndex: number; name: string; rank: number }[];
+  /** Drawn command card name + effects (card_action). */
+  cardName?: string;
+  cardActiveEffect?: string;
+  cardBuildEffect?: string;
+  canActivate?: boolean;
+  canBuild?: boolean;
+  /** Shop units with tied rank (shop_pick). */
+  shopOptions?: { name: string; rank: string; idx: number }[];
+  /** Recycle pile items eligible by rank (recycle_pick). */
+  recycleOptions?: { name: string; rankName: string; idx: number }[];
+}
+
+export interface TacticianActiveResponse {
+  /** enemy_pick: which enemy to target. */
+  seatIndex?: number;
+  enemyIdx?: number;
+  /** swap_enemies: two enemies from two different lanes. */
+  enemyA?: { seatIndex: number; enemyIdx: number };
+  enemyB?: { seatIndex: number; enemyIdx: number };
+  /** gear_pick: index into gearOptions. */
+  gearOptIdx?: number;
+  /** player_pick: target player seat. */
+  targetSeat?: number;
+  /** card_action: what to do with the drawn card. */
+  cardAction?: "activate" | "build" | "keep";
+  /** shop_pick / recycle_pick: index into the options array. */
+  optionIdx?: number;
+}
 
 export interface PlacedWorker {
   seatIndex: number;
@@ -129,6 +196,52 @@ export interface DecisionProvider {
    * random pick in both this engine and sim.py (the comment said "chooses," the code never did).
    * Returns the chosen card's index into `drawn` (0 or 1). */
   chooseActiveEvent(commander: GamePlayer, game: GameState, drawn: EventCard[]): Promise<number>;
+
+  /** Fired once per round for any Tactician whose Active requires a player choice (targeting an
+   * enemy, selecting a gear item, picking a player, etc.). The `prompt.kind` field describes
+   * which Tactician is asking and what shape of response is expected. Bot implementations
+   * return a heuristic pick; human seats emit a socket event and wait for the client. */
+  chooseTacticianActiveTarget(
+    player: GamePlayer,
+    game: GameState,
+    prompt: TacticianActivePrompt
+  ): Promise<TacticianActiveResponse>;
+
+  /** End-of-planning gear hand trim: called when the player's gearHand exceeds GEAR_HAND_LIMIT.
+   * Returns the indices (into `hand`) of cards to discard. Must return exactly
+   * `hand.length - GEAR_HAND_LIMIT` indices. */
+  chooseGearHandDiscard(
+    player: GamePlayer,
+    game: GameState,
+    hand: GearCard[]
+  ): Promise<number[]>;
+
+  /** Commander lane assignment: called once per round (after Event pick, before planning) so the
+   * commander can reassign which player controls which physical lane. Returns a Map where
+   * key=controllerSeatIndex, value=laneOwnerSeatIndex. An empty map or identity mapping means no
+   * change. Must be a valid permutation (bijection over all seatIndexes). */
+  chooseLaneAssignments(
+    commander: GamePlayer,
+    game: GameState
+  ): Promise<Map<number, number>>;
+
+  /** Leadership Crisis Event: each player blind-votes for who should be next commander.
+   * votesSoFar contains votes already cast (seatIndex -> voted seatIndex) so bots can
+   * follow the plurality. Returns the seatIndex of the player this voter wants as commander. */
+  chooseCommanderVote(
+    player: GamePlayer,
+    game: GameState,
+    candidates: { seatIndex: number; name: string; rank: number }[],
+    votesSoFar: Map<number, number>
+  ): Promise<number>;
+
+  /** Perfect Information active: commander sees all enemy stacks and may redistribute enemies
+   * across lanes. Returns a Map<seatIndex, EnemyCard[]> of the new per-lane assignments using
+   * the same total pool; null means keep current layout unchanged. */
+  choosePerfectInfoLayout(
+    commander: GamePlayer,
+    game: GameState
+  ): Promise<Map<number, EnemyCard[]> | null>;
 }
 
 const BOT_LOCATION_PRIORITY: Location[] = [
@@ -142,10 +255,17 @@ const BOT_LOCATION_PRIORITY: Location[] = [
 
 export class BotDecisionProvider implements DecisionProvider {
   async chooseWorkerPlacement(
-    _player: GamePlayer,
-    _game: GameState,
+    player: GamePlayer,
+    game: GameState,
     placedSoFar: Record<Location, PlacedWorker[]>
   ): Promise<Location> {
+    // Emergency Triage: condition requires every player at Medical Bay -- force it if not yet placed there
+    if (
+      game.activeEvent?.["Event name"] === "Emergency Triage" &&
+      !(placedSoFar["Medical Bay"] ?? []).some((w) => w.seatIndex === player.seatIndex)
+    ) {
+      return "Medical Bay";
+    }
     // Prefer a still-open "full income" slot (first 2 workers at a location both earn full) in
     // a fixed priority order; once everywhere has 2+, just pile onto the least-crowded location.
     const open = BOT_LOCATION_PRIORITY.find((loc) => placedSoFar[loc].length < 2);
@@ -287,5 +407,121 @@ export class BotDecisionProvider implements DecisionProvider {
     if (mild[0] && !mild[1]) return 0;
     if (mild[1] && !mild[0]) return 1;
     return Math.floor(Math.random() * drawn.length);
+  }
+
+  async chooseTacticianActiveTarget(
+    player: GamePlayer,
+    _game: GameState,
+    prompt: TacticianActivePrompt
+  ): Promise<TacticianActiveResponse> {
+    switch (prompt.kind) {
+      case "enemy_pick": {
+        // Gunsmith: weakest enemy (lowest HP) across all lanes
+        let best: { seatIndex: number; enemyIdx: number; hp: number } | null = null;
+        for (const lane of prompt.laneEnemies ?? []) {
+          for (const e of lane.enemies) {
+            if (!best || e.hp < best.hp) best = { seatIndex: lane.seatIndex, enemyIdx: e.idx, hp: e.hp };
+          }
+        }
+        return best ? { seatIndex: best.seatIndex, enemyIdx: best.enemyIdx } : {};
+      }
+      case "gear_pick":
+        // Bulwark: first Armor gear. Engineer: first Utility that was used (presented in order).
+        return prompt.gearOptions?.length ? { gearOptIdx: 0 } : {};
+      case "player_pick": {
+        // Kingmaker: next player in seat order that isn't The Kingmaker themselves
+        const opts = (prompt.playerOptions ?? []).filter(o => o.seatIndex !== player.seatIndex);
+        return opts.length ? { targetSeat: opts[0].seatIndex } : {};
+      }
+      case "card_action":
+        if (prompt.canActivate) return { cardAction: "activate" };
+        if (prompt.canBuild) return { cardAction: "build" };
+        return { cardAction: "keep" };
+      case "shop_pick":
+        return { optionIdx: 0 };
+      case "recycle_pick": {
+        // Reclaimer: highest-rank eligible item (last in the sorted options list)
+        const opts = prompt.recycleOptions ?? [];
+        return { optionIdx: opts.length ? opts.length - 1 : 0 };
+      }
+      case "swap_enemies": {
+        // Chessmaster: move the heaviest enemy from the largest lane into the smallest lane
+        const lanes = prompt.laneEnemies ?? [];
+        if (lanes.length < 2) return {};
+        const sorted = [...lanes].sort((a, b) => b.enemies.length - a.enemies.length);
+        const fromLane = sorted[0];
+        const toLane = sorted[sorted.length - 1];
+        if (!fromLane.enemies.length || !toLane.enemies.length) return {};
+        const fromEnemy = fromLane.enemies.reduce((a, b) => (b.hp > a.hp ? b : a));
+        const toEnemy = toLane.enemies.reduce((a, b) => (b.hp < a.hp ? b : a));
+        return {
+          enemyA: { seatIndex: fromLane.seatIndex, enemyIdx: fromEnemy.idx },
+          enemyB: { seatIndex: toLane.seatIndex, enemyIdx: toEnemy.idx },
+        };
+      }
+      case "combat_stims_passive": {
+        // Use first contained enemy that has a Reveal effect; otherwise first available.
+        const opts = prompt.shopOptions ?? [];
+        const withReveal = opts.findIndex((o) => !o.name.includes("(no Reveal)"));
+        return withReveal >= 0 ? { optionIdx: withReveal } : opts.length ? { optionIdx: 0 } : {};
+      }
+      case "combat_stims_active": {
+        // Deal ~1/3 of available options (idx = damage amount); each opt.idx is the damage value.
+        const opts = prompt.shopOptions ?? [];
+        const chosen = opts[Math.floor(opts.length / 3)] ?? opts[0];
+        return chosen ? { optionIdx: chosen.idx } : { optionIdx: 1 };
+      }
+      default:
+        return {};
+    }
+  }
+
+  async chooseGearHandDiscard(
+    _player: GamePlayer,
+    _game: GameState,
+    hand: GearCard[]
+  ): Promise<number[]> {
+    const rankOf = (g: GearCard) => RANK_NUM[(g as any)["Rank Name"] as keyof typeof RANK_NUM] ?? 0;
+    const discard = hand.length - GEAR_HAND_LIMIT;
+    return [...hand]
+      .map((g, i) => ({ g, i }))
+      .sort((a, b) => rankOf(a.g) - rankOf(b.g))
+      .slice(0, discard)
+      .map(({ i }) => i);
+  }
+
+  async chooseLaneAssignments(_commander: GamePlayer, game: GameState): Promise<Map<number, number>> {
+    // Bot commanders never reassign lanes -- return identity so all players control their own lane.
+    return new Map(game.players.map((p) => [p.seatIndex, p.seatIndex]));
+  }
+
+  async chooseCommanderVote(
+    _player: GamePlayer,
+    _game: GameState,
+    candidates: { seatIndex: number; name: string; rank: number }[],
+    votesSoFar: Map<number, number>
+  ): Promise<number> {
+    const tally = new Map<number, number>();
+    for (const voted of votesSoFar.values()) tally.set(voted, (tally.get(voted) ?? 0) + 1);
+    const sorted = [...candidates].sort((a, b) => {
+      const voteDiff = (tally.get(b.seatIndex) ?? 0) - (tally.get(a.seatIndex) ?? 0);
+      return voteDiff !== 0 ? voteDiff : b.rank - a.rank;
+    });
+    return sorted[0].seatIndex;
+  }
+
+  async choosePerfectInfoLayout(_commander: GamePlayer, game: GameState): Promise<Map<number, EnemyCard[]> | null> {
+    // Pool all enemies, sort weakest-first; assign weakest enemies to weakest lanes (cooperative optimum).
+    const pool: EnemyCard[] = game.players.flatMap((p) => p.laneEnemyReserve);
+    if (!pool.length) return null;
+    const byRank = (e: EnemyCard) => ENEMY_RANK_NUM[e.Rank as EnemyRank] ?? 0;
+    pool.sort((a, b) => byRank(a) - byRank(b));
+    const lanes = [...game.players].sort((a, b) => lanePower(a) - lanePower(b));
+    const result = new Map<number, EnemyCard[]>(lanes.map((p) => [p.seatIndex, []]));
+    pool.forEach((e, i) => {
+      const lane = lanes[i % lanes.length];
+      result.get(lane.seatIndex)!.push(e);
+    });
+    return result;
   }
 }

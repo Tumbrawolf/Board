@@ -9,6 +9,8 @@ import {
   type DecisionProvider,
   type PlacedWorker,
   type PlanningWindowCtx,
+  type TacticianActivePrompt,
+  type TacticianActiveResponse,
 } from "./engine/decisions.js";
 import type { CommandCard, EventCard, GearCard, UnitCard } from "./engine/data.js";
 import {
@@ -34,6 +36,9 @@ const COMMANDERS_CALL_TIMEOUT_MS = 30000;
 const ACCUSATION_TIMEOUT_MS = 20000;
 const ACCUSATION_VOTE_TIMEOUT_MS = 20000;
 const EVENT_CHOICE_TIMEOUT_MS = 20000;
+const TACTICIAN_ACTIVE_TIMEOUT_MS = 20000;
+const GEAR_DISCARD_TIMEOUT_MS = 30000;
+const LANE_ASSIGNMENT_TIMEOUT_MS = 45000;
 
 interface PendingPlacement {
   socketId: string;
@@ -102,6 +107,77 @@ interface PendingEventChoice {
 }
 
 const pendingEventChoice = new Map<string, PendingEventChoice>();
+
+interface PendingTacticianActive {
+  socketId: string;
+  resolve: (response: TacticianActiveResponse | null) => void;
+}
+
+const pendingTacticianActive = new Map<string, PendingTacticianActive>();
+
+interface PendingGearDiscard {
+  socketId: string;
+  resolve: (indices: number[] | null) => void;
+}
+
+const pendingGearDiscard = new Map<string, PendingGearDiscard>();
+
+interface PendingLaneAssignment {
+  socketId: string;
+  resolve: (assignments: Record<string, number> | null) => void;
+}
+
+const pendingLaneAssignment = new Map<string, PendingLaneAssignment>();
+
+export function resolveLaneAssignmentChoice(socketId: string, requestId: string, assignments: Record<string, number>) {
+  const req = pendingLaneAssignment.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingLaneAssignment.delete(requestId);
+  req.resolve(typeof assignments === "object" && assignments !== null ? assignments : null);
+}
+
+interface PendingCommanderVote {
+  socketId: string;
+  resolve: (seatIndex: number | null) => void;
+}
+
+const pendingCommanderVote = new Map<string, PendingCommanderVote>();
+
+export function resolveCommanderVote(socketId: string, requestId: string, seatIndex: number) {
+  const req = pendingCommanderVote.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingCommanderVote.delete(requestId);
+  req.resolve(typeof seatIndex === "number" ? seatIndex : null);
+}
+
+export function resolveGearDiscardChoice(socketId: string, requestId: string, discardIndices: number[]) {
+  const req = pendingGearDiscard.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingGearDiscard.delete(requestId);
+  req.resolve(discardIndices);
+}
+
+interface PendingPerfectInfo {
+  socketId: string;
+  resolve: (layout: Record<string, number[]> | null) => void;
+}
+
+const pendingPerfectInfo = new Map<string, PendingPerfectInfo>();
+const PERFECT_INFO_TIMEOUT_MS = 45000;
+
+export function resolvePerfectInfoLayout(socketId: string, requestId: string, layout: Record<string, number[]>) {
+  const req = pendingPerfectInfo.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingPerfectInfo.delete(requestId);
+  req.resolve(typeof layout === "object" && layout !== null ? layout : null);
+}
+
+export function resolveTacticianActiveChoice(socketId: string, requestId: string, response: TacticianActiveResponse) {
+  const req = pendingTacticianActive.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingTacticianActive.delete(requestId);
+  req.resolve(response);
+}
 
 export function resolveEventChoice(socketId: string, requestId: string, index: number) {
   const req = pendingEventChoice.get(requestId);
@@ -536,5 +612,204 @@ export class MixedDecisionProvider implements DecisionProvider {
 
     if (index === null || index < 0 || index >= drawn.length) return this.bot.chooseActiveEvent(commander, game, drawn);
     return index;
+  }
+
+  /** Tactician active targeting: send the prompt to the human's socket; if they don't respond
+   * within 20 s fall back to the bot heuristic so the round never stalls. */
+  async chooseTacticianActiveTarget(
+    player: GamePlayer,
+    game: GameState,
+    prompt: TacticianActivePrompt
+  ): Promise<TacticianActiveResponse> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === player.seatIndex);
+    if (!seat || seat.isBot) return this.bot.chooseTacticianActiveTarget(player, game, prompt);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.chooseTacticianActiveTarget(player, game, prompt);
+
+    const requestId = randomUUID();
+    const response = await new Promise<TacticianActiveResponse | null>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingTacticianActive.delete(requestId);
+        resolve(null);
+      }, TACTICIAN_ACTIVE_TIMEOUT_MS);
+      pendingTacticianActive.set(requestId, {
+        socketId: socket.id,
+        resolve: (r) => {
+          clearTimeout(timer);
+          resolve(r);
+        },
+      });
+      socket.emit("tactician:active:prompt", { requestId, timeoutMs: TACTICIAN_ACTIVE_TIMEOUT_MS, prompt });
+    });
+
+    if (!response) {
+      this.onTimeout(player);
+      return this.bot.chooseTacticianActiveTarget(player, game, prompt);
+    }
+    return response;
+  }
+
+  async chooseGearHandDiscard(player: GamePlayer, game: GameState, hand: GearCard[]): Promise<number[]> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === player.seatIndex);
+    if (!seat || seat.isBot) return this.bot.chooseGearHandDiscard(player, game, hand);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.chooseGearHandDiscard(player, game, hand);
+
+    const mustDiscard = hand.length - 3;
+    const requestId = randomUUID();
+    const indices = await new Promise<number[] | null>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingGearDiscard.delete(requestId);
+        resolve(null);
+      }, GEAR_DISCARD_TIMEOUT_MS);
+      pendingGearDiscard.set(requestId, {
+        socketId: socket.id,
+        resolve: (r) => { clearTimeout(timer); resolve(r); },
+      });
+      socket.emit("gear:discard:prompt", {
+        requestId,
+        timeoutMs: GEAR_DISCARD_TIMEOUT_MS,
+        mustDiscard,
+        hand: hand.map((g, i) => ({ idx: i, name: (g as any).Name ?? "?", rankName: (g as any)["Rank Name"] ?? "" })),
+      });
+    });
+
+    if (!indices || indices.length !== mustDiscard) {
+      this.onTimeout(player);
+      return this.bot.chooseGearHandDiscard(player, game, hand);
+    }
+    return indices;
+  }
+
+  /** Lane assignment: only fires for the commander, and only if the commander is a human seat.
+   * Sends each player's current lane state so the commander can build a reassignment permutation.
+   * Times out after 45 s and falls back to the bot (identity = no change). */
+  async chooseLaneAssignments(commander: GamePlayer, game: GameState): Promise<Map<number, number>> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === commander.seatIndex);
+    if (!seat || seat.isBot) return this.bot.chooseLaneAssignments(commander, game);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.chooseLaneAssignments(commander, game);
+
+    const requestId = randomUUID();
+    const raw = await new Promise<Record<string, number> | null>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingLaneAssignment.delete(requestId);
+        resolve(null);
+      }, LANE_ASSIGNMENT_TIMEOUT_MS);
+      pendingLaneAssignment.set(requestId, {
+        socketId: socket.id,
+        resolve: (r) => { clearTimeout(timer); resolve(r); },
+      });
+      socket.emit("lane:assignment:prompt", {
+        requestId,
+        timeoutMs: LANE_ASSIGNMENT_TIMEOUT_MS,
+        lanes: game.players.map((p) => ({
+          seatIndex: p.seatIndex,
+          ownerName: p.name,
+          rank: p.rank,
+          activeUnit: p.active ? `${p.active.card.Name} (Rk${p.active.card.Rank}, ${p.active.curHp}/${p.active.maxHp} HP)` : null,
+          reserveCount: p.reserve.length,
+          currentControllerSeat: p.controlledLaneSeat,
+        })),
+      });
+    });
+
+    if (!raw) {
+      this.onTimeout(commander);
+      return this.bot.chooseLaneAssignments(commander, game);
+    }
+
+    // Validate: must be a bijection over all seatIndexes.
+    const seatSet = new Set(game.players.map((p) => p.seatIndex));
+    const result = new Map<number, number>();
+    for (const [k, v] of Object.entries(raw)) {
+      const controller = Number(k);
+      const lane = Number(v);
+      if (!seatSet.has(controller) || !seatSet.has(lane)) continue;
+      result.set(controller, lane);
+    }
+    // Verify bijection: every seat must appear exactly once as a controller and once as a lane.
+    const controllers = new Set(result.keys());
+    const lanes = new Set(result.values());
+    const isValid =
+      controllers.size === seatSet.size &&
+      lanes.size === seatSet.size &&
+      [...seatSet].every((s) => controllers.has(s) && lanes.has(s));
+    if (!isValid) return this.bot.chooseLaneAssignments(commander, game);
+    return result;
+  }
+
+  async chooseCommanderVote(
+    player: GamePlayer,
+    game: GameState,
+    candidates: { seatIndex: number; name: string; rank: number }[],
+    votesSoFar: Map<number, number>
+  ): Promise<number> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === player.seatIndex);
+    if (!seat || seat.isBot) return this.bot.chooseCommanderVote(player, game, candidates, votesSoFar);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.chooseCommanderVote(player, game, candidates, votesSoFar);
+
+    const requestId = randomUUID();
+    const choice = await new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingCommanderVote.delete(requestId);
+        resolve(null);
+      }, 20000);
+      pendingCommanderVote.set(requestId, {
+        socketId: socket.id,
+        resolve: (s) => { clearTimeout(timer); resolve(s); },
+      });
+      socket.emit("leadershipCrisis:votePrompt", { requestId, candidates });
+    });
+
+    if (typeof choice === "number" && candidates.some((c) => c.seatIndex === choice)) return choice;
+    this.onTimeout(player);
+    return this.bot.chooseCommanderVote(player, game, candidates, votesSoFar);
+  }
+
+  async choosePerfectInfoLayout(commander: GamePlayer, game: GameState): Promise<Map<number, import("./engine/data.js").EnemyCard[]> | null> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === commander.seatIndex);
+    if (!seat || seat.isBot) return this.bot.choosePerfectInfoLayout(commander, game);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.choosePerfectInfoLayout(commander, game);
+
+    // Build a flat pooled list and per-lane current assignment for the client.
+    const pool = game.players.flatMap((p) =>
+      p.laneEnemyReserve.map((e) => ({ name: e.Name, rank: e.Rank, damage: e.Damage, hp: e.HP }))
+    );
+    let poolIdx = 0;
+    const currentLanes = game.players.map((p) => ({
+      seatIndex: p.seatIndex,
+      ownerName: p.name,
+      enemyIndices: p.laneEnemyReserve.map(() => poolIdx++),
+    }));
+
+    const requestId = randomUUID();
+    const layout = await new Promise<Record<string, number[]> | null>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingPerfectInfo.delete(requestId);
+        resolve(null);
+      }, PERFECT_INFO_TIMEOUT_MS);
+      pendingPerfectInfo.set(requestId, {
+        socketId: socket.id,
+        resolve: (a) => { clearTimeout(timer); resolve(a); },
+      });
+      socket.emit("perfectInfo:prompt", { requestId, timeoutMs: PERFECT_INFO_TIMEOUT_MS, pool, currentLanes });
+    });
+
+    if (!layout) return this.bot.choosePerfectInfoLayout(commander, game);
+
+    // Reconstruct per-player EnemyCard arrays from the flat pool response.
+    const flatPool = game.players.flatMap((p) => p.laneEnemyReserve);
+    const result = new Map<number, import("./engine/data.js").EnemyCard[]>();
+    for (const p of game.players) {
+      const indices = (layout[String(p.seatIndex)] ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < flatPool.length);
+      result.set(p.seatIndex, indices.map((i) => flatPool[i]));
+    }
+    // Validate total count matches (if malformed, fall back to bot).
+    const totalAssigned = [...result.values()].reduce((s, arr) => s + arr.length, 0);
+    if (totalAssigned !== flatPool.length) return this.bot.choosePerfectInfoLayout(commander, game);
+    return result;
   }
 }

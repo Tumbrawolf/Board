@@ -76,36 +76,67 @@ export interface LaneCombatResult {
   overrun: boolean;
   playerSurvivors: Combatant[];
   enemySurvivors: Combatant[];
+  totalShieldsAbsorbed: number;
 }
 
 /** Default (per README #33): the enemy's Active card deals damage first each exchange,
- * resolving completely (including an outright kill) before the player's unit responds. */
+ * resolving completely (including an outright kill) before the player's unit responds.
+ * bonusPlayerDmgPerAttack: Tag Team passive -- flat bonus damage applied to the enemy after each
+ * player attack (sum of reserve unit damage values, no additional armor interaction). */
 export function resolveLaneCombat(
   playerCombatants: Combatant[],
-  enemyCombatants: Combatant[]
+  enemyCombatants: Combatant[],
+  bonusPlayerDmgPerAttack = 0,
+  onFirstPlayerDeath?: (dying: Combatant, currentEnemy: Combatant) => void,
+  doubleFirstAttack = false,
+  onEnemyKill?: (killer: Combatant) => void
 ): LaneCombatResult {
   const pq = [...playerCombatants];
   const eq = [...enemyCombatants];
+  let totalShieldsAbsorbed = 0;
+  let deathCb = onFirstPlayerDeath;
+  let firstExchangeDone = false;
+  const fireDeathCb = (dying: Combatant) => {
+    if (deathCb && eq[0]) { deathCb(dying, eq[0]); deathCb = undefined; }
+  };
+  const fireKillCb = (killer: Combatant) => { if (onEnemyKill) onEnemyKill(killer); };
+  const dmgMult = () => (doubleFirstAttack && !firstExchangeDone) ? 2 : 1;
   while (pq.length && eq.length) {
     const p = pq[0];
     const e = eq[0];
+    const mult = dmgMult();
     if (p.attacksFirst) {
-      e.curHp -= computeDealt(p, e);
+      const eBefore = e.curShields;
+      e.curHp -= computeDealt(p, e) * mult;
+      e.curHp -= bonusPlayerDmgPerAttack;
+      totalShieldsAbsorbed += eBefore - e.curShields;
       if (e.curHp <= 0) {
+        firstExchangeDone = true;
+        fireKillCb(p);
         eq.shift();
         continue;
       }
-      p.curHp -= computeDealt(e, p);
+      const pBefore = p.curShields;
+      p.curHp -= computeDealt(e, p) * mult;
+      totalShieldsAbsorbed += pBefore - p.curShields;
     } else {
-      p.curHp -= computeDealt(e, p);
+      const pBefore = p.curShields;
+      p.curHp -= computeDealt(e, p) * mult;
+      totalShieldsAbsorbed += pBefore - p.curShields;
       if (p.curHp <= 0) {
+        firstExchangeDone = true;
+        fireDeathCb(p);
         pq.shift();
         continue;
       }
-      e.curHp -= computeDealt(p, e);
+      const eBefore = e.curShields;
+      e.curHp -= computeDealt(p, e) * mult;
+      e.curHp -= bonusPlayerDmgPerAttack;
+      totalShieldsAbsorbed += eBefore - e.curShields;
     }
-    if (p.curHp <= 0) pq.shift();
-    if (e.curHp <= 0) eq.shift();
+    firstExchangeDone = true;
+    if (p.curHp <= 0) { fireDeathCb(p); pq.shift(); }
+    if (e.curHp <= 0) { fireKillCb(pq[0] ?? p); eq.shift(); }
   }
-  return { overrun: eq.length > 0, playerSurvivors: pq, enemySurvivors: eq };
+  return { overrun: eq.length > 0, playerSurvivors: pq, enemySurvivors: eq, totalShieldsAbsorbed };
 }

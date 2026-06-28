@@ -114,8 +114,12 @@ export class RoundTempState {
   tempBuffs: { ui: UnitInstance; buff: Partial<Record<string, number>> }[] = [];
   tempUnits: { player: GamePlayer; ui: UnitInstance }[] = [];
   cannotDie = new Set<string>();
+  mustDieAfterCombat = new Set<string>();
   hoardReduction = new Map<string, number>();
   halfOverrunDamage = false;
+  reserveImmuneThisRound = false;
+  youShallNotPassArmed = false;
+  tranqRoundsActiveThisRound = false;
 
   tempBuff(ui: UnitInstance, stats: { Damage?: number; Armor?: number; HP?: number; Shields?: number }) {
     const buff: any = { ...stats };
@@ -155,6 +159,9 @@ export class RoundTempState {
     this.cannotDie.clear();
     this.hoardReduction.clear();
     this.halfOverrunDamage = false;
+    this.reserveImmuneThisRound = false;
+    this.youShallNotPassArmed = false;
+    this.tranqRoundsActiveThisRound = false;
   }
 }
 
@@ -173,4 +180,30 @@ export function canUseEffect(game: GameState, name: string, cap: number): boolea
 
 export function recordEffectUse(game: GameState, name: string) {
   game.effectUses.set(name, (game.effectUses.get(name) ?? 0) + 1);
+}
+
+/** Check whether an ability use is within its per-turn limit (default 1).
+ * Key: "${unitId}-${abilityName}" for instance-specific; falls back to a name-wide override
+ * in abilityLimitOverrides, then to the hard default of 1. */
+export function canActivateAbility(game: GameState, unitId: string, abilityName: string): boolean {
+  const key = `${unitId}-${abilityName}`;
+  const used = game.abilityUsesThisRound.get(key) ?? 0;
+  const limit =
+    game.abilityLimitOverrides.get(key) ??
+    game.abilityLimitOverrides.get(abilityName) ??
+    1;
+  return used < limit;
+}
+
+/** Record one activation: increments the per-ability-instance use count and the player's
+ * total activations-this-round counter (consumed by "Activate an ability" mission checks). */
+export function recordAbilityActivation(
+  game: GameState,
+  seatIndex: number,
+  unitId: string,
+  abilityName: string
+) {
+  const key = `${unitId}-${abilityName}`;
+  game.abilityUsesThisRound.set(key, (game.abilityUsesThisRound.get(key) ?? 0) + 1);
+  game.activationsThisRound.set(seatIndex, (game.activationsThisRound.get(seatIndex) ?? 0) + 1);
 }

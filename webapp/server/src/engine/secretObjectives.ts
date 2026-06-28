@@ -16,17 +16,15 @@ export function secretObjectiveMet(game: GameState, so: SecretObjectiveCard, p: 
     case "Slacker":
       return p.stats.missionsCompleted < 5;
     case "Corrupt Logistics":
-      return false; // no gear-discard tracking exists
+      return p.stats.gearDiscarded >= 10;
     case "Martyr":
       return p.stats.deaths >= 20;
     case "Misdirector":
-      return false; // "between these losses" sequencing not tracked
-    case "Butcher":
-      return p.stats.healsGiven === 0;
+      return p.stats.misdirectorOtherOverruns >= 3;
     case "Trojan":
       return overrunStart - game.overrunTrackerMin >= 5;
     case "Usurper":
-      return false; // no "steal Command" event exists in this engine's commander model
+      return p.stats.commanderStolenFromHigher >= 3;
     case "Dictator":
       return p.stats.commanderRounds >= 5;
     case "Ghost":
@@ -38,7 +36,7 @@ export function secretObjectiveMet(game: GameState, so: SecretObjectiveCard, p: 
     case "Adventurer":
       return p.stats.missionsCompleted >= 6;
     case "Armorer":
-      return false; // "equip to allies' lanes" not distinguished from own-lane equips
+      return p.stats.gearEquippedToAllies >= 10;
     case "Enforcer":
       return p.stats.kills >= 10;
     case "The Wall":
@@ -48,17 +46,17 @@ export function secretObjectiveMet(game: GameState, so: SecretObjectiveCard, p: 
     case "Stubborn":
       return overrunStart - game.overrunTrackerMin <= 5;
     case "Conductor":
-      return false;
+      return p.stats.conductorCommandFromLower >= 5;
     case "Leader":
       return p.stats.commanderRounds >= 5;
     case "Tactician":
-      return false; // progress-while-commander not separately tracked
+      return p.stats.progressAsCommander >= 5;
     case "High Command":
       return p.rank === Math.max(...game.players.map((q) => q.rank));
     case "Decorated":
       return p.rank >= 5;
     case "Interdictor":
-      return false;
+      return false; // DEFERRED: needs an enemy ability denial mechanic
     case "Hoarder":
       return p.res.Organic >= 40;
     case "Nerd":
@@ -66,11 +64,11 @@ export function secretObjectiveMet(game: GameState, so: SecretObjectiveCard, p: 
     case "Collector":
       return p.res.Alien >= 20;
     case "Chef":
-      return p.stats.donationsMade >= 10;
+      return p.stats.donationsMade.Organic >= 10;
     case "Technician":
-      return p.stats.donationsMade >= 10;
+      return p.stats.donationsMade.Tech >= 10;
     case "Scientist":
-      return p.stats.donationsMade >= 5;
+      return p.stats.donationsMade.Alien >= 5;
     case "Middleman": {
       const pool = others.length ? others : [p];
       return Math.min(...pool.map((q) => q.rank)) < p.rank && p.rank < Math.max(...pool.map((q) => q.rank));
@@ -80,19 +78,23 @@ export function secretObjectiveMet(game: GameState, so: SecretObjectiveCard, p: 
     case "Advisor":
       return p.stats.commanderRounds === 0;
     case "Hunter":
-      return false;
+      // Enemies with a non-empty Reveal or Passive field count as "ability enemies".
+      // Threshold of 10 matches the feel of other combat-focused SOs (Enforcer: kills >= 10).
+      return p.stats.abilityEnemyKills >= 10;
     case "Architect":
       return LOCATIONS.filter((loc) => game.locationUpgradesBuilt[loc].length >= UPGRADE_SLOT_CAP[loc]).length >= 3;
     case "Minimalist":
       return LOCATIONS.reduce((s, loc) => s + (UPGRADE_SLOT_CAP[loc] - game.locationUpgradesBuilt[loc].length), 0) >= 3;
     case "Survivor":
-      return false; // consecutive-round survival not tracked per-unit
+      return p.stats.longestActiveSurvival >= 3;
     case "Deus Machina":
       return p.stats.secretObjectiveComplete === "Deus Machina";
-    case "AFK":
     case "Leroy":
+      return p.stats.roundsWithSingleUnit >= 1;
+    case "AFK":
+      return false; // DEFERRED: needs per-round "nothing added to lane" detection
     case "Kremlen":
-      return false;
+      return false; // DEFERRED: needs per-player command-spend vs. own-spend tracking
     default:
       return false;
   }

@@ -13,7 +13,7 @@ export function missionRequirementMet(
   placementsThisRound: Record<number, Location[]>
 ): boolean {
   const req = (m.Requirement ?? "").toLowerCase();
-  if (req.includes("donate")) return p.stats.donationsMade >= 5;
+  if (req.includes("donate")) return p.stats.donationsMade.Organic + p.stats.donationsMade.Tech + p.stats.donationsMade.Alien >= 5;
   if (req.includes("kill")) {
     const match = /kill (\d+)/.exec(req);
     return p.stats.kills >= (match ? Number(match[1]) : 1);
@@ -42,6 +42,9 @@ export function missionRequirementMet(
         return (placementsThisRound[p.seatIndex] ?? []).includes(loc);
       }
     }
+  }
+  if (req.includes("activate an ability")) {
+    return (game.activationsThisRound.get(p.seatIndex) ?? 0) >= 1;
   }
   return true;
 }

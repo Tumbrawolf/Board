@@ -1,5 +1,5 @@
 import { RANK_ORDER } from "./constants.js";
-import type { GamePlayer, ResourcePool } from "./types.js";
+import type { GamePlayer, GameState, ResourcePool } from "./types.js";
 
 /** Vote of No Confidence's escrow cost. The rules describe "escrowed resources/cards" without a
  * stated amount -- this is an assumption (a flat, moderate cost in the same range as other
@@ -54,7 +54,8 @@ export function resolveAccusation(
   commandPool: ResourcePool,
   newAllyCardIfNeeded: () => { Alignment: string; Name: string; "Bonus Objective": string } | null,
   pickDiscardCard: (cards: GamePlayer["secretObjectives"]) => number,
-  pickRevealCard: (cards: GamePlayer["secretObjectives"]) => number
+  pickRevealCard: (cards: GamePlayer["secretObjectives"]) => number,
+  game?: GameState
 ): AccusationResult {
   const log: string[] = [];
   const wasActuallyAntagonist = accused.secretObjectives.some(isAntagonist);
@@ -75,10 +76,15 @@ export function resolveAccusation(
     }
     refundEscrow(accuser, escrowPaid);
     if (accuser.rank < RANK_ORDER.length) {
-      accuser.rank += 1;
-      accuser.stats.promotionsReceived += 1;
+      const takeCreditSeat = game?.takeCreditCommanderSeat ?? -1;
+      const recipient = takeCreditSeat >= 0 ? (game!.players.find((p) => p.seatIndex === takeCreditSeat) ?? accuser) : accuser;
+      if (takeCreditSeat >= 0) game!.takeCreditCommanderSeat = -1;
+      recipient.rank += 1;
+      recipient.stats.promotionsReceived += 1;
+      log.push(`  [Vote of No Confidence] ${accuser.name}'s accusation was correct -- escrow returned, ${takeCreditSeat >= 0 ? `${recipient.name} steals the promotion (Take Credit)` : `promoted to ${RANK_ORDER[recipient.rank - 1]}`}.`);
+    } else {
+      log.push(`  [Vote of No Confidence] ${accuser.name}'s accusation was correct -- escrow returned, already at max rank.`);
     }
-    log.push(`  [Vote of No Confidence] ${accuser.name}'s accusation was correct -- escrow returned, promoted to ${RANK_ORDER[accuser.rank - 1]}.`);
   } else if (believed && !wasActuallyAntagonist) {
     for (const k of ["Organic", "Tech", "Alien"] as const) commandPool[k] += escrowPaid[k];
     if (accuser.rank > 1) accuser.rank -= 1;

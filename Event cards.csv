@@ -34,8 +34,6 @@ Saboteur investigation,Roll Dice to select locations,Target Locations Empty,Draw
 Capacity Threshold,Roll Dice to select locations,Target location Full,Draw upgrades until location is full,-1 Location upgrade limit
 Isolation Orders,Roll Dice to select location to disable until active locations = player count,All players at unique locations,Bonuses to resources when alone,Penalty to resources when together at location
 Leadership Crisis,Group blind Votes on next commander,Commander Changes unanimously ,Commander can willingly pass the role to another,Commander must change every turn
-Forced Re-Armament,Equipment costs doubled,Purchase a full set of new gear for a unit,Equip Anytime without the upgrade,Double Equip costs
-Ion Storm,"All enemies gain 5 shields, Move friendly shields to enemies",100 Shields destroyed this round,Scouted units lose shields,enemies enter with 10 shields
-System Lockdown,Return all upgrades to hand,"No upgrades built at end of turn, only passive effects in hand",Remove upgrades anytime,Remove upgrades at end of turn
-Renovations,cannot send workers to locations with upgrades,Play 3 upgrades,+2 Hand size,Half hand size
-Annihilation Clause,All Units Deleted on death,Delete 2x more enemies than Units lost this round,Enemies are deleted when killed by higher rank,Allies are Deleted when killed by higher rank
+Ion Storm,"All enemies gain 5 shields, Deal double Damage to shields",40 Shields destroyed this round,Scouted units lose shields,enemies enter with 10 shields
+Renovations,"Set aside existing built upgrades for the round, restore after event resolves (overflow goes to commander hand)",Build 3 upgrades during the round,Can remove a built upgrade to free a slot when building,Strip all built upgrades at end of every round
+Annihilation Clause,All Units Deleted on death,Kill more enemies than Units lost this round,Enemies are deleted when killed by higher rank,Allies are Deleted when killed by higher rank

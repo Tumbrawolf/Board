@@ -7,9 +7,14 @@ import { runGame } from "./runGame.js";
 import {
   resolveAccusationChoice,
   resolveAccusationVote,
+  resolveCommanderVote,
   resolveCommandersCallChoice,
   resolveEventChoice,
+  resolveGearDiscardChoice,
+  resolveLaneAssignmentChoice,
+  resolvePerfectInfoLayout,
   resolvePlacementChoice,
+  resolveTacticianActiveChoice,
 } from "./humanDecisions.js";
 import type { RoomSettings } from "./types.js";
 
@@ -108,6 +113,23 @@ io.on("connection", (socket) => {
 
   socket.on("eventChoice:choose", ({ requestId, index }: { requestId: string; index: number }) => {
     resolveEventChoice(socket.id, requestId, index);
+  });
+
+  socket.on("tactician:active:response", ({ requestId, response }: { requestId: string; response: any }) => {
+    resolveTacticianActiveChoice(socket.id, requestId, response);
+  });
+
+  socket.on("gear:discard:response", ({ requestId, discardIndices }: { requestId: string; discardIndices: number[] }) => {
+    resolveGearDiscardChoice(socket.id, requestId, discardIndices);
+  });
+  socket.on("lane:assignment:response", ({ requestId, assignments }: { requestId: string; assignments: Record<string, number> }) => {
+    resolveLaneAssignmentChoice(socket.id, requestId, assignments);
+  });
+  socket.on("perfectInfo:response", ({ requestId, layout }: { requestId: string; layout: Record<string, number[]> }) => {
+    resolvePerfectInfoLayout(socket.id, requestId, layout);
+  });
+  socket.on("leadershipCrisis:vote", ({ requestId, seatIndex }: { requestId: string; seatIndex: number }) => {
+    resolveCommanderVote(socket.id, requestId, seatIndex);
   });
 
   socket.on("room:toggleReady", ({ ready }: { ready: boolean }, ack) => {

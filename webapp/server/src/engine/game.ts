@@ -55,6 +55,7 @@ import {
   canUseEffect,
   healUnit,
   instancePower,
+  makeTempCard,
   makeUnitInstance,
   recordEffectUse,
   scoutValue,
@@ -171,6 +172,8 @@ export class GameEngine {
       gearHand: [],
       graveyard: [],
       overrunLastRound: false,
+      combatStimsRevealBonus: 0,
+      incomeThisRound: { Organic: 0, Tech: 0, Alien: 0 },
       controlledLaneSeat: s.seatIndex,
       missions: [],
       secretObjectives: secretObjectiveDeck.length >= 2 ? [secretObjectiveDeck.pop()!, secretObjectiveDeck.pop()!] : [],
@@ -240,6 +243,7 @@ export class GameEngine {
       shopCostMultiplierNextRound: 1,
       experimentalOrganicTechFree: false,
       gearAlienHalfThisRound: false,
+      tagTeamPassive: false,
       basicGearAlienFree: false,
       allAlienFreeThisRound: false,
       gearDeck: this.gearDeckFull as any,
@@ -317,6 +321,38 @@ export class GameEngine {
       renovationEndOfRoundStrip: false,
       annihilationEnemiesDeletedByHigherRank: false,
       annihilationAlliesDeletedByHigherRank: false,
+      combatStimsUsedThisRound: false,
+      combatStimsPendingDmg: 0,
+      laneAbilityPreventions: new Map(),
+      laneAbilitiesFullySuppressed: new Set(),
+      destroyNextActivatedCard: false,
+      countermeasuresTargetSeat: 0,
+      necromancyDeathPrevented: new Set(),
+      necromancyPickedIdx: -1,
+      donorOrgansPickedIdx: -1,
+      ashesToAshesPickedIdx: -1,
+      weCanRebuildActive: false,
+      rebuiltThisRound: new Set(),
+      battleMedicsPassiveUsed: false,
+      battleMedicsActiveUnits: new Set(),
+      ordersFromAboveDrawn: [],
+      ordersFromAboveKeepIdx: -1,
+      requestAidBonusRounds: 0,
+      priorityOperationsRoundsLeft: 0,
+      priorityConstructionRoundsLeft: 0,
+      takeCreditCommanderSeat: -1,
+      nukeLaneSeat: -1,
+      promotionTargetSeat: -1,
+      reinforcementUnitIds: new Set(),
+      perfectInfoArmed: false,
+      fieldTestingGearIdx: -1,
+      fieldTestingUnitIdx: -1,
+      finalStandTargetUnitId: "",
+      whitesOfTheirEyesTargetSeat: -1,
+      punchThroughActiveSeat: -1,
+      eradicatorCannonCost: 2,
+      eradicatorCannonKillArmed: false,
+      eradicatorCannonLaneSeat: -1,
     };
 
     refillShopUnit(this.game);
@@ -435,9 +471,44 @@ export class GameEngine {
     game.techCanUseOrganic = false;
     game.experimentalOrganicTechFree = false;
     game.gearAlienHalfThisRound = false;
+    game.tagTeamPassive = false;
     game.basicGearAlienFree = false;
     game.allAlienFreeThisRound = false;
     game.breakerActive = false;
+    game.combatStimsUsedThisRound = false;
+    game.combatStimsPendingDmg = 0;
+    for (const p of game.players) {
+      p.combatStimsRevealBonus = 0;
+      p.incomeThisRound = { Organic: 0, Tech: 0, Alien: 0 };
+    }
+    game.laneAbilityPreventions = new Map();
+    game.laneAbilitiesFullySuppressed = new Set();
+    game.destroyNextActivatedCard = false;
+    game.countermeasuresTargetSeat = 0;
+    game.necromancyDeathPrevented = new Set();
+    game.necromancyPickedIdx = -1;
+    game.donorOrgansPickedIdx = -1;
+    game.ashesToAshesPickedIdx = -1;
+    game.weCanRebuildActive = false;
+    game.rebuiltThisRound = new Set();
+    game.battleMedicsPassiveUsed = false;
+    game.battleMedicsActiveUnits = new Set();
+    game.ordersFromAboveDrawn = [];
+    game.ordersFromAboveKeepIdx = -1;
+    if (game.priorityOperationsRoundsLeft > 0) game.priorityOperationsRoundsLeft--;
+    if (game.priorityConstructionRoundsLeft > 0) game.priorityConstructionRoundsLeft--;
+    game.takeCreditCommanderSeat = -1;
+    game.nukeLaneSeat = -1;
+    game.promotionTargetSeat = -1;
+    game.reinforcementUnitIds = new Set();
+    game.perfectInfoArmed = false;
+    game.fieldTestingGearIdx = -1;
+    game.fieldTestingUnitIdx = -1;
+    game.finalStandTargetUnitId = "";
+    game.whitesOfTheirEyesTargetSeat = -1;
+    game.punchThroughActiveSeat = -1;
+    game.eradicatorCannonKillArmed = false;
+    game.eradicatorCannonLaneSeat = -1;
     game.chessmasterDoubledEnemies = new Set();
     game.freeAbilityNextUse = new Set();
     game.commanderLocked = false;
@@ -605,6 +676,10 @@ export class GameEngine {
       game.experimentalGearUnlocked = true;
       this.log(`  [Experimental Science] Experimental gear added to gear deck`);
     }
+    // Tag Team passive: reserve units deal damage alongside active each attack
+    if (game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Tag Team")) {
+      game.tagTeamPassive = true;
+    }
     // Mad Science passive: Experimental gear Organic+Tech costs = 0 while built
     if (game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Mad Science")) {
       game.experimentalOrganicTechFree = true;
@@ -646,6 +721,95 @@ export class GameEngine {
     }
     ensureLowestRankUnit(game);
     ensureLowestRankGear(game);
+
+    // Combat Stims passive: once per round the commander may trigger a contained enemy's Reveal effect.
+    if (
+      game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Combat Stims") &&
+      game.containedEnemyPool.length > 0 &&
+      !game.combatStimsUsedThisRound
+    ) {
+      const options = game.containedEnemyPool.map((e, i) => ({
+        name: `${e.Name}${(e as any).Reveal ? ` — ${(e as any).Reveal}` : " (no Reveal)"}`,
+        rank: (e as any).Rank ?? "Unknown",
+        idx: i,
+      }));
+      const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+        tacticianName: "Combat Stims",
+        kind: "combat_stims_passive" as any,
+        shopOptions: options,
+      });
+      if (resp?.optionIdx !== undefined && resp.optionIdx >= 0 && resp.optionIdx < game.containedEnemyPool.length) {
+        const chosen = game.containedEnemyPool[resp.optionIdx];
+        const reveal: string = (chosen as any).Reveal ?? "";
+        game.combatStimsUsedThisRound = true;
+        const dmgMatch = reveal.match(/Deal (\d+)/i);
+        if (dmgMatch) {
+          const dmg = parseInt(dmgMatch[1]);
+          commander.combatStimsRevealBonus += dmg;
+          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → +${dmg} bonus combat damage`);
+        } else if (/Gain (\d+) Shield/i.test(reveal) && commander.active) {
+          const shields = parseInt(reveal.match(/Gain (\d+) Shield/i)![1]);
+          tempState.tempBuff(commander.active, { Shields: shields });
+          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → +${shields} shields on ${commander.active.card.Name}`);
+        } else if (reveal) {
+          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" — effect not implemented`);
+        } else {
+          this.log(`  [Combat Stims passive] ${chosen.Name} has no Reveal effect`);
+        }
+      }
+    }
+
+    // Countermeasures passive: roll D4 for lane, D4 for ability-prevention count in that lane.
+    if (game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Countermeasures")) {
+      const laneRoll = 1 + Math.floor(Math.random() * 4);
+      const preventRoll = 1 + Math.floor(Math.random() * 4);
+      const target = game.players[(laneRoll - 1) % game.players.length];
+      const cur = game.laneAbilityPreventions.get(target.seatIndex) ?? 0;
+      game.laneAbilityPreventions.set(target.seatIndex, cur + preventRoll);
+      this.log(`  [Countermeasures passive] D4=${laneRoll} → ${target.name}'s lane, D4=${preventRoll} ability prevention(s)`);
+    }
+
+    // Forward Command passive: reserve units are immune to all damage while this upgrade is built.
+    if (game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Forward Command")) {
+      tempState.reserveImmuneThisRound = true;
+    }
+
+    // Bunkers passive: reserve units can only be damaged by the active enemy (same as Forward Command).
+    if (game.locationUpgradesBuilt["Battlefield"].some((c) => c.Name === "Bunkers")) {
+      tempState.reserveImmuneThisRound = true;
+    }
+
+    // Eradicator Cannon passive: any player may pay current Alien cost to deal 5 damage to boss (ignores prevention/immunities).
+    if (
+      game.bossActive &&
+      game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Eradicator Cannon")
+    ) {
+      for (const p of game.players) {
+        while (p.res.Alien >= game.eradicatorCannonCost) {
+          const opts = [
+            { name: `Fire (costs ${game.eradicatorCannonCost} Alien → 5 dmg to Boss, next use costs ${game.eradicatorCannonCost * 2})`, rankName: "", idx: 0 },
+            { name: "Skip", rankName: "", idx: 1 },
+          ];
+          const resp = await this.decisions.chooseTacticianActiveTarget(p, game, {
+            tacticianName: "Eradicator Cannon",
+            kind: "recycle_pick",
+            recycleOptions: opts,
+          });
+          if (resp?.optionIdx !== 0) break;
+          if (!game.bossActive) break;
+          p.res.Alien -= game.eradicatorCannonCost;
+          game.eradicatorCannonCost *= 2;
+          game.bossActive.hpCur -= 5;
+          this.log(`  [Eradicator Cannon] ${p.name} pays ${game.eradicatorCannonCost / 2} Alien → 5 direct boss damage (ignores immunities). Boss HP: ${game.bossActive.hpCur}`);
+          if (game.bossActive.hpCur <= 0) {
+            this.log(`  [Eradicator Cannon] Boss ${game.bossActive.card.Name} defeated!`);
+            game.bossActive = null;
+            game.bossDiedLastRound = true;
+            break;
+          }
+        }
+      }
+    }
 
     for (const p of game.players) {
       if (p.overrunLastRound) {
@@ -752,6 +916,27 @@ export class GameEngine {
     }
 
     // ---------------- CLEANUP ----------------
+    // Reinforcements: surviving temp units and their gear return to their decks; dead units leave gear destroyed.
+    if (game.reinforcementUnitIds.size > 0) {
+      for (const uid of game.reinforcementUnitIds) {
+        for (const p of game.players) {
+          const inActive = p.active?.id === uid;
+          const reserveIdx = p.reserve.findIndex((u) => u.id === uid);
+          if (inActive || reserveIdx >= 0) {
+            const ui = inActive ? p.active! : p.reserve[reserveIdx];
+            for (const g of ui.equipped) game.gearDeck.push(g as any);
+            game.unitDeck.push(ui.card);
+            if (inActive) {
+              p.active = p.reserve.length ? p.reserve.shift()! : null;
+            } else {
+              p.reserve.splice(reserveIdx, 1);
+            }
+            this.log(`  [Reinforcements] ${ui.card.Name} and gear returned to deck`);
+          }
+        }
+      }
+      game.reinforcementUnitIds.clear();
+    }
     tempState.clear();
 
     for (const p of game.players) {
@@ -1061,10 +1246,12 @@ export class GameEngine {
     // payment sites in planningActions.ts).
     const commandRequisitionActive = eventName === "Command Requisition";
     const grantIncome = (p: GamePlayer, key: "Organic" | "Tech" | "Alien", amt: number) => {
+      const effective = game.requestAidBonusRounds > 0 ? amt * 2 : amt;
       if (commandRequisitionActive) {
-        game.commandPool[key] += amt;
+        game.commandPool[key] += effective;
       } else {
-        p.res[key] += amt;
+        p.res[key] += effective;
+        p.incomeThisRound[key] += effective;
       }
     };
     for (const loc of LOCATIONS) {
@@ -1111,8 +1298,22 @@ export class GameEngine {
             p.stats.healsGiven += 1;
             this.log(`  ${p.name} retrieves ${ui.card.Name} from Medical Bay`);
           }
+          // We Can Rebuild Them passive: retrieve all remaining Med Bay units by paying each unit's Tech Cost.
+          if (game.locationUpgradesBuilt["Medical Bay"].some((c) => c.Name === "We can Rebuild them")) {
+            while (p.medBayUnits.length > 0) {
+              const ui = p.medBayUnits[0];
+              const techCost = toInt(ui.card["Tech Cost"]);
+              if (p.res.Tech < techCost) break;
+              p.medBayUnits.shift();
+              p.res.Tech -= techCost;
+              healUnit(ui);
+              p.reserve.push(ui);
+              p.stats.healsGiven += 1;
+              this.log(`  [We Can Rebuild Them] ${p.name} rebuilds ${ui.card.Name} (paid ${techCost} Tech)`);
+            }
+          }
         } else if (loc === "Containment Block") {
-          const containedRank = game.containedEnemyPool.reduce((s, r) => s + ENEMY_RANK_NUM[r], 0);
+          const containedRank = game.containedEnemyPool.reduce((s, r) => s + ENEMY_RANK_NUM[(r as any).Rank as EnemyRank], 0);
           const capacityMult = game.containmentCapacityDoubled ? 2 : 1;
           const amt = (full ? containedRank + 1 : Math.floor((containedRank + 1) / 2)) * capacityMult;
           grantIncome(p, "Alien", amt);
@@ -1156,6 +1357,9 @@ export class GameEngine {
         p.res.Alien += game.locationAlienBonus;
       }
     }
+
+    // Request Aid: decrement the 2x income bonus counter after all income is distributed.
+    if (game.requestAidBonusRounds > 0) game.requestAidBonusRounds--;
 
     // Return-to-supply events: bots collectively donate the minimum needed to pass the Completion
     // Condition, then stop. Cheap Knockoffs needs 10 Tech, Food Shortage needs 10 Organic, Tax
@@ -1245,7 +1449,8 @@ export class GameEngine {
           return idx === -1 ? null : game.secretObjectiveDeck.splice(idx, 1)[0];
         },
         () => 0,
-        () => 0
+        () => 0,
+        game
       );
       for (const line of result.log) this.log(line);
     }
@@ -1342,9 +1547,192 @@ export class GameEngine {
           this.containmentSlots = 2;
         });
       } else {
+        // Orders from Above: draw 3, player picks 1 to keep; discard 2 and gain their costs.
+        if (card.Name === "Orders from Above") {
+          const drawn: CommandCard[] = [];
+          for (let i = 0; i < 3 && game.commandDeck.length; i++) drawn.push(game.commandDeck.pop()!);
+          game.ordersFromAboveDrawn = drawn;
+          if (drawn.length > 0) {
+            const cardCost = (c: CommandCard) => toInt(c.Organic) + toInt(c.Tech) + toInt(c.Alien);
+            const opts = drawn.map((c, i) => ({
+              name: `${c.Name} (keep) | discard others → +${drawn.filter((_, j) => j !== i).reduce((s, d) => s + cardCost(d), 0)} total resources`,
+              rankName: c.Building,
+              idx: i,
+            }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+              tacticianName: "Orders from Above",
+              kind: "recycle_pick",
+              recycleOptions: opts,
+            });
+            game.ordersFromAboveKeepIdx = resp?.optionIdx ?? drawn.findIndex((c) => cardCost(c) === Math.max(...drawn.map(cardCost)));
+          }
+        }
+        // Ashes to Ashes active: player picks which med bay unit to destroy for 2x Organic refund.
+        if (card.Name === "Ashes to Ashes" && commander.medBayUnits.length) {
+          const opts = commander.medBayUnits.map((ui, i) => ({
+            name: `${ui.card.Name} (refunds ${toInt(ui.card["Organic Cost"]) * 2} Organic)`,
+            rankName: ui.card.Rank,
+            idx: i,
+          }));
+          const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+            tacticianName: "Ashes to Ashes",
+            kind: "recycle_pick",
+            recycleOptions: opts,
+          });
+          game.ashesToAshesPickedIdx = resp?.optionIdx ?? 0;
+        }
+        // Donor Organs active: player picks which infantry unit to retrieve from their own Med Bay.
+        if (card.Name === "Donor Organs") {
+          const affordable = commander.medBayUnits
+            .map((ui, i) => ({ ui, i }))
+            .filter(({ ui }) => ui.card.Type.includes("Infantry") && commander.res.Organic >= toInt(ui.card["Organic Cost"]));
+          if (affordable.length) {
+            const opts = affordable.map(({ ui, i }) => ({
+              name: `${ui.card.Name} (costs ${toInt(ui.card["Organic Cost"])} Organic)`,
+              rankName: ui.card.Rank,
+              idx: i,
+            }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+              tacticianName: "Donor Organs",
+              kind: "recycle_pick",
+              recycleOptions: opts,
+            });
+            game.donorOrgansPickedIdx = resp?.optionIdx ?? affordable[affordable.length - 1].i;
+          }
+        }
+        // Necromancy active: player picks which unit to revive from their graveyard.
+        if (card.Name === "Necromancy" && commander.graveyard.length) {
+          const opts = commander.graveyard.map((ui, i) => ({
+            name: ui.card.Name,
+            rankName: ui.card.Rank,
+            idx: i,
+          }));
+          const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+            tacticianName: "Necromancy",
+            kind: "recycle_pick",
+            recycleOptions: opts,
+          });
+          game.necromancyPickedIdx = resp?.optionIdx ?? opts.length - 1;
+        }
+        // Countermeasures active: player picks which lane to fully suppress enemy abilities in.
+        if (card.Name === "Countermeasures") {
+          const playerOptions = game.players.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+          const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+            tacticianName: "Countermeasures",
+            kind: "player_pick",
+            playerOptions,
+          });
+          game.countermeasuresTargetSeat = resp?.targetSeat ?? game.players[0].seatIndex;
+        }
+        // Combat Stims active: player chooses how much self-damage to take before dispatch reads it.
+        if (card.Name === "Combat Stims" && commander.active) {
+          const maxDmg = Math.min(5, Math.max(1, commander.active.curHp - 1));
+          const options = Array.from({ length: maxDmg }, (_, i) => ({
+            name: `Deal ${i + 1} dmg → +${(i + 1) * 2} Attack this round`,
+            rank: "",
+            idx: i + 1,
+          }));
+          const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+            tacticianName: "Combat Stims",
+            kind: "combat_stims_active" as any,
+            shopOptions: options,
+          });
+          game.combatStimsPendingDmg = resp?.optionIdx ?? 1;
+        }
+        // Eradicator Cannon active: pick which lane's enemy to kill after hoard build.
+        if (card.Name === "Eradicator Cannon") {
+          const playerOptions = game.players.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+          const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+            tacticianName: "Eradicator Cannon",
+            kind: "player_pick",
+            playerOptions,
+          });
+          game.eradicatorCannonLaneSeat = resp?.targetSeat ?? game.players[0].seatIndex;
+          game.eradicatorCannonKillArmed = true;
+          game.destroyNextActivatedCard = true;
+        }
+        // Field Testing active: player picks gear from shop then a unit in their lane.
+        if (card.Name === "Field Testing" && game.shopGear.length) {
+          const gearOpts = game.shopGear.map((g, i) => ({
+            name: `${(g as any).Name} (Rk${(g as any)["Rank Name"]})`,
+            rankName: (g as any)["Rank Name"],
+            idx: i,
+          }));
+          const gResp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+            tacticianName: "Field Testing",
+            kind: "recycle_pick",
+            recycleOptions: gearOpts,
+          });
+          game.fieldTestingGearIdx = gResp?.optionIdx ?? 0;
+          const units = [...(commander.active ? [commander.active] : []), ...commander.reserve];
+          if (units.length) {
+            const unitOpts = units.map((ui, i) => ({ name: ui.card.Name, rankName: ui.card.Rank, idx: i }));
+            const uResp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+              tacticianName: "Field Testing (unit)",
+              kind: "recycle_pick",
+              recycleOptions: unitOpts,
+            });
+            game.fieldTestingUnitIdx = uResp?.optionIdx ?? 0;
+          }
+        }
+        // Nuke active: player picks which lane to destroy.
+        if (card.Name === "Nuke") {
+          const playerOptions = game.players.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+          const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+            tacticianName: "Nuke",
+            kind: "player_pick",
+            playerOptions,
+          });
+          const botDefault = game.players.reduce((a, b) => b.laneEnemyReserve.length > a.laneEnemyReserve.length ? b : a).seatIndex;
+          game.nukeLaneSeat = resp?.targetSeat ?? botDefault;
+        }
+        // Promotion active: player picks which non-self player to promote.
+        if (card.Name === "Promotion") {
+          const others = game.players.filter((p) => p !== commander);
+          if (others.length) {
+            const playerOptions = others.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+              tacticianName: "Promotion",
+              kind: "player_pick",
+              playerOptions,
+            });
+            const botDefault = others.reduce((a, b) => b.rank < a.rank ? b : a).seatIndex;
+            game.promotionTargetSeat = resp?.targetSeat ?? botDefault;
+          }
+        }
+        // Final Stand active: pick any unit across all lanes to be immune to death this round.
+        if (card.Name === "Final Stand") {
+          const allUnits = game.players.flatMap((p) => [...(p.active ? [p.active] : []), ...p.reserve]);
+          if (allUnits.length) {
+            const opts = allUnits.map((ui, i) => ({ name: `${ui.card.Name} (${ui.curHp}/${ui.maxHp}HP)`, rankName: ui.card.Rank, idx: i }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+              tacticianName: "Final Stand",
+              kind: "recycle_pick",
+              recycleOptions: opts,
+            });
+            const botDefault = allUnits.reduce((a, b) => b.curHp < a.curHp ? b : a);
+            game.finalStandTargetUnitId = allUnits[resp?.optionIdx ?? allUnits.indexOf(botDefault)].id;
+          }
+        }
+        // Whites of Their Eyes active: pick target lane.
+        if (card.Name === "Whites of their eyes") {
+          const playerOptions = game.players.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+          const resp = await this.decisions.chooseTacticianActiveTarget(commander, game, {
+            tacticianName: "Whites of their eyes",
+            kind: "player_pick",
+            playerOptions,
+          });
+          const botDefault = game.players.reduce((a, b) => b.laneEnemyReserve.length > a.laneEnemyReserve.length ? b : a).seatIndex;
+          game.whitesOfTheirEyesTargetSeat = resp?.targetSeat ?? botDefault;
+        }
         commanderActivateCardMutation(game, card, commander, (t) => this.log(t), (c, loc) => {
           this.dispatchEffect(c, loc, commander, tempState, diffRank);
-          game.commandDeck.unshift(c);
+          if (game.destroyNextActivatedCard) {
+            game.destroyNextActivatedCard = false;
+            this.log(`  [Card destroyed] ${c.Name} removed from play`);
+          } else {
+            game.commandDeck.unshift(c);
+          }
         });
         game.activationsThisRound.set(commander.seatIndex, (game.activationsThisRound.get(commander.seatIndex) ?? 0) + 1);
       }
@@ -1389,9 +1777,176 @@ export class GameEngine {
           this.dispatchEffect(card, loc, commander, tempState, diffRank);
           game.commandDeck.unshift(card);
         } else {
+          if (card.Name === "Ashes to Ashes" && actor.medBayUnits.length) {
+            const opts = actor.medBayUnits.map((ui, i) => ({
+              name: `${ui.card.Name} (refunds ${toInt(ui.card["Organic Cost"]) * 2} Organic)`,
+              rankName: ui.card.Rank,
+              idx: i,
+            }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+              tacticianName: "Ashes to Ashes",
+              kind: "recycle_pick",
+              recycleOptions: opts,
+            });
+            game.ashesToAshesPickedIdx = resp?.optionIdx ?? 0;
+          }
+          if (card.Name === "Donor Organs") {
+            const affordable = actor.medBayUnits
+              .map((ui, i) => ({ ui, i }))
+              .filter(({ ui }) => ui.card.Type.includes("Infantry") && actor.res.Organic >= toInt(ui.card["Organic Cost"]));
+            if (affordable.length) {
+              const opts = affordable.map(({ ui, i }) => ({
+                name: `${ui.card.Name} (costs ${toInt(ui.card["Organic Cost"])} Organic)`,
+                rankName: ui.card.Rank,
+                idx: i,
+              }));
+              const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+                tacticianName: "Donor Organs",
+                kind: "recycle_pick",
+                recycleOptions: opts,
+              });
+              game.donorOrgansPickedIdx = resp?.optionIdx ?? affordable[affordable.length - 1].i;
+            }
+          }
+          if (card.Name === "Necromancy" && actor.graveyard.length) {
+            const opts = actor.graveyard.map((ui, i) => ({ name: ui.card.Name, rankName: ui.card.Rank, idx: i }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+              tacticianName: "Necromancy",
+              kind: "recycle_pick",
+              recycleOptions: opts,
+            });
+            game.necromancyPickedIdx = resp?.optionIdx ?? opts.length - 1;
+          }
+          if (card.Name === "Countermeasures") {
+            const playerOptions = game.players.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+              tacticianName: "Countermeasures",
+              kind: "player_pick",
+              playerOptions,
+            });
+            game.countermeasuresTargetSeat = resp?.targetSeat ?? game.players[0].seatIndex;
+          }
+          if (card.Name === "Combat Stims" && actor.active) {
+            const maxDmg = Math.min(5, Math.max(1, actor.active.curHp - 1));
+            const options = Array.from({ length: maxDmg }, (_, i) => ({
+              name: `Deal ${i + 1} dmg → +${(i + 1) * 2} Attack this round`,
+              rank: "",
+              idx: i + 1,
+            }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+              tacticianName: "Combat Stims",
+              kind: "combat_stims_active" as any,
+              shopOptions: options,
+            });
+            game.combatStimsPendingDmg = resp?.optionIdx ?? 1;
+          }
+          if (card.Name === "Orders from Above") {
+            const drawn: CommandCard[] = [];
+            for (let i = 0; i < 3 && game.commandDeck.length; i++) drawn.push(game.commandDeck.pop()!);
+            game.ordersFromAboveDrawn = drawn;
+            if (drawn.length > 0) {
+              const cardCost = (c: CommandCard) => toInt(c.Organic) + toInt(c.Tech) + toInt(c.Alien);
+              const opts = drawn.map((c, i) => ({
+                name: `${c.Name} (keep) | discard others → +${drawn.filter((_, j) => j !== i).reduce((s, d) => s + cardCost(d), 0)} total resources`,
+                rankName: c.Building,
+                idx: i,
+              }));
+              const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+                tacticianName: "Orders from Above",
+                kind: "recycle_pick",
+                recycleOptions: opts,
+              });
+              game.ordersFromAboveKeepIdx = resp?.optionIdx ?? drawn.findIndex((c) => cardCost(c) === Math.max(...drawn.map(cardCost)));
+            }
+          }
+          if (card.Name === "Eradicator Cannon") {
+            const playerOptions = game.players.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+              tacticianName: "Eradicator Cannon",
+              kind: "player_pick",
+              playerOptions,
+            });
+            game.eradicatorCannonLaneSeat = resp?.targetSeat ?? game.players[0].seatIndex;
+            game.eradicatorCannonKillArmed = true;
+            game.destroyNextActivatedCard = true;
+          }
+          if (card.Name === "Field Testing" && game.shopGear.length) {
+            const gearOpts = game.shopGear.map((g, i) => ({
+              name: `${(g as any).Name} (Rk${(g as any)["Rank Name"]})`,
+              rankName: (g as any)["Rank Name"],
+              idx: i,
+            }));
+            const gResp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+              tacticianName: "Field Testing",
+              kind: "recycle_pick",
+              recycleOptions: gearOpts,
+            });
+            game.fieldTestingGearIdx = gResp?.optionIdx ?? 0;
+            const units = [...(actor.active ? [actor.active] : []), ...actor.reserve];
+            if (units.length) {
+              const unitOpts = units.map((ui, i) => ({ name: ui.card.Name, rankName: ui.card.Rank, idx: i }));
+              const uResp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+                tacticianName: "Field Testing (unit)",
+                kind: "recycle_pick",
+                recycleOptions: unitOpts,
+              });
+              game.fieldTestingUnitIdx = uResp?.optionIdx ?? 0;
+            }
+          }
+          if (card.Name === "Nuke") {
+            const playerOptions = game.players.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+              tacticianName: "Nuke",
+              kind: "player_pick",
+              playerOptions,
+            });
+            const botDefault = game.players.reduce((a, b) => b.laneEnemyReserve.length > a.laneEnemyReserve.length ? b : a).seatIndex;
+            game.nukeLaneSeat = resp?.targetSeat ?? botDefault;
+          }
+          if (card.Name === "Promotion") {
+            const others = game.players.filter((p) => p !== actor);
+            if (others.length) {
+              const playerOptions = others.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+              const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+                tacticianName: "Promotion",
+                kind: "player_pick",
+                playerOptions,
+              });
+              const botDefault = others.reduce((a, b) => b.rank < a.rank ? b : a).seatIndex;
+              game.promotionTargetSeat = resp?.targetSeat ?? botDefault;
+            }
+          }
+          if (card.Name === "Final Stand") {
+            const allUnits = game.players.flatMap((p) => [...(p.active ? [p.active] : []), ...p.reserve]);
+            if (allUnits.length) {
+              const opts = allUnits.map((ui, i) => ({ name: `${ui.card.Name} (${ui.curHp}/${ui.maxHp}HP)`, rankName: ui.card.Rank, idx: i }));
+              const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+                tacticianName: "Final Stand",
+                kind: "recycle_pick",
+                recycleOptions: opts,
+              });
+              const botDefault = allUnits.reduce((a, b) => b.curHp < a.curHp ? b : a);
+              game.finalStandTargetUnitId = allUnits[resp?.optionIdx ?? allUnits.indexOf(botDefault)].id;
+            }
+          }
+          if (card.Name === "Whites of their eyes") {
+            const playerOptions = game.players.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+            const resp = await this.decisions.chooseTacticianActiveTarget(actor, game, {
+              tacticianName: "Whites of their eyes",
+              kind: "player_pick",
+              playerOptions,
+            });
+            const botDefault = game.players.reduce((a, b) => b.laneEnemyReserve.length > a.laneEnemyReserve.length ? b : a).seatIndex;
+            game.whitesOfTheirEyesTargetSeat = resp?.targetSeat ?? botDefault;
+          }
           nonCommanderActivateCardMutation(game, card, actor, (t) => this.log(t), (c, loc) => {
             this.dispatchEffect(c, loc, commander, tempState, diffRank);
-            game.commandDeck.unshift(c);
+            if (game.destroyNextActivatedCard) {
+              game.destroyNextActivatedCard = false;
+              this.log(`  [Card destroyed] ${c.Name} removed from play`);
+            } else {
+              game.commandDeck.unshift(c);
+            }
           });
         }
         game.activationsThisRound.set(actor.seatIndex, (game.activationsThisRound.get(actor.seatIndex) ?? 0) + 1);
@@ -1416,6 +1971,18 @@ export class GameEngine {
           this.placementsThisRound[p.seatIndex].includes("Battlefield"),
         log: (t: string) => this.log(t),
         dispatch: (card: CommandCard, loc: Location) => {
+          if (card.Name === "Suppression") {
+            game.laneAbilitiesFullySuppressed.add(p.seatIndex);
+            this.log(`  [Suppression] ${p.name}'s lane: all enemy activated abilities suppressed this round.`);
+          }
+          if (card.Name === "Barrier Systems") {
+            const units = [...(p.active ? [p.active] : []), ...p.reserve];
+            for (const ui of units) tempState.tempBuff(ui, { Shields: 10 });
+            this.log(`  [Barrier Systems] ${p.name}'s lane: all ${units.length} unit(s) gain 10 shields.`);
+          }
+          if (card.Name === "Punch Through") {
+            game.punchThroughActiveSeat = p.seatIndex;
+          }
           this.dispatchEffect(card, loc, commander, tempState, diffRank);
           game.commandDeck.unshift(card);
         },
@@ -1455,9 +2022,10 @@ export class GameEngine {
       const scout = game.teamScoutPool.reduce((a, b) =>
         scoutValue(b) > scoutValue(a) ? b : a
       );
-      game.commandPool.Organic += toInt((scout.card as any)["Organic Scout"]);
-      game.commandPool.Tech += toInt((scout.card as any)["Tech Scout"]);
-      game.commandPool.Alien += toInt((scout.card as any)["Alien Scout"]);
+      const scoutMult = (game.locationUpgradesBuilt["Containment Block"] ?? []).some((c) => c.Name === "Scouting update") ? 2 : 1;
+      game.commandPool.Organic += toInt((scout.card as any)["Organic Scout"]) * scoutMult;
+      game.commandPool.Tech += toInt((scout.card as any)["Tech Scout"]) * scoutMult;
+      game.commandPool.Alien += toInt((scout.card as any)["Alien Scout"]) * scoutMult;
       if (scout.card.Name === "Civilian Survivalist") revealCount += 1;
       if (scout.card.Name === '"Python"') revealCount *= 2;
       if (scout.card.Name === "Saboteur Cell" && canUseEffect(game, "Saboteur Cell", 3)) {
@@ -1490,7 +2058,63 @@ export class GameEngine {
       idx += n;
     }
 
+    // Perfect Information: commander can see and rearrange enemy stacks after hoard build.
+    if (game.perfectInfoArmed) {
+      game.perfectInfoArmed = false;
+      const newLayout = await this.decisions.choosePerfectInfoLayout(commander, game);
+      if (newLayout) {
+        for (const [seatIndex, enemies] of newLayout) {
+          const p = game.players.find((pl) => pl.seatIndex === seatIndex);
+          if (p) p.laneEnemyReserve = enemies;
+        }
+      }
+    }
+
+    // Eradicator Cannon active: kill one non-boss enemy from the chosen lane.
+    if (game.eradicatorCannonKillArmed) {
+      game.eradicatorCannonKillArmed = false;
+      const targetPlayer = game.players.find((p) => p.seatIndex === game.eradicatorCannonLaneSeat) ?? game.players[0];
+      if (targetPlayer.laneEnemyReserve.length > 0) {
+        const killed = targetPlayer.laneEnemyReserve.shift()!;
+        this.log(`  [Eradicator Cannon] Active: killed ${killed.Name} (non-boss) from ${targetPlayer.name}'s lane.`);
+      } else {
+        this.log(`  [Eradicator Cannon] Active: no non-boss enemy in ${targetPlayer.name}'s lane to kill.`);
+      }
+      game.eradicatorCannonLaneSeat = -1;
+    }
+
     await this.resolveBattlefieldCards(commander, tempState, diffRank);
+
+    // Barrier Systems passive: all player units gain 5 shields at combat start.
+    if ((game.locationUpgradesBuilt["Medical Bay"] ?? []).some((c) => c.Name === "Barrier Systems")) {
+      for (const p of game.players) {
+        const units = [...(p.active ? [p.active] : []), ...p.reserve];
+        for (const ui of units) tempState.tempBuff(ui, { Shields: 5 });
+      }
+      this.log(`  [Barrier Systems passive] All player units gain 5 shields.`);
+    }
+
+    // Security Drones passive: lanes with no active unit at combat start receive drones equal to commander rank.
+    // Drones bypass the lane unit limit by design.
+    if ((game.locationUpgradesBuilt["Armory"] ?? []).some((c) => c.Name === "Security Drones")) {
+      const droneCount = commander.rank;
+      for (const p of game.players) {
+        if (p.active === null) {
+          for (let i = 0; i < droneCount; i++) tempState.addTempUnit(p, makeUnitInstance(makeTempCard("Drone", 1, 1)));
+          this.log(`  [Security Drones passive] ${p.name}'s lane is empty — spawned ${droneCount} 1/1 drone(s).`);
+        }
+      }
+    }
+
+    // Defense Turrets passive: enemies with HP ≤ 5 die on reveal across all lanes.
+    if ((game.locationUpgradesBuilt["Battlefield"] ?? []).some((c) => c.Name === "Defense Turrets")) {
+      for (const p of game.players) {
+        const before = p.laneEnemyReserve.length;
+        p.laneEnemyReserve = p.laneEnemyReserve.filter((e) => toInt(e.HP) > 5);
+        const killed = before - p.laneEnemyReserve.length;
+        if (killed > 0) this.log(`  [Defense Turrets passive] ${p.name}'s lane: ${killed} enemy/enemies killed on reveal (HP ≤ 5).`);
+      }
+    }
 
     // No on_reveal dispatch in Stage 2 (multi-lane Reveal damage isn't ported yet) -- enemies are
     // plain stat-lines until the engine grows enemy-text dispatch in a later stage.
@@ -1585,13 +2209,40 @@ export class GameEngine {
         if (game.annihilationEnemiesDeletedByHigherRank && p.rank > ENEMY_RANK_NUM[diffRank]) {
           c.deleteOnKill = true;
         }
+        // Tranq Rounds passive: reduce enemy damage by 2 × enemy rank.
+        if ((game.locationUpgradesBuilt["Medical Bay"] ?? []).some((u) => u.Name === "Tranq rounds")) {
+          c.dmg = Math.max(0, c.dmg - 2 * (ENEMY_RANK_NUM[e.Rank] ?? 1));
+        }
+        // Tranq Rounds active: halve enemy damage this round (applied after passive).
+        if (tempState.tranqRoundsActiveThisRound) {
+          c.dmg = Math.max(0, Math.floor(c.dmg / 2));
+        }
         return c;
       });
       if (!eCombatants.length) {
         this.log(`  ${p.name}: no enemies this lane (clean).`);
         continue;
       }
-      const { overrun, playerSurvivors, enemySurvivors, totalShieldsAbsorbed } = resolveLaneCombat(pCombatants, eCombatants);
+      const tagTeamBonus = game.tagTeamPassive ? pCombatants.slice(1).reduce((s, c) => s + c.dmg, 0) : 0;
+      const combatStimsBonus = p.combatStimsRevealBonus ?? 0;
+      const ynpCb = tempState.youShallNotPassArmed
+        ? (dying: import("./combat.js").Combatant, enemy: import("./combat.js").Combatant) => {
+            const retaliationDmg = dying.dmg + dying.hp;
+            enemy.curHp -= retaliationDmg;
+            tempState.youShallNotPassArmed = false;
+            this.log(`  [You Shall Not Pass] ${dying.name} dies and retaliates for ${retaliationDmg} damage!`);
+          }
+        : undefined;
+      const whitesDoubleFirst = p.seatIndex === game.whitesOfTheirEyesTargetSeat;
+      const punchCb = (game.bossActive && p.seatIndex === game.punchThroughActiveSeat)
+        ? (killer: import("./combat.js").Combatant) => {
+            if (game.bossActive) {
+              game.bossActive.hpCur -= killer.dmg;
+              this.log(`  [Punch Through] ${killer.name} kills an enemy and punches through for ${killer.dmg} damage to boss! Boss HP: ${game.bossActive.hpCur}`);
+            }
+          }
+        : undefined;
+      const { overrun, playerSurvivors, enemySurvivors, totalShieldsAbsorbed } = resolveLaneCombat(pCombatants, eCombatants, tagTeamBonus + combatStimsBonus, ynpCb, whitesDoubleFirst, punchCb);
       game.shieldsDestroyedThisRound += totalShieldsAbsorbed;
       const kills = eCombatants.length - enemySurvivors.length;
       if (kills > 0) {
@@ -1633,6 +2284,40 @@ export class GameEngine {
         } else if (!annihilationNoSaves && tempState.cannotDie.has(ui.id)) {
           ui.curHp = 1;
           newUnits.push(ui);
+        } else if (
+          !annihilationNoSaves &&
+          game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Necromancy") &&
+          !game.necromancyDeathPrevented.has(p.seatIndex)
+        ) {
+          game.necromancyDeathPrevented.add(p.seatIndex);
+          ui.curHp = 1;
+          newUnits.push(ui);
+          this.log(`  [Necromancy passive] First death in ${p.name}'s lane prevented`);
+        } else if (
+          !annihilationNoSaves &&
+          game.locationUpgradesBuilt["Medical Bay"].some((c) => c.Name === "Battle Medics") &&
+          !game.battleMedicsPassiveUsed
+        ) {
+          game.battleMedicsPassiveUsed = true;
+          ui.curHp = ui.maxHp;
+          newUnits.push(ui);
+          this.log(`  [Battle Medics passive] ${ui.card.Name} restored to full HP`);
+        } else if (!annihilationNoSaves && game.battleMedicsActiveUnits.has(ui.id)) {
+          game.battleMedicsActiveUnits.delete(ui.id);
+          ui.curHp = ui.maxHp;
+          newUnits.push(ui);
+          this.log(`  [Battle Medics active] ${ui.card.Name} restored to full HP`);
+        } else if (
+          !annihilationNoSaves &&
+          game.weCanRebuildActive &&
+          !game.rebuiltThisRound.has(ui.id) &&
+          p.res.Tech >= toInt(ui.card["Tech Cost"])
+        ) {
+          p.res.Tech -= toInt(ui.card["Tech Cost"]);
+          game.rebuiltThisRound.add(ui.id);
+          ui.curHp = Math.max(1, Math.floor(ui.maxHp / 2));
+          newUnits.push(ui);
+          this.log(`  [We Can Rebuild Them] ${ui.card.Name} rebuilt at ${ui.curHp} HP (paid ${toInt(ui.card["Tech Cost"])} Tech)`);
         } else if (!annihilationNoSaves && tryChronostasisSave(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
         } else if (!annihilationNoSaves && tryReviveOnce(game, p, ui, (t) => this.log(t))) {
@@ -1656,6 +2341,14 @@ export class GameEngine {
       });
       p.active = newUnits.length ? newUnits[0] : null;
       p.reserve = newUnits.length > 1 ? newUnits.slice(1) : [];
+      // Exploitation: unit survived combat but is marked to die after attacking.
+      if (p.active && tempState.mustDieAfterCombat.has(p.active.id)) {
+        this.log(`  [Exploitation] ${p.active.card.Name} dies after attacking`);
+        p.stats.deaths += 1;
+        this.retireOrGraveyard(p, p.active);
+        p.active = p.reserve.length ? p.reserve[0] : null;
+        p.reserve = p.reserve.length > 1 ? p.reserve.slice(1) : [];
+      }
     }
 
     // Post-combat Lane Reinforcement (README #33).
@@ -1682,9 +2375,11 @@ export class GameEngine {
         applyEventCombatMods(game, c, false, ui);
         return c;
       });
+      const tagTeamBonus2 = game.tagTeamPassive ? rCombatants.slice(1).reduce((s, c) => s + c.dmg, 0) : 0;
       const { overrun: overrun2, playerSurvivors: rSurv, enemySurvivors: eSurv2, totalShieldsAbsorbed: osa } = resolveLaneCombat(
         rCombatants,
-        overrunLeftover.get(target)!
+        overrunLeftover.get(target)!,
+        tagTeamBonus2
       );
       game.shieldsDestroyedThisRound += osa;
       const newReinforcements: UnitInstance[] = [];
@@ -1752,9 +2447,13 @@ export class GameEngine {
     }
 
     if (lanesWithKill.length && game.activeEvent?.["Event name"] !== "Annihilation Clause" && this.containmentSlots > 0 && game.containedEnemyPool.length < this.containmentSlots) {
-      game.containedEnemyPool.push(diffRank);
-      game.containedThisRound += 1;
-      this.log(`  [Containment] stores a ${diffRank} (${game.containedEnemyPool.length}/${this.containmentSlots} cells filled)`);
+      const capturePool = this.enemyByRank[diffRank] ?? [];
+      const captured = capturePool.length ? capturePool[Math.floor(Math.random() * capturePool.length)] : null;
+      if (captured) {
+        game.containedEnemyPool.push(captured);
+        game.containedThisRound += 1;
+        this.log(`  [Containment] stores ${captured.Name} (${game.containedEnemyPool.length}/${this.containmentSlots} cells filled)`);
+      }
     }
 
     // Lane control swap-back: units return to their physical lanes. Each controller's current

@@ -65,8 +65,8 @@ Each round runs through four stages, plus actions players can take anytime:
 | Enemy Stats | 93 |
 | Gear Stats | 68 |
 | Mission Cards | 117 |
-| Command Cards | 62 |
-| Event Cards | 40 |
+| Command Cards | 55 |
+| Event Cards | 38 |
 | Secret Objective Cards | 41 |
 | Tactician Cards | 18 |
 | Boss Stats | 15 bosses (each scaling across 5 tiers) |
@@ -196,3 +196,26 @@ None of these block playtesting as-is — the ruleset is in a genuinely playable
     - **New Command Card, "Early Warning Network"** (Battlefield, Cost O5/T5/A5, `Command Cards.csv` 61→62): Passive (build) reduces all-lane Reveal/Passive damage by a further flat 2 per lane; Active (instant) halves it for the round instead, for a team that needs the help right now rather than banked for later. Gives players a real lever to invest in, rather than only a passive global nerf.
     
     All three are **designer additions, not yet battle-tested** — watch for over-correction (a board that's now too safe from Reveal effects) as much as under-correction when the next playtest runs.
+
+43. **Event card audit and redesign pass (2026-06-28): two cards deleted, three cards redesigned and fully wired into the web-app engine.** All 40 Event cards reviewed end-to-end against the TypeScript engine; round effects, conditions, rewards, and penalties cross-checked and implemented. Two cards were cut entirely; three required redesign rather than just wiring:
+    - **Forced Re-Armament** (Equipment costs doubled) and **System Lockdown** (Return all upgrades to hand) deleted. Both cards' effects either duplicated existing mechanics or had no clean implementation path in the current engine; removed from `Event cards.csv` and all engine branches, bringing the Event card total to 38.
+    - **Ion Storm** redesigned. Old round effect ("move friendly shields to enemies") replaced with "all enemies gain +5 shields; all shield damage dealt is doubled this round" — the original wording was inconsistent and the new mechanic is both cleaner and more interesting. Condition raised to 40 shields destroyed in a single round (from the old 25 — the round effect alone guarantees ~20 shields' worth of absorption, making 25 trivially achievable). Reward is now a permanent standing effect: scouted units enter combat with 0 shields. Penalty is also permanent: enemies permanently enter each combat with +10 shields. Shield absorption is tracked per-round via a new `shieldsDestroyedThisRound` counter accumulated from both call sites to `resolveLaneCombat`.
+    - **Renovations** redesigned. Old round effect ("block new builds at upgraded locations") replaced with "set aside all currently built upgrades for the duration of the round; new builds proceed normally; upgrades are restored after event resolution, with any overflow (if slots filled during the round) returning to the commander's hand." This gives the event a more interesting texture — a temporary disruption followed by a restoration puzzle — rather than a hard block. Reward unlocks the ability to remove an already-built upgrade when building at a full location (cheapest regular upgrade displaced, returned to deck). Penalty strips all built upgrades at end of every round while it persists.
+    - **Annihilation Clause** wired. Round effect now correctly applies to all combatants (both sides): every unit is deleted on death, bypassing saves (`cannotDie`, Chronostasis, Revive Once, Doctor save all suppressed) and containment. Condition corrected from 2x kills-to-deaths to a straight majority (kills > deaths this round). Reward: permanent — enemies are deleted (saves suppressed) when killed by a player whose Rank exceeds the current enemy tier's numeric rank. Penalty: permanent — player units skip all saves when killed by an enemy tier whose numeric rank exceeds the killing player's Rank.
+
+44. **Command Card full mechanical pass (2026-06-28): all 55 cards wired into the web-app engine; 7 cards deleted.** Every Command and Battlefield card reviewed card-by-card; stubs and random-roll approximations replaced with mechanics matching the card text exactly. Cards deleted (either no clean implementation path or design dead-ends): **Collaboration**, **Ammo Stockpiles**, **Covering Fire**, **Early Warning Network**, plus three earlier removals, bringing the deck from 62 to 55. Key engine changes:
+    - **New `resolveLaneCombat` hooks**: `onFirstPlayerDeath` (You Shall Not Pass — dying unit deals ATK+HP retaliation), `onEnemyKill` (Punch Through — free boss hit equal to killer's ATK on each enemy kill), `doubleFirstAttack` flag (Whites of Their Eyes — target lane's first exchange doubled both ways).
+    - **New `RoundTempState` flags**: `reserveImmuneThisRound` (Forward Command passive + Bunkers passive), `youShallNotPassArmed`, `tranqRoundsActiveThisRound`.
+    - **New `GameState` fields**: `requestAidBonusRounds`, `priorityOperationsRoundsLeft`, `priorityConstructionRoundsLeft`, `reinforcementUnitIds`, `perfectInfoArmed`, `fieldTestingGearIdx/UnitIdx`, `finalStandTargetUnitId`, `whitesOfTheirEyesTargetSeat`, `punchThroughActiveSeat`, `eradicatorCannonCost/KillArmed/LaneSeat`.
+    - **Pre-decision pattern** extended to Battlefield cards needing targeting (Final Stand: any unit across all lanes; Whites of Their Eyes: player_pick for lane).
+    - **Passive effects** wired at combat start for: Barrier Systems (5 shields all units), Defense Turrets (kill enemies HP ≤ 5 on reveal), Security Drones (spawn commander-rank 1/1 drones into empty lanes), Forward Command + Bunkers (reserve immunity), Tranq Rounds (enemy damage −2×rank), Eradicator Cannon (players pay Alien to deal direct boss damage, cost doubles each use).
+    - **Perfect Information** deferred via `perfectInfoArmed` flag — fires after hoard build when enemy stacks are known, not during planning.
+    - Card count updated: 62 → 55.
+
+45. **Command Card redistribution pass (2026-06-28): 13 cards moved between locations to balance the deck.** Prior to this pass Command held 18 cards and Battlefield 13, while Armory had only 4 — a 4–18 spread that didn't reflect where each card thematically or mechanically belonged. 13 cards reassigned based on effect fit:
+    - **→ Armory** (gear/weapons/equipment): Field Testing, Eradicator Cannon, Priority Construction, Security Drones
+    - **→ Barracks** (unit deployment/reserves): Reinforcements, Forward Command
+    - **→ Containment Block** (enemy intel/control): Perfect Information, Suppression, Scouting Update
+    - **→ Medical Bay** (survival/damage mitigation): Final Stand, Tranq Rounds, Barrier Systems
+    - **→ Battlefield** (combat effects): Nuke, Strategic Withdrawal
+    - Resource costs updated to match destination location (e.g. Armory cards now cost 3/8/3; Medical Bay cards 8/3/3). All passive lookups in `game.ts` and `planningActions.ts` updated to use the new location keys. Result: Barracks 10, Armory 8, Containment 9, Medical Bay 9, Command 9, Battlefield 10 — a tight 8–10 range across all six locations. **Note**: upgrade slot caps in `constants.ts` (Armory: 1, Medical Bay: 2, Command: 2, Battlefield: 3, Containment Block: 3, Barracks: 4) pre-date this redistribution and may warrant revisiting now that the card pools are more evenly distributed.

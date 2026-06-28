@@ -1,7 +1,7 @@
 import { toInt } from "./data.js";
 import { Combatant, equippedBonus } from "./combat.js";
 import { tryChronostasisSave } from "./gear.js";
-import type { BossActive, GamePlayer, GameState } from "./types.js";
+import type { BossActive, GamePlayer, GameState, UnitInstance } from "./types.js";
 
 /** The Boss Passive column -- "Passive is activated" at T1 means it's on for the boss's whole
  * lifetime once spawned. Covers the mechanically tractable subset; the rest (graveyard merging,
@@ -62,7 +62,7 @@ function hasEquipped(p: GameState["players"][number], gearName: string): boolean
     p.reserve.some((ui) => ui.equipped.some((g) => (g as any).Name === gearName));
 }
 
-export function resolveBossExchange(game: GameState, log: (t: string) => void) {
+export function resolveBossExchange(game: GameState, log: (t: string) => void, killUnit?: (p: GamePlayer, ui: UnitInstance) => void) {
   const boss = game.bossActive;
   if (!boss) return;
   // Laser Designator ("Other units can target your lane when attacking") draws the Boss's
@@ -81,10 +81,10 @@ export function resolveBossExchange(game: GameState, log: (t: string) => void) {
     target.active.curHp -= dealt;
     log(`  [BOSS] ${bossCard.Name} hits ${target.name}'s lane for ${dealt}`);
     if (target.active.curHp <= 0 && !tryChronostasisSave(game, target, target.active, log)) {
-      target.graveyard.push(target.active);
-      target.stats.deaths += 1;
+      const dying = target.active;
       target.active = target.reserve.length ? target.reserve[0] : null;
       target.reserve = target.reserve.length > 1 ? target.reserve.slice(1) : [];
+      if (killUnit) killUnit(target, dying); else { target.graveyard.push(dying); target.stats.deaths += 1; }
       if (boss.healsOnKill) boss.hpCur += boss.healsOnKill;
     }
   }

@@ -93,5 +93,16 @@ export const UPGRADE_SLOT_CAP: Record<Location, number> = {
   Battlefield: 3,
 };
 
+/** Primary player-facing resource each location produces. Battlefield is omitted -- its income
+ * goes to the shared command pool, not player stocks, so per-player effects don't apply there. */
+export const LOCATION_PRIMARY_RESOURCE: Partial<Record<Location, "Organic" | "Tech" | "Alien">> = {
+  Barracks: "Organic",
+  Armory: "Tech",
+  "Medical Bay": "Organic",
+  "Containment Block": "Alien",
+  Command: "Alien",
+};
+
 export const COMMAND_HAND_SIZE = 3;
 export const COMMANDER_HAND_SIZE = 4;
+export const GEAR_HAND_LIMIT = 3;

@@ -92,6 +92,7 @@ function snapshot(engine: GameEngine) {
     overrunTrackerMax: g.overrunTrackerMax,
     commandPool: g.commandPool,
     commanderSeatIndex: g.players[g.commanderIdx]?.seatIndex ?? null,
+    disabledLocation: g.disabledLocation,
     shopUnits: g.shopUnits.map((u) => ({
       name: u.Name,
       rank: u.Rank,

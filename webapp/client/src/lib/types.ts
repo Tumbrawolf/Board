@@ -101,6 +101,7 @@ export interface GameStateSnapshot {
   overrunTrackerMax: number;
   commandPool: ResourcePool;
   commanderSeatIndex: number | null;
+  disabledLocation: string | null;
   shopUnits: ShopUnit[];
   shopGear: ShopGear[];
   players: PlayerView[];

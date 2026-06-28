@@ -1,6 +1,6 @@
 import { toInt, type UnitCard } from "./data.js";
 import { Combatant } from "./combat.js";
-import { canUseEffect, healUnit, recordEffectUse, type RoundTempState } from "./state.js";
+import { canActivateAbility, canUseEffect, healUnit, recordAbilityActivation, recordEffectUse, type RoundTempState } from "./state.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
 
 /** Ported 1:1 from Working/sim.py's UNIT_KEYWORD_RULES: keyword-classification dispatch that
@@ -64,6 +64,21 @@ export function tryReviveOnce(game: GameState, p: GamePlayer, ui: UnitInstance, 
     return true;
   }
   return false;
+}
+
+/** The Doctor Tactician's Active ("Activate on Unit death -- Move this unit to med bay with its
+ * equipment") -- saves the dying unit at 1 HP with gear intact instead of sending it to the
+ * graveyard. Once per round (same canActivateAbility limit as all other actives); the "med bay"
+ * part is approximated as the unit surviving in reserve at 1 HP, healable at Medical Bay next
+ * round like any other wounded unit. */
+export function tryDoctorSave(game: GameState, p: GamePlayer, ui: UnitInstance, log: (t: string) => void): boolean {
+  if (p.tactician?.Name !== "The Doctor") return false;
+  const syntheticId = `tac-${p.seatIndex}`;
+  if (!canActivateAbility(game, syntheticId, "The Doctor")) return false;
+  ui.curHp = 1;
+  recordAbilityActivation(game, p.seatIndex, syntheticId, "The Doctor");
+  log(`  [The Doctor] ${p.name}'s ${ui.card.Name} is moved to med bay instead of dying (1 HP, gear intact)`);
+  return true;
 }
 
 export function applyExplodeOnDeath(game: GameState, p: GamePlayer, ui: UnitInstance, log: (t: string) => void) {

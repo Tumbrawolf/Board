@@ -62,6 +62,10 @@ export interface GamePlayer {
    * publicly revealed (read-only knowledge for everyone else) -- the card itself is unaffected,
    * still theirs, still counts toward their win condition. Not the same as losing a card. */
   revealedSecretObjective: string | null;
+  /** Combat Stims passive: flat bonus damage this player's lane deals per attack this round (set by Reveal dispatch). */
+  combatStimsRevealBonus: number;
+  /** Tracks raw income earned this round (per-resource) so Income Tax can duplicate 50% into the command pool. Reset each round. */
+  incomeThisRound: ResourcePool;
   stats: {
     kills: number;
     deaths: number;
@@ -162,6 +166,8 @@ export interface GameState {
   experimentalOrganicTechFree: boolean;
   /** Mad Science active: all gear Alien costs halved this round. */
   gearAlienHalfThisRound: boolean;
+  /** Tag Team passive: reserve units deal their damage alongside the active unit each attack. */
+  tagTeamPassive: boolean;
   /** Ethics Committee passive: non-Experimental gear Alien costs = 0 while built. */
   basicGearAlienFree: boolean;
   /** Ethics Committee active: all purchase Alien costs = 0 this round. */
@@ -275,7 +281,71 @@ export interface GameState {
   /** Contained enemy pool -- moved from GameEngine's private field so Tactician actives (The
    * Jailer), Events, and future mechanics can read/modify it without extra parameters. Fed by
    * the containment logic in runDeploymentAndCombat. */
-  containedEnemyPool: EnemyRank[];
+  containedEnemyPool: EnemyCard[];
+  /** Combat Stims passive: set true when the once-per-round Reveal ability has been used this round. */
+  combatStimsUsedThisRound: boolean;
+  /** Combat Stims active: damage amount chosen by the player before dispatch (0 = not set). */
+  combatStimsPendingDmg: number;
+  /** Countermeasures passive: per-lane remaining ability-prevention budget this round (seatIndex → count). */
+  laneAbilityPreventions: Map<number, number>;
+  /** Countermeasures active: lanes where ALL enemy abilities are fully suppressed this round. */
+  laneAbilitiesFullySuppressed: Set<number>;
+  /** Set by Countermeasures active dispatch so the activation callback skips returning the card to the deck. */
+  destroyNextActivatedCard: boolean;
+  /** Countermeasures active: lane (seatIndex) chosen before dispatch. */
+  countermeasuresTargetSeat: number;
+  /** Necromancy passive: seatIndexes where the first death this combat has already been prevented. Reset each round. */
+  necromancyDeathPrevented: Set<number>;
+  /** Necromancy active: graveyard index chosen before dispatch (-1 = none/fallback). */
+  necromancyPickedIdx: number;
+  /** Donor Organs active: medBayUnits index chosen before dispatch (-1 = none/fallback). */
+  donorOrgansPickedIdx: number;
+  /** Ashes to Ashes active: medBayUnits index chosen before dispatch (-1 = none/fallback). */
+  ashesToAshesPickedIdx: number;
+  /** We Can Rebuild Them active: this round, any unit that dies can be revived by paying its Tech Cost. */
+  weCanRebuildActive: boolean;
+  /** We Can Rebuild Them: unit IDs that have already been rebuilt this round (once per unit). */
+  rebuiltThisRound: Set<string>;
+  /** Battle Medics passive: set true once the first death this round has been prevented at full HP. */
+  battleMedicsPassiveUsed: boolean;
+  /** Battle Medics active: unit IDs granted a one-time full-HP revive on death this round. */
+  battleMedicsActiveUnits: Set<string>;
+  /** Orders from Above: the 3 drawn cards pending the player's keep choice. */
+  ordersFromAboveDrawn: CommandCard[];
+  /** Orders from Above: index into ordersFromAboveDrawn of the card the player chose to keep (-1 = fallback). */
+  ordersFromAboveKeepIdx: number;
+  /** Request Aid: rounds remaining where all player income is doubled (set to 2 on activation, decremented after each income phase). */
+  requestAidBonusRounds: number;
+  /** Priority Operations: rounds remaining where non-commander command card activation costs are halved (set to 3 = current + 2, decremented at round start). */
+  priorityOperationsRoundsLeft: number;
+  /** Priority Construction: rounds remaining where upgrade build costs (paid from commandPool) are halved (set to 3 = current + 2, decremented at round start). */
+  priorityConstructionRoundsLeft: number;
+  /** Take Credit: when set, the next non-trickle promotion granted to any player is stolen by the commander instead. Cleared on intercept or round end. */
+  takeCreditCommanderSeat: number;
+  /** Nuke active: seatIndex of the lane chosen to destroy (-1 = fallback/auto). */
+  nukeLaneSeat: number;
+  /** Promotion active: seatIndex of the player chosen to promote (-1 = fallback/auto). */
+  promotionTargetSeat: number;
+  /** Reinforcements active: unit IDs of the two temp units pulled from the shop. Surviving units (and their gear) are returned to their decks at round end; dead units leave gear destroyed in graveyard. */
+  reinforcementUnitIds: Set<string>;
+  /** Perfect Information active: armed during planning, consumed after hoard build to let the commander rearrange enemies across lanes. */
+  perfectInfoArmed: boolean;
+  /** Field Testing active: index into shopGear of the chosen item (-1 = fallback). */
+  fieldTestingGearIdx: number;
+  /** Field Testing active: index into all lane units (0 = active, 1+ = reserve[idx-1]) to equip onto (-1 = fallback). */
+  fieldTestingUnitIdx: number;
+  /** Final Stand active: unit ID of the chosen unit that cannot die this round ("" = not set). */
+  finalStandTargetUnitId: string;
+  /** Whites of Their Eyes active: seatIndex of the lane where first-attack damage is doubled (-1 = not set). */
+  whitesOfTheirEyesTargetSeat: number;
+  /** Punch Through active: seatIndex of the lane where kills deal a free hit to the boss (-1 = not set). */
+  punchThroughActiveSeat: number;
+  /** Eradicator Cannon passive: current Alien cost to fire (starts at 2, doubles each use, persists across rounds). */
+  eradicatorCannonCost: number;
+  /** Eradicator Cannon active: if true, after hoard build kill one enemy chosen by the player. */
+  eradicatorCannonKillArmed: boolean;
+  /** Eradicator Cannon active: seatIndex of the lane to kill from (-1 = auto). */
+  eradicatorCannonLaneSeat: number;
   /** Per-round free-activation markers, keyed by "${unitId}-${gearName}". Set by The Engineer
    * Tactician's Active (refresh + free next use). Consumed by the gear active loop: if the key
    * is present, cost is skipped once and the entry is deleted. Reset each round. */

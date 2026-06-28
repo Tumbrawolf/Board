@@ -1,6 +1,7 @@
 import { RANK_NUM, RANK_ORDER } from "./constants.js";
 import type { EnemyCard, CommandCard, UnitCard } from "./data.js";
 import { toInt } from "./data.js";
+import { equippedBonus } from "./combat.js";
 import {
   addTempUnitPerm,
   canUseEffect,
@@ -13,7 +14,7 @@ import {
 } from "./state.js";
 import { refillShopGear, refillShopUnit } from "./shop.js";
 import type { GamePlayer, GameState } from "./types.js";
-import type { RoundTempState } from "./state.js";
+import { scoutValue, type RoundTempState } from "./state.js";
 
 export interface CommandContext {
   game: GameState;
@@ -144,16 +145,6 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       }
       break;
     }
-    case "Garrison": {
-      for (const p of game.players) {
-        const pool = game.unitDeck.filter((u) => RANK_NUM[u.Rank] <= p.rank);
-        if (pool.length) {
-          const u = pool[Math.floor(Math.random() * pool.length)];
-          tempState.addTempUnit(p, makeUnitInstance(u));
-        }
-      }
-      break;
-    }
     case "Tag Team":
       for (const p of game.players) {
         if (p.reserve.length && p.active) {
@@ -163,61 +154,77 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
         }
       }
       break;
-    case "Combat Stims":
+    case "Combat Stims": {
+      const dmg = ctx.game.combatStimsPendingDmg || 1;
+      ctx.game.combatStimsPendingDmg = 0;
       if (commander.active) {
-        commander.active.curHp = Math.max(1, commander.active.curHp - 2);
-        tempState.tempBuff(commander.active, { Damage: 4 });
+        commander.active.curHp = Math.max(1, commander.active.curHp - dmg);
+        tempState.tempBuff(commander.active, { Damage: dmg * 2 });
+        ctx.log(`  [Combat Stims] ${commander.name} takes ${dmg} self-damage → +${dmg * 2} Attack this round on ${commander.active.card.Name}`);
       }
       break;
-    case "Extraction":
-      game.commandPool.Organic += 2;
-      game.commandPool.Tech += 2;
-      game.commandPool.Alien += 2;
+    }
+    case "Countermeasures": {
+      const seat = ctx.game.countermeasuresTargetSeat;
+      ctx.game.laneAbilitiesFullySuppressed.add(seat);
+      ctx.game.destroyNextActivatedCard = true;
+      const name = ctx.game.players.find((p) => p.seatIndex === seat)?.name ?? `seat ${seat}`;
+      ctx.log(`  [Countermeasures] All enemy abilities suppressed in ${name}'s lane this round (card destroyed)`);
       break;
-    case "Countermeasures":
-    case "Suppression":
-    case "Bunkers":
-      // No enemy-ability subsystem yet to suppress -- documented no-op, same as sim.py.
-      break;
-    case "Exploitation":
+    }
+    case "Exploitation": {
       if (commander.active) {
-        if (game.bossActive) game.bossActive.hpCur -= 15;
-        commander.graveyard.push(commander.active);
-        commander.stats.deaths += 1;
-        commander.active = commander.reserve.length ? commander.reserve[0] : null;
-        commander.reserve = commander.reserve.length > 1 ? commander.reserve.slice(1) : [];
+        const totalDmg = toInt(commander.active.card.Damage) + equippedBonus(commander.active, "Damage");
+        tempState.tempBuff(commander.active, { Damage: totalDmg * 2 });
+        tempState.mustDieAfterCombat.add(commander.active.id);
+        ctx.log(`  [Exploitation] ${commander.active.card.Name} attack tripled (${totalDmg} → ${totalDmg * 3}); dies after combat`);
       }
       break;
-    case "Necromancy":
-      if (w.graveyard.length) {
-        const ui = w.graveyard.pop()!;
+    }
+    case "Necromancy": {
+      const idx = ctx.game.necromancyPickedIdx;
+      ctx.game.necromancyPickedIdx = -1;
+      const graveyard = commander.graveyard;
+      const pickIdx = idx >= 0 && idx < graveyard.length ? idx : graveyard.length - 1;
+      if (pickIdx >= 0) {
+        const [ui] = graveyard.splice(pickIdx, 1);
         ui.curHp = ui.maxHp;
-        addTempUnitPerm(w, ui);
+        ui.curShields = toInt((ui.card as any).Shields ?? 0);
+        addTempUnitPerm(commander, ui);
+        ctx.log(`  [Necromancy] ${commander.name} revives ${ui.card.Name} (${ui.curHp} HP)`);
       }
       break;
+    }
     case "Donor Organs": {
-      // Pay the infantry unit's Organic cost to retrieve it from the weakest player's Med Bay pool
-      const infantry = w.medBayUnits.find((ui) => ui.card.Type.includes("Infantry"));
-      if (infantry) {
-        const cost = toInt(infantry.card["Organic Cost"]);
-        if (w.res.Organic >= cost) {
-          w.res.Organic -= cost;
-          w.medBayUnits.splice(w.medBayUnits.indexOf(infantry), 1);
-          healUnit(infantry);
-          if (w.active === null) w.active = infantry; else w.reserve.push(infantry);
-          w.stats.healsGiven += 1;
+      const idx = ctx.game.donorOrgansPickedIdx;
+      ctx.game.donorOrgansPickedIdx = -1;
+      const pickIdx = idx >= 0 && idx < commander.medBayUnits.length ? idx : -1;
+      if (pickIdx >= 0) {
+        const ui = commander.medBayUnits[pickIdx];
+        const cost = toInt(ui.card["Organic Cost"]);
+        if (commander.res.Organic >= cost) {
+          commander.res.Organic -= cost;
+          commander.medBayUnits.splice(pickIdx, 1);
+          healUnit(ui);
+          addTempUnitPerm(commander, ui);
+          commander.stats.healsGiven += 1;
+          ctx.log(`  [Donor Organs] ${commander.name} returns ${ui.card.Name} to lane (paid ${cost} Organic)`);
         }
       }
       break;
     }
-    case "Ashes to Ashes":
-      if (commander.reserve.length) {
-        const u = commander.reserve.reduce((a, b) => (instancePower(b) < instancePower(a) ? b : a));
-        commander.reserve.splice(commander.reserve.indexOf(u), 1);
-        commander.graveyard.push(u);
-        commander.res.Organic += toInt(u.card["Organic Cost"]);
+    case "Ashes to Ashes": {
+      const idx = ctx.game.ashesToAshesPickedIdx;
+      ctx.game.ashesToAshesPickedIdx = -1;
+      const pickIdx = idx >= 0 && idx < commander.medBayUnits.length ? idx : commander.medBayUnits.length - 1;
+      if (pickIdx >= 0) {
+        const [ui] = commander.medBayUnits.splice(pickIdx, 1);
+        const refund = toInt(ui.card["Organic Cost"]) * 2;
+        commander.res.Organic += refund;
+        ctx.log(`  [Ashes to Ashes] ${commander.name} destroys ${ui.card.Name} → +${refund} Organic`);
       }
       break;
+    }
     case "Share Rooms":
       // Retrieve all units from all players' Med Bay pools to their reserves
       for (const p of game.players) {
@@ -230,80 +237,109 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       }
       break;
     case "Battle Medics":
-      // Heal active (battlefield) units to full
       for (const p of game.players) {
-        if (p.active && healUnit(p.active)) p.stats.healsGiven += 1;
-      }
-      break;
-    case "We can Rebuild them":
-      // Heal living units under half HP back to full
-      for (const p of game.players) {
-        for (const ui of [...(p.active ? [p.active] : []), ...p.reserve]) {
-          if (ui.curHp < ui.maxHp / 2 && healUnit(ui)) p.stats.healsGiven += 1;
+        if (p.active) {
+          game.battleMedicsActiveUnits.add(p.active.id);
+          ctx.log(`  [Battle Medics] ${p.active.card.Name} will restore to full HP on death this round`);
         }
       }
       break;
+    case "We can Rebuild them":
+      game.weCanRebuildActive = true;
+      ctx.log(`  [We Can Rebuild Them] Units that die this round can be rebuilt at half HP by paying their Tech Cost`);
+      break;
     case "Increased Budget":
       for (const p of game.players) {
-        for (const ui of [...(p.active ? [p.active] : []), ...p.reserve]) {
-          if (healUnit(ui, Math.floor((ui.maxHp - ui.curHp) / 2))) p.stats.healsGiven += 1;
+        while (p.medBayUnits.length > 0) {
+          const ui = p.medBayUnits.shift()!;
+          healUnit(ui);
+          addTempUnitPerm(p, ui);
+          p.stats.healsGiven += 1;
+          ctx.log(`  [Increased Budget] ${p.name} retrieves ${ui.card.Name} from Med Bay`);
         }
       }
       break;
     case "Work Order":
       for (const p of game.players) {
-        if (p.active) game.commandPool.Tech += 1;
+        if (p.active) {
+          game.commandPool.Organic += toInt(p.active.card["Organic Cost"]);
+          game.commandPool.Tech += toInt(p.active.card["Tech Cost"]);
+          game.commandPool.Alien += toInt(p.active.card["Alien Cost"]);
+          ctx.log(`  [Work Order] ${p.active.card.Name} contributes ${p.active.card["Organic Cost"]}/${p.active.card["Tech Cost"]}/${p.active.card["Alien Cost"]} to command pool`);
+        }
       }
       break;
-    case "Orders from Above":
-      commander.res.Organic += 3;
-      commander.res.Tech += 3;
-      commander.res.Alien += 3;
+    case "Orders from Above": {
+      const drawn = game.ordersFromAboveDrawn;
+      const keepIdx = game.ordersFromAboveKeepIdx;
+      if (drawn.length === 0) break;
+      const kept = drawn[keepIdx];
+      const discarded = drawn.filter((_, i) => i !== keepIdx);
+      // Grant the costs of the 2 discarded cards as resources to the activating player.
+      for (const d of discarded) {
+        commander.res.Organic += toInt(d.Organic);
+        commander.res.Tech += toInt(d.Tech);
+        commander.res.Alien += toInt(d.Alien);
+        // Return discarded cards to bottom of deck.
+        game.commandDeck.unshift(d);
+      }
+      // Put kept card into hand.
+      if (kept) commander.hand.push(kept);
+      game.ordersFromAboveDrawn = [];
+      game.ordersFromAboveKeepIdx = -1;
       break;
+    }
     case "Income Tax":
       for (const p of game.players) {
         for (const res of ["Organic", "Tech", "Alien"] as const) {
-          const half = Math.floor(p.res[res] / 2);
-          p.res[res] -= half;
-          game.commandPool[res] += half;
+          game.commandPool[res] += Math.floor(p.incomeThisRound[res] / 2);
         }
       }
       break;
     case "Request Aid":
-      for (const res of ["Organic", "Tech", "Alien"] as const) {
-        const half = Math.floor(commander.res[res] / 2);
-        commander.res[res] -= half;
-        game.commandPool[res] += half;
+      // Halve all player income already earned this round (floor), then grant 2x income for next 2 rounds.
+      for (const p of game.players) {
+        for (const res of ["Organic", "Tech", "Alien"] as const) {
+          const lost = Math.floor(p.incomeThisRound[res] / 2);
+          p.res[res] = Math.max(0, p.res[res] - lost);
+        }
       }
+      game.requestAidBonusRounds = 2;
       break;
     case "Priority Operations":
+      game.priorityOperationsRoundsLeft = 3;
+      break;
     case "Priority Construction":
-      game.commandPool.Tech += 5;
+      game.priorityConstructionRoundsLeft = 3;
       break;
     case "Take Credit":
-      // sim.py's own implementation isn't a literal "intercept someone else's promotion" hook
-      // either (that would need to reach into every promotion-granting code path) -- it's a flat
-      // self-promotion approximation, same as ported here.
-      if (commander.rank < RANK_ORDER.length) {
-        commander.rank += 1;
-        commander.stats.promotionsReceived += 1;
-      }
+      game.takeCreditCommanderSeat = commander.seatIndex;
       break;
-    case "Pull Rank":
-      if (game.shopUnits.length && commander.rank > Math.max(...game.shopUnits.map((u) => RANK_NUM[u.Rank]))) {
-        const cheapest = game.shopUnits.reduce((a, b) => (RANK_NUM[b.Rank] < RANK_NUM[a.Rank] ? b : a));
+    case "Pull Rank": {
+      // Barracks: if commander outranks every unit for sale, take the lowest-rank unit for free.
+      if (game.shopUnits.length && game.shopUnits.every((u) => RANK_NUM[u.Rank] < commander.rank)) {
+        const cheapest = game.shopUnits.reduce((a, b) => (RANK_NUM[a.Rank] <= RANK_NUM[b.Rank] ? a : b));
         game.shopUnits.splice(game.shopUnits.indexOf(cheapest), 1);
         refillShopUnit(game);
         addTempUnitPerm(commander, makeUnitInstance(cheapest));
       }
+      // Armory: if commander outranks every gear item for sale, take the lowest-rank gear for free.
+      if (game.shopGear.length && game.shopGear.every((g) => RANK_NUM[(g as any)["Rank Name"]] < commander.rank)) {
+        const cheapestGear = game.shopGear.reduce((a, b) =>
+          RANK_NUM[(a as any)["Rank Name"]] <= RANK_NUM[(b as any)["Rank Name"]] ? a : b
+        );
+        game.shopGear.splice(game.shopGear.indexOf(cheapestGear), 1);
+        refillShopGear(game);
+        commander.gearHand.push(cheapestGear);
+      }
       break;
+    }
     case "Leader Speech":
       if (game.playerProgress < 10) { game.playerProgress += 1; commander.stats.progressAsCommander += 1; }
       break;
     case "Nuke": {
-      const target = game.players.reduce((a, b) =>
-        b.laneEnemyReserve.length > a.laneEnemyReserve.length ? b : a
-      );
+      const target = game.players.find((p) => p.seatIndex === game.nukeLaneSeat)
+        ?? game.players.reduce((a, b) => b.laneEnemyReserve.length > a.laneEnemyReserve.length ? b : a);
       target.laneEnemyReserve = [];
       for (const ui of [...(target.active ? [target.active] : []), ...target.reserve]) {
         target.graveyard.push(ui);
@@ -311,70 +347,94 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       }
       target.active = null;
       target.reserve = [];
+      game.nukeLaneSeat = -1;
       break;
     }
     case "Promotion": {
       const others = game.players.filter((p) => p !== commander);
       if (others.length) {
-        const target = others.reduce((a, b) => (b.rank < a.rank ? b : a));
+        const target = game.players.find((p) => p.seatIndex === game.promotionTargetSeat && p !== commander)
+          ?? others.reduce((a, b) => (b.rank < a.rank ? b : a));
+        game.promotionTargetSeat = -1;
         if (target.rank < RANK_ORDER.length) {
-          target.rank += 1;
-          target.stats.promotionsReceived += 1;
+          const takeCreditSeat = game.takeCreditCommanderSeat;
+          const recipient = takeCreditSeat >= 0 ? (game.players.find((p) => p.seatIndex === takeCreditSeat) ?? target) : target;
+          if (takeCreditSeat >= 0) game.takeCreditCommanderSeat = -1;
+          recipient.rank += 1;
+          recipient.stats.promotionsReceived += 1;
         }
       }
       break;
     }
     case "Reinforcements": {
-      const top2 = [...game.shopUnits].sort((a, b) => RANK_NUM[b.Rank] - RANK_NUM[a.Rank]).slice(0, 2);
-      for (const u of top2) tempState.addTempUnit(commander, makeUnitInstance(u));
+      // Pull the 2 highest-rank units from the shop.
+      const sorted = [...game.shopUnits].sort((a, b) => RANK_NUM[b.Rank] - RANK_NUM[a.Rank]);
+      const top2 = sorted.slice(0, 2);
+      for (const u of top2) game.shopUnits.splice(game.shopUnits.indexOf(u), 1);
+      const instances = top2.map((u) => makeUnitInstance(u));
+      for (const ui of instances) {
+        tempState.addTempUnit(commander, ui);
+        game.reinforcementUnitIds.add(ui.id);
+      }
+      // Equip all shop gear distributed across the two units (round-robin), then clear the shop.
+      const allGear = [...game.shopGear];
+      game.shopGear = [];
+      allGear.forEach((g, i) => {
+        if (instances.length) instances[i % instances.length].equipped.push(g as any);
+      });
       break;
     }
     case "Perfect information":
-      tempState.hoardReduction.set("__global__", (tempState.hoardReduction.get("__global__") ?? 0) + 1);
+      game.perfectInfoArmed = true;
       break;
     case "Field Testing": {
-      // Target the lowest-rank player with an active unit (rank 1 = most junior, most in need).
-      // Break ties by fewest equipped gear (most gear-starved). Human commander targeting among
-      // tied-rank players is deferred -- bot uses the deterministic fewest-gear tiebreaker.
-      const withUnit = game.players.filter((p) => p.active !== null);
-      if (withUnit.length && game.shopGear.length) {
-        const minRank = Math.min(...withUnit.map((p) => p.rank));
-        const tied = withUnit.filter((p) => p.rank === minRank);
-        const ft = tied.reduce((a, b) => ((a.active?.equipped.length ?? 0) <= (b.active?.equipped.length ?? 0) ? a : b));
-        const g = game.shopGear.reduce((a, b) => (RANK_NUM[b["Rank Name"]] > RANK_NUM[a["Rank Name"]] ? b : a));
-        game.shopGear.splice(game.shopGear.indexOf(g), 1);
-        refillShopGear(game);
-        ft.active!.equipped.push(g);
-        ft.active!.maxHp += toInt(g.HP);
-        ft.active!.curHp += toInt(g.HP);
-        ft.active!.curShields += toInt(g.Shields);
-        ft.stats.gearEquipped += 1;
-        if (commander !== ft) commander.stats.gearEquippedToAllies += 1;
+      if (!game.shopGear.length) break;
+      const gIdx = game.fieldTestingGearIdx >= 0 && game.fieldTestingGearIdx < game.shopGear.length
+        ? game.fieldTestingGearIdx
+        : game.shopGear.reduce((best, g, i) => RANK_NUM[(g as any)["Rank Name"]] > RANK_NUM[(game.shopGear[best] as any)["Rank Name"]] ? i : best, 0);
+      const g = game.shopGear[gIdx];
+      game.shopGear.splice(gIdx, 1);
+      refillShopGear(game);
+      const units = [...(commander.active ? [commander.active] : []), ...commander.reserve];
+      const uIdx = game.fieldTestingUnitIdx >= 0 && game.fieldTestingUnitIdx < units.length
+        ? game.fieldTestingUnitIdx
+        : units.findIndex((u) => u.equipped.length === Math.min(...units.map((u2) => u2.equipped.length)));
+      const target = units[uIdx];
+      if (target) {
+        target.equipped.push(g as any);
+        target.maxHp += toInt((g as any).HP);
+        target.curHp += toInt((g as any).HP);
+        target.curShields += toInt((g as any).Shields);
+        commander.stats.gearEquipped += 1;
+      }
+      game.fieldTestingGearIdx = -1;
+      game.fieldTestingUnitIdx = -1;
+      break;
+    }
+    case "Scouting update": {
+      if (game.teamScoutPool.length) {
+        const scout = game.teamScoutPool.reduce((a, b) => scoutValue(b) > scoutValue(a) ? b : a);
+        game.commandPool.Organic += toInt((scout.card as any)["Organic Scout"]);
+        game.commandPool.Tech += toInt((scout.card as any)["Tech Scout"]);
+        game.commandPool.Alien += toInt((scout.card as any)["Alien Scout"]);
       }
       break;
     }
-    case "Collaboration":
-      // sim.py's actual implementation is a flat command-pool-to-weakest-player transfer, not a
-      // literal "cover mission costs" hook -- ported as-is, matching the source exactly.
-      for (const res of ["Organic", "Tech", "Alien"] as const) {
-        const give = Math.min(3, game.commandPool[res]);
-        game.commandPool[res] -= give;
-        w.res[res] += give;
-      }
-      break;
-    case "Scouting update":
-      commander.res.Organic += 3;
-      commander.res.Tech += 3;
-      commander.res.Alien += 3;
-      break;
     case "Forward Command":
+      tempState.reserveImmuneThisRound = true;
       tempState.halfOverrunDamage = true;
       break;
-    case "Eradicator Cannon":
-      // sim.py's actual implementation doesn't reference Boss at all -- it's a hoard-reduction
-      // effect on the weakest player's next deal, same pattern as "Perfect information".
-      tempState.hoardReduction.set(w.seatIndex.toString(), (tempState.hoardReduction.get(w.seatIndex.toString()) ?? 0) + 1);
+    case "Eradicator Cannon": {
+      // Active: draw 2 new cards. Card is destroyed (not returned) via destroyNextActivatedCard set in pre-decision.
+      const drawn: string[] = [];
+      for (let i = 0; i < 2 && game.commandDeck.length > 0; i++) {
+        const card = game.commandDeck.shift()!;
+        commander.hand.push(card);
+        drawn.push(card.Name);
+      }
+      ctx.log(`  [Eradicator Cannon] ${commander.name} draws ${drawn.length} card(s): ${drawn.join(", ") || "none"}.`);
       break;
+    }
     case "Strategic Withdrawal":
       if (canUseEffect(game, "Strategic Withdrawal", 1)) {
         recordEffectUse(game, "Strategic Withdrawal");
@@ -390,12 +450,7 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
   }
 }
 
-/** Battlefield Active Effects -- run after Deployment deals hoards (most target "active
- * enemies"/"a lane"). Ported 1:1 from Working/sim.py's apply_battlefield_active, including its
- * own existing simplifications (e.g. Chemical Warfare truncates to 1 enemy rather than a true
- * 1-HP-all-enemies effect; "Tranq rounds"/"Whites of their eyes" approximate their text as flat
- * stat buffs) -- Punch Through (Boss) and Early Warning Network's real effect (multi-lane Reveal
- * damage isn't ported yet) are documented no-ops in Stage 2. */
+/** Battlefield Active Effects -- run after Deployment deals hoards (most target "active enemies"/"a lane"). */
 export function applyBattlefieldActive(ctx: CommandContext, card: CommandCard) {
   const { game, tempState } = ctx;
   const name = card.Name;
@@ -403,54 +458,87 @@ export function applyBattlefieldActive(ctx: CommandContext, card: CommandCard) {
 
   switch (name) {
     case "Air Strike":
-    case "Land Mines":
-      w.laneEnemyReserve = w.laneEnemyReserve.filter((e) => toInt(e.HP) > 10);
-      break;
-    case "Defense Turrets":
-      w.laneEnemyReserve = w.laneEnemyReserve.filter((e) => toInt(e.HP) > 15);
-      break;
-    case "Chemical Warfare":
-      w.laneEnemyReserve = w.laneEnemyReserve.slice(0, 1);
-      break;
-    case "You Shall Not Pass":
-      if (w.active) tempState.tempBuff(w.active, { Damage: w.active.curHp });
-      break;
-    case "Suppression":
-    case "Bunkers":
-      break; // no enemy-ability subsystem yet, same as Command-side Countermeasures/Suppression
-    case "Early Warning Network":
-      // Real effect (halves multi-lane Reveal/Passive damage) has nothing to act on yet --
-      // multi-lane Reveal dispatch isn't ported in Stage 2. Documented no-op for now.
-      break;
-    case "Barrier Systems":
-      if (w.active) tempState.tempBuff(w.active, { Shields: 10 });
-      break;
-    case "Final Stand":
-      if (w.active) tempState.cannotDie.add(w.active.id);
-      break;
-    case "Covering Fire":
-      if (w.reserve.length && w.active) {
-        const oldActive = w.active;
-        w.active = w.reserve[0];
-        w.reserve[0] = oldActive;
-      }
-      break;
-    case "Whites of their eyes":
-      if (w.active) tempState.tempBuff(w.active, { Damage: toInt(w.active.card.Damage) });
-      break;
-    case "Punch Through":
-      if (game.bossActive) game.bossActive.hpCur -= 5;
-      break;
-    case "Tranq rounds":
-      if (w.active) tempState.tempBuff(w.active, { Armor: 4 });
-      break;
-    case "Security Drones":
       for (const p of game.players) {
-        for (let i = 0; i < 2; i++) {
-          addTempUnitPerm(p, makeUnitInstance(makeTempCard("Drone", 1, 1)));
+        if (p.laneEnemyReserve.length > 0 && toInt(p.laneEnemyReserve[0].HP) <= 10) {
+          const killed = p.laneEnemyReserve.shift()!;
+          ctx.log(`  [Air Strike] Killed ${killed.Name} (HP ${killed.HP}) in ${p.name}'s lane.`);
         }
       }
       break;
+    case "Land Mines":
+      for (const p of game.players) {
+        const before = p.laneEnemyReserve.length;
+        p.laneEnemyReserve = p.laneEnemyReserve.filter((e) => toInt(e.HP) > 10);
+        const killed = before - p.laneEnemyReserve.length;
+        if (killed > 0) ctx.log(`  [Land Mines] ${p.name}'s lane: ${killed} enemy/enemies killed on reveal (HP ≤ 10), reveal effects denied.`);
+      }
+      break;
+    case "Defense Turrets":
+      for (const p of game.players) {
+        const before = p.laneEnemyReserve.length;
+        p.laneEnemyReserve = p.laneEnemyReserve.filter((e) => !(e.Reveal && toInt(e.HP) <= 15));
+        const killed = before - p.laneEnemyReserve.length;
+        if (killed > 0) ctx.log(`  [Defense Turrets] ${p.name}'s lane: ${killed} reveal-effect enemy/enemies killed (HP ≤ 15).`);
+      }
+      break;
+    case "Chemical Warfare":
+      for (const p of game.players) {
+        p.laneEnemyReserve = p.laneEnemyReserve.map((e) => ({
+          ...e,
+          HP: "1",
+          Damage: String(toInt(e.Damage) * 2),
+        }));
+        if (p.laneEnemyReserve.length) ctx.log(`  [Chemical Warfare] ${p.name}'s lane: all enemies reduced to 1HP, attack doubled.`);
+      }
+      break;
+    case "You Shall Not Pass":
+      tempState.youShallNotPassArmed = true;
+      break;
+    case "Suppression":
+      // Lane suppression is handled in the dispatch wrapper (game.ts resolveBattlefieldCards)
+      // where the activating player's seatIndex is in scope.
+      break;
+    case "Bunkers":
+      for (const p of game.players) {
+        const cur = game.laneAbilityPreventions.get(p.seatIndex) ?? 0;
+        game.laneAbilityPreventions.set(p.seatIndex, cur + 1);
+      }
+      ctx.log(`  [Bunkers] First damage ability in each lane blocked this round.`);
+      break;
+    case "Barrier Systems":
+      // Active (10 shields to all units in target lane) handled in dispatch wrapper in game.ts.
+      break;
+    case "Final Stand": {
+      const targetId = game.finalStandTargetUnitId;
+      const allUnits = game.players.flatMap((p) => [...(p.active ? [p.active] : []), ...p.reserve]);
+      const target = targetId ? allUnits.find((ui) => ui.id === targetId) : allUnits[0];
+      if (target) {
+        tempState.cannotDie.add(target.id);
+        ctx.log(`  [Final Stand] ${target.card.Name} cannot die this round.`);
+      }
+      break;
+    }
+    case "Whites of their eyes":
+      // Target lane + doubleFirstAttack handled via whitesOfTheirEyesTargetSeat pre-decision and resolveLaneCombat flag.
+      break;
+    case "Punch Through":
+      // Handled via punchThroughActiveSeat set in dispatch wrapper and onEnemyKill callback in resolveLaneCombat.
+      break;
+    case "Tranq rounds":
+      tempState.tranqRoundsActiveThisRound = true;
+      ctx.log(`  [Tranq Rounds] All enemy damage halved this round.`);
+      break;
+    case "Security Drones": {
+      // Active: add 8 1/1 drones split evenly across all lanes (bypass lane unit limit by design).
+      const dronesPerLane = Math.floor(8 / game.players.length);
+      const remainder = 8 % game.players.length;
+      game.players.forEach((p, i) => {
+        const count = dronesPerLane + (i < remainder ? 1 : 0);
+        for (let j = 0; j < count; j++) tempState.addTempUnit(p, makeUnitInstance(makeTempCard("Drone", 1, 1)));
+      });
+      ctx.log(`  [Security Drones] Added 8 1/1 drones split across ${game.players.length} lane(s).`);
+      break;
+    }
     default:
       break;
   }

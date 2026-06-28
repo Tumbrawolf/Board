@@ -209,16 +209,19 @@ export function equipGearOntoActiveMutation(game: GameState, p: GamePlayer, g: a
     }
   }
   const cost = RANK_NUM[g["Rank Name"]] ?? 1;
-  // Command Requisition: shortfall can come out of the command pool too, same as shop purchases.
-  const commandReq = commandRequisitionActive(game);
-  if (p.res.Tech + (commandReq ? game.commandPool.Tech : 0) < cost) {
-    p.gearHand.push(g);
-    log(`  ${p.name} can't afford ${cost} Tech to equip ${g.Name} -- held in hand`);
-    return false;
+  const fieldTestingBuilt = (game.locationUpgradesBuilt["Armory"] ?? []).some((c) => c.Name === "Field Testing");
+  if (!fieldTestingBuilt) {
+    // Command Requisition: shortfall can come out of the command pool too, same as shop purchases.
+    const commandReq = commandRequisitionActive(game);
+    if (p.res.Tech + (commandReq ? game.commandPool.Tech : 0) < cost) {
+      p.gearHand.push(g);
+      log(`  ${p.name} can't afford ${cost} Tech to equip ${g.Name} -- held in hand`);
+      return false;
+    }
+    const fromSelf = Math.min(p.res.Tech, cost);
+    p.res.Tech -= fromSelf;
+    if (commandReq) game.commandPool.Tech -= cost - fromSelf;
   }
-  const fromSelf = Math.min(p.res.Tech, cost);
-  p.res.Tech -= fromSelf;
-  if (commandReq) game.commandPool.Tech -= cost - fromSelf;
   p.active.equipped.push(g);
   const hpBonus = toInt(g.HP);
   p.active.maxHp += hpBonus;
@@ -228,7 +231,7 @@ export function equipGearOntoActiveMutation(game: GameState, p: GamePlayer, g: a
   if (g.Name === "Recon Satellite") p.hasReconSatellite = true;
   if (g.Name === "Last Stand Beacon") p.hasLastStandBeacon = true;
   log(
-    `  ${p.name} equips ${g.Name} (Tech -${cost}) (Dmg+${toInt(g.Damage)} HP+${toInt(g.HP)} Arm+${toInt(g.Armor)} Shd+${toInt(g.Shields)})`
+    `  ${p.name} equips ${g.Name} (${fieldTestingBuilt ? "free via Field Testing" : `Tech -${cost}`}) (Dmg+${toInt(g.Damage)} HP+${toInt(g.HP)} Arm+${toInt(g.Armor)} Shd+${toInt(g.Shields)})`
   );
   return true;
 }
@@ -262,10 +265,11 @@ export function canBuildCard(game: GameState, card: CommandCard): boolean {
   const regularBuilt = game.locationUpgradesBuilt[loc].length - (game.locationBonusUpgradesCount?.[loc] ?? 0);
   const effectiveCap = Math.max(0, UPGRADE_SLOT_CAP[loc] - (game.locationUpgradeLimitPenalty ?? 0));
   const slotOk = game.renovationRemoveUnlock ? regularBuilt <= effectiveCap : regularBuilt < effectiveCap;
+  const costMult = game.priorityConstructionRoundsLeft > 0 ? 0.5 : 1;
   return (
     Boolean(card["Passive Effect"]?.trim()) &&
     slotOk &&
-    (["Organic", "Tech", "Alien"] as const).every((k) => game.commandPool[k] >= toInt((card as any)[k]))
+    (["Organic", "Tech", "Alien"] as const).every((k) => game.commandPool[k] >= Math.ceil(toInt((card as any)[k]) * costMult))
   );
 }
 
@@ -291,7 +295,8 @@ export function buildCardMutation(game: GameState, card: CommandCard, log: (t: s
       }
     }
   }
-  for (const k of ["Organic", "Tech", "Alien"] as const) game.commandPool[k] -= toInt((card as any)[k]);
+  const buildCostMult = game.priorityConstructionRoundsLeft > 0 ? 0.5 : 1;
+  for (const k of ["Organic", "Tech", "Alien"] as const) game.commandPool[k] -= Math.ceil(toInt((card as any)[k]) * buildCostMult);
   game.locationUpgradesBuilt[loc].push(card);
   if (card.Name === "Containment Protocol") onContainmentBuilt();
   log(`  [Upgrade built] ${loc}: ${card.Name}`);
@@ -301,7 +306,8 @@ export function buildCardMutation(game: GameState, card: CommandCard, log: (t: s
  * shared command pool must cover its cost. Caller must have already checked
  * cardEligibleForPlanning. */
 export function canActivateAsNonCommander(game: GameState, actor: GamePlayer, card: CommandCard): boolean {
-  return (["Organic", "Tech", "Alien"] as const).every((res) => actor.res[res] + game.commandPool[res] >= toInt((card as any)[res]));
+  const mult = game.priorityOperationsRoundsLeft > 0 ? 0.5 : 1;
+  return (["Organic", "Tech", "Alien"] as const).every((res) => actor.res[res] + game.commandPool[res] >= Math.ceil(toInt((card as any)[res]) * mult));
 }
 
 /** Garbage Day: Command Cards pushed to the recycle pile when activated, so "restore from
@@ -337,8 +343,9 @@ export function nonCommanderActivateCardMutation(
   dispatch: (card: CommandCard, loc: Location) => void
 ) {
   const loc = card.Building as Location;
+  const costMult = game.priorityOperationsRoundsLeft > 0 ? 0.5 : 1;
   for (const res of ["Organic", "Tech", "Alien"] as const) {
-    const cost = toInt((card as any)[res]);
+    const cost = Math.ceil(toInt((card as any)[res]) * costMult);
     const fromSelf = Math.min(actor.res[res], cost);
     actor.res[res] -= fromSelf;
     game.commandPool[res] -= cost - fromSelf;

@@ -1,5 +1,5 @@
-import { toInt, type EventCard } from "./data.js";
-import { ENEMY_RANK_NUM, RANK_NUM, LOCATIONS, RANK_ORDER, type EnemyRank, type Location } from "./constants.js";
+import { toInt, type CommandCard, type EventCard } from "./data.js";
+import { ENEMY_RANK_NUM, RANK_NUM, LOCATIONS, RANK_ORDER, UPGRADE_SLOT_CAP, type EnemyRank, type Location } from "./constants.js";
 import type { Combatant } from "./combat.js";
 import { weakestPlayer } from "./state.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
@@ -45,23 +45,34 @@ export function eventConditionMet(
     case "Command Requisition":
       return totalRes(game.commandPool) > game.players.reduce((s, p) => s + totalRes(p.res), 0);
     case "Forced Contribution":
-      return totalRes(game.commandPool) >= 20;
-    case "Crowded Worksite":
-      return game.donationsThisRound >= 10;
+      return (game.returnedToSupplyThisRound.Organic + game.returnedToSupplyThisRound.Tech + game.returnedToSupplyThisRound.Alien) >= 20;
     case "Tax Fault":
-      return totalRes(game.commandPool) >= 15;
+      return (game.returnedToSupplyThisRound.Organic + game.returnedToSupplyThisRound.Tech + game.returnedToSupplyThisRound.Alien) >= 15;
     case "Cheap Knockoffs":
-      return game.commandPool.Tech >= 10;
+      return game.returnedToSupplyThisRound.Tech >= 10;
     case "Food Shortage":
-      return game.commandPool.Organic >= 10;
-    case "Lead by example":
-      return game.players.some((p) => p.stats.missionsCompleted > 0);
-    case "Prove your worth":
-      return game.players.reduce((s, p) => s + p.stats.missionsCompleted, 0) >= game.players.length;
+      return game.returnedToSupplyThisRound.Organic >= 10;
+    case "Lead by example": {
+      const playerRankTotal = game.players.reduce((s, p) => s + p.rank, 0);
+      return game.missionRankCompletedThisRound >= playerRankTotal;
+    }
     case "Silence in no mans land":
       return game.players.every((p) => p.reserve.length <= 1);
-    case "Combined Arms Training":
-      return new Set(game.players.map((p) => p.active?.card.Type).filter(Boolean)).size >= game.players.length;
+    case "Combined Arms Training": {
+      const MAIN_TYPES = ["Infantry", "Mech", "Vehicle"] as const;
+      const maxRank = Math.max(...game.players.map((p) => p.rank));
+      const accessibleTypes = MAIN_TYPES.filter((t) =>
+        [...game.shopUnits, ...game.unitDeck].some(
+          (u) => u.Type.includes(t) && (RANK_NUM[u.Rank] ?? 1) <= maxRank
+        )
+      );
+      const coveredTypes = new Set(
+        game.players
+          .map((p) => MAIN_TYPES.find((t) => p.active?.card.Type.includes(t)))
+          .filter(Boolean)
+      );
+      return coveredTypes.size >= Math.min(game.players.length, accessibleTypes.length);
+    }
     case "Restriction orders":
       return activeUnitsOfType("Infantry") >= 3;
     case "Fuel Shortage":
@@ -89,9 +100,13 @@ export function eventConditionMet(
     case "Total Disarmament":
       return game.players.every((p) => ![p.active, ...p.reserve].some((u) => u && u.equipped.length > 0));
     case "Emergency Triage":
-      return game.players.every((p) => workersAt("Medical Bay") >= 1) && workersAt("Medical Bay") >= game.players.length;
-    case "Medical Focus":
-      return game.players.some((p) => p.stats.healsGiven > 0);
+      return game.players.every((p) => (placementsThisRound[p.seatIndex] ?? []).includes("Medical Bay"));
+    case "Medical Focus": {
+      // "Empty/Full Hp med bay" -- all slots empty or all slots occupied by combat start
+      const medBaySlotCap = (game.locationUpgradesBuilt["Medical Bay"] ?? []).some((c) => c.Name === "Share Rooms") ? 4 : 2;
+      const totalInMedBay = game.players.reduce((s, p) => s + p.medBayUnits.length, 0);
+      return totalInMedBay === 0 || totalInMedBay >= medBaySlotCap;
+    }
     case "Honorable Discharge": {
       // "Retire Between 5 and 10 units this turn" -- a real per-round count (retiresThisRound),
       // not the old cumulative-game-total proxy.
@@ -128,24 +143,23 @@ export function eventConditionMet(
     case "Capacity Threshold":
       return game.disabledLocation ? workersAt(game.disabledLocation) >= 2 : false;
     case "Isolation Orders": {
-      const locs = game.players.map((p) => (placementsThisRound[p.seatIndex] ?? [])[0]).filter(Boolean);
-      return new Set(locs).size === locs.length;
+      // Each player's first worker must be at a different location — no two players share
+      // a first placement. Only first placements are checked (2nd workers may share freely).
+      const firstPlacements = game.players.map((p) => (placementsThisRound[p.seatIndex] ?? [])[0]).filter(Boolean);
+      return new Set(firstPlacements).size === firstPlacements.length;
     }
-    case "Forced Re-Armament":
-      return game.players.some((p) => p.stats.gearEquipped > 0);
     case "Ion Storm":
-      return game.players.reduce((s, p) => s + (p.active?.curShields ?? 0), 0) === 0;
-    case "System Lockdown":
-      return Object.values(game.locationUpgradesBuilt).every((cards) => cards.length === 0);
+      return game.shieldsDestroyedThisRound >= 40;
     case "Renovations":
       return Object.values(game.locationUpgradesBuilt).reduce((s, cards) => s + cards.length, 0) >= 3;
     case "Annihilation Clause": {
       const totalKills = [...game.killsThisRound.values()].reduce((s, n) => s + n, 0);
       const totalDeaths = [...game.deathsThisRound.values()].reduce((s, n) => s + n, 0);
-      return totalKills >= 2 * Math.max(1, totalDeaths);
+      return totalKills > totalDeaths;
     }
     case "Leadership Crisis":
-      return game.forceCommanderChange;
+      // Unanimous vote: all players agreed on the same next commander.
+      return game.leadershipCrisisWinner !== null;
     default:
       // Unreachable for any of the 40 real Event names -- fails closed rather than guessing.
       return false;
@@ -167,7 +181,6 @@ const ORIGINAL_EIGHT_EVENTS = new Set([
   "Food Shortage",
   "Tax Fault",
   "Forced Contribution",
-  "Crowded Worksite",
   "Lead by example",
   "Chain of Command",
   "Command Requisition",
@@ -186,6 +199,26 @@ const TYPE_RECALL: Record<string, string> = {
   "Utility Recall": "Utility",
   "Weapons Recall": "Weapon",
 };
+
+/** Recall/Disarmament Completion Reward and Failure Penalty share the same type map.
+ * "any" = all types (Total Disarmament). */
+const RECALL_EVENT_TYPES: Record<string, string> = {
+  "Armor Recall": "Armor",
+  "Utility Recall": "Utility",
+  "Weapons Recall": "Weapon",
+  "Total Disarmament": "any",
+};
+
+/** Failure Penalty for Recall events: permanently destroys all gear of the given type from every
+ * player's units and gear hand (unlike unequipAllOfType which returns items to hand). */
+function destroyGearOfType(game: GameState, type: string) {
+  for (const p of game.players) {
+    for (const ui of [...(p.active ? [p.active] : []), ...p.reserve]) {
+      ui.equipped = ui.equipped.filter((g) => type !== "any" && (g as any).Type !== type);
+    }
+    p.gearHand = p.gearHand.filter((g) => type !== "any" && (g as any).Type !== type);
+  }
+}
 
 /** `severity` gates each individual item's removal independently (a coin flip per item, not an
  * all-or-nothing strip) -- early game, a player keeps most of their loadout; late game, the
@@ -250,12 +283,8 @@ export function applyEventRoundEffect(game: GameState, event: EventCard, log: (t
     for (const p of game.players) unequipAllOfType(p, TYPE_RECALL[name], severity, log);
   } else if (name === "Total Disarmament") {
     for (const p of game.players) unequipAllOfType(p, null, severity, log);
-  } else if (name === "Prove your worth") {
-    game.missionRankReqRemoved = true;
   } else if (name === "Medical Focus") {
     game.medicalBayCostsOrganic = true;
-  } else if (name === "Forced Re-Armament") {
-    game.equipCostDoubled = true;
   } else if (
     name === "Armor Supply Freeze" ||
     name === "Production Fault" ||
@@ -265,7 +294,17 @@ export function applyEventRoundEffect(game: GameState, event: EventCard, log: (t
     game.gearActiveCostDoubledType =
       name === "Armor Supply Freeze" ? "Armor" : name === "Production Fault" ? "Utility" : name === "Weapons Allocation Freeze" ? "Weapon" : "any";
   } else if (name === "Renovations") {
-    game.locationsWithUpgradesBlocked = true;
+    game.renovationSetAsideUpgrades = Object.fromEntries(
+      LOCATIONS.map((l) => [l, [...game.locationUpgradesBuilt[l]]])
+    ) as Record<Location, CommandCard[]>;
+    game.renovationSetAsideBonusCounts = Object.fromEntries(
+      LOCATIONS.map((l) => [l, game.locationBonusUpgradesCount[l] ?? 0])
+    ) as Record<Location, number>;
+    for (const loc of LOCATIONS) {
+      game.locationUpgradesBuilt[loc] = [];
+      game.locationBonusUpgradesCount[loc] = 0;
+    }
+    log(`  [Event] Renovations — all built upgrades set aside for the round`);
   } else if (name === "Saboteur investigation" || name === "Capacity Threshold" || name === "Isolation Orders") {
     game.disabledLocation = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
     log(`  [Event] ${name} disables ${game.disabledLocation} this round`);
@@ -288,12 +327,8 @@ export function applyEventRoundEffect(game: GameState, event: EventCard, log: (t
         .map((p) => `${p.name}->${game.assignedPostLocations.get(p.seatIndex)}`)
         .join(", ")}`
     );
-  } else if (name === "System Lockdown") {
-    for (const loc of Object.keys(game.locationUpgradesBuilt) as (keyof typeof game.locationUpgradesBuilt)[]) {
-      game.locationUpgradesBuilt[loc] = [];
-    }
   }
-  // Forced Contribution/Crowded Worksite (worker-income hooks) and the 5-card "Active Non-X
+  // Forced Contribution (worker-income hook) and the 5-card "Active Non-X
   // stunned"/Silence in no mans land/Kill Contest/Ion Storm/Annihilation Clause (combat-time
   // hooks) are read directly off game.activeEvent at their own call sites in game.ts, same as
   // how Boss/Tactician board-wide mods are checked at Combatant-construction time -- they don't
@@ -314,6 +349,17 @@ const TYPE_STUN_EVENTS: Record<string, string> = {
  * Combatants (enemies have no UnitInstance wrapper); the Type-based effects only ever applied to
  * player units anyway, per their card text ("Active Non-Infantry", "Friendly units"). */
 export function applyEventCombatMods(game: GameState, c: Combatant, isEnemy: boolean, ui?: UnitInstance) {
+  // Permanent standing effects -- fire every round regardless of which event is currently active.
+  if (!isEnemy && ui && (game.killContestHighRankDoubled || game.killContestHighRankHalved)) {
+    const maxRank = Math.max(0, ...game.players.filter((p) => p.active).map((p) => RANK_NUM[p.active!.card.Rank] ?? 1));
+    if (maxRank > 0 && (RANK_NUM[ui.card.Rank] ?? 1) >= maxRank) {
+      if (game.killContestHighRankDoubled) c.dmg *= 2;
+      if (game.killContestHighRankHalved) c.dmg = Math.max(1, Math.floor(c.dmg / 2));
+    }
+  }
+  // Ion Storm permanent standing effects -- apply regardless of whether Ion Storm is the active event.
+  if (isEnemy && game.ionStormEnemyEntryShields > 0) c.curShields += game.ionStormEnemyEntryShields;
+  if (isEnemy && game.ionStormScoutedLoseShields) c.curShields = 0;
   const name = game.activeEvent?.["Event name"];
   if (!name) return;
   const severity = eventSeverity(game);
@@ -324,9 +370,9 @@ export function applyEventCombatMods(game: GameState, c: Combatant, isEnemy: boo
   if (name === "Kill Contest" && !isEnemy) c.dmg *= 2;
   if (name === "Ion Storm") {
     if (isEnemy) c.curShields += 5;
-    else if (Math.random() < severity) c.curShields = 0;
+    c.shieldMultiplier = Math.max(c.shieldMultiplier, 2);
   }
-  if (name === "Annihilation Clause" && Math.random() < severity) c.deleteOnKill = true;
+  if (name === "Annihilation Clause") c.deleteOnKill = true;
   if (name === "Chain of Command" && !isEnemy && ui) {
     const rankVal = RANK_NUM[ui.card.Rank] ?? 1;
     c.hp = rankVal;
@@ -346,10 +392,18 @@ export function applyEventCombatMods(game: GameState, c: Combatant, isEnemy: boo
  * retire instead of dying, double Containment capacity) rather than disruptive harm -- Fix 1's
  * blanket "skip Penalty, the Round Effect already hurt enough" rule doesn't apply to these, since
  * there's no harm to double up on. They keep a real Penalty on failure same as the original 8. */
-const BENEFICIAL_ROUND_EFFECT_EVENTS = new Set(["Garbage Day", "Honorable Discharge", "Research drive"]);
+const BENEFICIAL_ROUND_EFFECT_EVENTS = new Set(["Garbage Day", "Honorable Discharge", "Research drive", "Silence in no mans land", "Emergency Triage", "Kill Contest"]);
 
 /** Completion Reward / Failure Penalty -- the pass/fail roll itself is now a real Completion
  * Condition check (eventConditionMet), not a coin flip. */
+/** Gear-freeze events and the gear type they affect. "any" = all types (Supply Chain Collapse). */
+const FREEZE_EVENT_TYPES: Record<string, string> = {
+  "Armor Supply Freeze": "Armor",
+  "Production Fault": "Utility",
+  "Weapons Allocation Freeze": "Weapon",
+  "Supply Chain Collapse": "any",
+};
+
 export function applyEventResolution(game: GameState, event: EventCard, passed: boolean, commander: GamePlayer) {
   const name = event["Event name"];
   const w = weakestPlayer(game);
@@ -407,18 +461,118 @@ export function applyEventResolution(game: GameState, event: EventCard, passed: 
       game.garbageDayPermanent = true;
     } else if (name === "Forced Contribution") {
       game.locationSharingBonus += 1;
-    } else if (name === "Crowded Worksite") {
-      game.crowdedWorksiteReward = true;
+    } else if (name === "Tax Fault") {
+      game.locationAlienBonus += 1;
+    } else if (name === "Silence in no mans land") {
+      game.permanentScoutRevealBonus += 1;
+    } else if (name === "Emergency Triage") {
+      game.healingPerWorkerBonus += 1;
+    } else if (name === "Medical Focus") {
+      game.medBayAlwaysGeneratesOrganic = true;
+    } else if (name === "Kill Contest") {
+      game.killContestHighRankDoubled = true;
+    } else if (name === "Isolation Orders") {
+      game.isolationSoloBonus += 1;
+    } else if (name === "Leadership Crisis") {
+      // +1 rank to the outgoing commander and the incoming (voted) commander.
+      const oldCommander = commander;
+      oldCommander.rank = Math.min(RANK_ORDER.length, oldCommander.rank + 1);
+      if (game.leadershipCrisisWinner !== null) {
+        const newCommander = game.players.find((p) => p.seatIndex === game.leadershipCrisisWinner);
+        if (newCommander && newCommander !== oldCommander) {
+          newCommander.rank = Math.min(RANK_ORDER.length, newCommander.rank + 1);
+        }
+      }
+    } else if (name === "Ion Storm") {
+      game.ionStormScoutedLoseShields = true;
+    } else if (name === "Renovations") {
+      game.renovationRemoveUnlock = true;
+    } else if (name === "Annihilation Clause") {
+      game.annihilationEnemiesDeletedByHigherRank = true;
+    } else if (name === "Saboteur investigation") {
+      for (const loc of LOCATIONS) {
+        const drawn = game.commandDeck.shift();
+        if (!drawn) break;
+        game.locationUpgradesBuilt[loc].push(drawn);
+        game.locationBonusUpgradesCount[loc] = (game.locationBonusUpgradesCount[loc] ?? 0) + 1;
+      }
+    } else if (name === "Capacity Threshold" && game.disabledLocation) {
+      const loc = game.disabledLocation;
+      const effectiveCap = Math.max(0, UPGRADE_SLOT_CAP[loc] - game.locationUpgradeLimitPenalty);
+      const regularBuilt = game.locationUpgradesBuilt[loc].length - (game.locationBonusUpgradesCount[loc] ?? 0);
+      const needed = Math.max(0, effectiveCap - regularBuilt);
+      for (let i = 0; i < needed; i++) {
+        const drawn = game.commandDeck.shift();
+        if (!drawn) break;
+        game.locationUpgradesBuilt[loc].push(drawn);
+      }
+    } else if (name in FREEZE_EVENT_TYPES) {
+      game.gearActiveFreeNextRound = FREEZE_EVENT_TYPES[name];
+    } else if (name in RECALL_EVENT_TYPES) {
+      game.shopGearFreeTypeNextRound = RECALL_EVENT_TYPES[name];
     }
     // 'Stockpiled Reserves': covered generically by Mission's own Resource/Instant dispatch elsewhere, same as sim.py.
     // 'Research drive': "Containment Block keeps storage stack upgrade" -- no mechanical hook here (containmentSlots is already permanent once built).
   } else {
+    // Gear-freeze events: penalty doubles activation cost for the affected type next round.
+    if (name in FREEZE_EVENT_TYPES) {
+      game.gearActiveCostDoubledNextRound = FREEZE_EVENT_TYPES[name];
+    }
+    // Recall events: penalty permanently destroys all gear of the affected type.
+    if (name in RECALL_EVENT_TYPES) {
+      destroyGearOfType(game, RECALL_EVENT_TYPES[name]);
+    }
+    // Type-stun events (Restriction orders / Fuel Shortage / Psychic Tremors / Hurricane X):
+    // failure mirror of their reward -- subtract the same shield amount from the favored type.
+    if (name in typeStunBonus) {
+      const { type, amt } = typeStunBonus[name];
+      const count = matchingTypeCount(type);
+      for (const p of game.players) {
+        if (p.active?.card.Type.includes(type))
+          p.active.curShields = Math.max(0, p.active.curShields - amt * count);
+      }
+    }
+    // Medical Focus penalty: permanently makes Med Bay cost Organic (fires before skip gate,
+    // same pattern as type-stun/gear-freeze events that also escape the round-effect-already-hurt logic).
+    if (name === "Medical Focus") {
+      game.medBayCostOrganicPermanently = true;
+    }
+    // Saboteur Investigation / Capacity Threshold penalty: permanent −1 to all location slot caps
+    // (fires before skip gate so it applies regardless of the skip logic for the remaining events).
+    if (name === "Saboteur investigation" || name === "Capacity Threshold") {
+      game.locationUpgradeLimitPenalty += 1;
+    }
+    // Isolation Orders penalty: permanent co-location resource drain per shared worker.
+    if (name === "Isolation Orders") {
+      game.isolationSharingPenalty += 1;
+    }
+    // Leadership Crisis penalty: commander forced to change every other round going forward.
+    if (name === "Leadership Crisis") {
+      game.commanderMustChangeEveryOtherRound = true;
+      game.commanderEveryOtherRoundParity = (game.roundNum + 1) % 2;
+    }
+    // Ion Storm penalty: permanent +10 entry shields for every enemy going forward.
+    if (name === "Ion Storm") {
+      game.ionStormEnemyEntryShields += 10;
+    }
+    // Renovations penalty: all built upgrades stripped at end of every future round.
+    if (name === "Renovations") {
+      game.renovationEndOfRoundStrip = true;
+    }
+    // Annihilation Clause penalty: allies skip all saves when killed by a higher-tier enemy.
+    if (name === "Annihilation Clause") {
+      game.annihilationAlliesDeletedByHigherRank = true;
+    }
     // Skip Failure Penalty for every event whose Round Effect already did real harm this round
     // (the original 32) -- see this file's top comment for why. Events whose Round Effect is a
     // beneficial opportunity instead of harm (BENEFICIAL_ROUND_EFFECT_EVENTS) keep a real Penalty
     // same as the original 8, since there's no double-harm concern to avoid for those.
     if (!ORIGINAL_EIGHT_EVENTS.has(name) && !BENEFICIAL_ROUND_EFFECT_EVENTS.has(name)) return;
-    if (name === "Lead by example") {
+    if (name === "Command Requisition") {
+      game.commandPool.Organic = 0;
+      game.commandPool.Tech = 0;
+      game.commandPool.Alien = 0;
+    } else if (name === "Lead by example") {
       for (const p of game.players) p.rank = Math.max(1, p.rank - 1);
     } else if (name === "Chain of Command") {
       const demote = game.players.reduce((a, b) => (b.rank > a.rank ? b : a));
@@ -427,14 +581,23 @@ export function applyEventResolution(game: GameState, event: EventCard, passed: 
       game.assignedPostsPersist = true;
     } else if (name === "Forced Contribution") {
       game.locationSharingBonus -= 1;
-    } else if (name === "Crowded Worksite") {
-      game.donationCappedToOne = true;
     } else if (name === "Honorable Discharge") {
       // "Retire costs no longer gives resource" -- a standing rule change, not a one-round hit.
       game.retireGivesNoResource = true;
+    } else if (name === "Silence in no mans land") {
+      game.reserveAbilitiesDisabled = true;
+    } else if (name === "Emergency Triage") {
+      for (const p of game.players) {
+        p.graveyard.push(...p.medBayUnits);
+        p.stats.deaths += p.medBayUnits.length;
+        p.medBayUnits = [];
+      }
+    } else if (name === "Kill Contest") {
+      game.killContestHighRankHalved = true;
     }
-    // Tax Fault/Cheap Knockoffs/Food Shortage failure penalties: cost-increase penalties have no
-    // shop-cost-modifier hook to apply against here, same documented gap as sim.py.
+    if (name === "Tax Fault") game.shopCostBonus.Alien += 2;
+    if (name === "Cheap Knockoffs") game.shopCostBonus.Tech += 2;
+    if (name === "Food Shortage") game.shopCostBonus.Organic += 2;
     // Garbage Day's Penalty ("Delete items on death") describes THIS round's deaths, but
     // resolution runs after combat has already finished for the round -- structural no-op.
     // Research drive's ("Disable a Containment Block slot") is applied at its own call site
