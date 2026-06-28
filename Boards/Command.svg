@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 564" width="400" height="564">
-  <rect width="400" height="564" rx="10" fill="#2C3E2D"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 362" width="400" height="362">
+  <rect width="400" height="362" rx="10" fill="#2C3E2D"/>
 
   <!-- Header -->
   <rect width="400" height="50" rx="10" fill="#1A2E1B"/>
@@ -9,47 +9,43 @@
   <circle cx="278" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
   <circle cx="302" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
 
-  <!-- UPGRADE SLOTS -->
-  <text x="18" y="70" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">UPGRADE SLOTS  ·  CAP: 2</text>
-  <rect x="115" y="78" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="154" y="138" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
-  <rect x="207" y="78" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="246" y="138" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+  <!-- ===== UPGRADES LEFT | COMMAND POOL RIGHT (same row) ===== -->
+  <line x1="194" y1="54" x2="194" y2="198" stroke="#3A5A3A" stroke-width="1"/>
+
+  <!-- LEFT: UPGRADE SLOTS (2 slots at x=18, x=106) -->
+  <text x="62" y="64" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" text-anchor="middle">UPGRADE SLOTS  ·  CAP: 2</text>
+  <rect x="18"  y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="57"  y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+  <rect x="106" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="145" y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+
+  <!-- RIGHT: COMMAND POOL (x=204-382, same y=76-186) -->
+  <text x="293" y="64" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" text-anchor="middle">COMMAND POOL</text>
+  <rect x="204" y="76" width="178" height="110" rx="5" fill="#162018" stroke="#3A5A3A" stroke-width="1"/>
+  <text x="293" y="123" font-family="Arial,sans-serif" font-size="7" fill="#5A7A5A" text-anchor="middle">ORGANIC  /  TECH  /  ALIEN</text>
 
   <!-- Divider -->
   <line x1="12" y1="202" x2="388" y2="202" stroke="#3A5A3A" stroke-width="1"/>
 
-  <!-- COMMAND POOL (single area) -->
-  <text x="18" y="220" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">COMMAND POOL</text>
-  <text x="18" y="233" font-family="Arial,sans-serif" font-size="7" fill="#5A7A5A">ORGANIC  /  TECH  /  ALIEN</text>
-  <rect x="18" y="238" width="364" height="52" rx="4" fill="#162018" stroke="#3A5A3A" stroke-width="1"/>
+  <!-- ===== DECKS: COMMAND CARDS | MISSION ===== -->
+  <line x1="200" y1="206" x2="200" y2="346" stroke="#3A5A3A" stroke-width="1"/>
 
-  <!-- Divider -->
-  <line x1="12" y1="304" x2="388" y2="304" stroke="#3A5A3A" stroke-width="1"/>
+  <!-- Zone 1: COMMAND CARDS (center=100) -->
+  <text x="100" y="218" font-family="Arial,sans-serif" font-size="8" fill="#E8DDB5" text-anchor="middle" letter-spacing="1">COMMAND CARDS</text>
+  <rect x="22" y="230" width="78" height="110" rx="5" fill="#0E1810"/>
+  <rect x="18" y="226" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5"/>
+  <text x="57" y="286" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DRAW</text>
+  <rect x="106" y="226" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="145" y="286" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DISCARD</text>
 
-  <!-- DECKS - zone separator -->
-  <line x1="200" y1="310" x2="200" y2="548" stroke="#3A5A3A" stroke-width="1"/>
-
-  <!-- Zone 1: COMMAND CARDS -->
-  <text x="100" y="322" font-family="Arial,sans-serif" font-size="8" fill="#E8DDB5" text-anchor="middle" letter-spacing="1">COMMAND CARDS</text>
-  <!-- draw pile (shadow + card) -->
-  <rect x="22" y="334" width="78" height="110" rx="5" fill="#0E1810"/>
-  <rect x="18" y="330" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5"/>
-  <text x="57" y="390" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DRAW</text>
-  <!-- discard pile -->
-  <rect x="106" y="330" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="145" y="390" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DISCARD</text>
-
-  <!-- Zone 2: MISSION -->
-  <text x="300" y="322" font-family="Arial,sans-serif" font-size="8" fill="#E8DDB5" text-anchor="middle" letter-spacing="1">MISSION</text>
-  <!-- draw pile -->
-  <rect x="222" y="334" width="78" height="110" rx="5" fill="#0E1810"/>
-  <rect x="218" y="330" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5"/>
-  <text x="257" y="390" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DRAW</text>
-  <!-- discard pile -->
-  <rect x="306" y="330" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="345" y="390" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DISCARD</text>
+  <!-- Zone 2: MISSION (center=300) -->
+  <text x="300" y="218" font-family="Arial,sans-serif" font-size="8" fill="#E8DDB5" text-anchor="middle" letter-spacing="1">MISSION</text>
+  <rect x="222" y="230" width="78" height="110" rx="5" fill="#0E1810"/>
+  <rect x="218" y="226" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5"/>
+  <text x="257" y="286" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DRAW</text>
+  <rect x="306" y="226" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="345" y="286" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DISCARD</text>
 
   <!-- Bottom strip -->
-  <rect y="548" width="400" height="16" rx="10" fill="#1A2E1B"/>
+  <rect y="346" width="400" height="16" rx="10" fill="#1A2E1B"/>
 </svg>

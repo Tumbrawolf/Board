@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 988" width="860" height="988">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 800" width="860" height="800">
 
   <!-- Board background -->
-  <rect width="860" height="988" rx="10" fill="#2C3E2D"/>
+  <rect width="860" height="800" rx="10" fill="#2C3E2D"/>
 
-  <!-- Header -->
+  <!-- Header title bar -->
   <rect x="0" y="0" width="860" height="50" rx="10" fill="#1A2E1B"/>
   <rect x="0" y="42" width="860" height="8" fill="#1A2E1B"/>
   <text x="18" y="33" font-family="Georgia,serif" font-size="20" font-weight="bold" fill="#E8DDB5">BATTLEFIELD</text>
@@ -12,22 +12,52 @@
   <circle cx="684" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
   <circle cx="708" cy="33" r="9" fill="none" stroke="#C8922A" stroke-width="1.5" stroke-dasharray="3,2"/>
 
-  <!-- UPGRADE SLOTS (centered between title and workers) -->
-  <text x="320" y="68" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" text-anchor="middle">UPGRADE SLOTS  ·  CAP: 3</text>
-  <rect x="201" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="240" y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
-  <rect x="281" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="320" y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
-  <rect x="361" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="400" y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+  <!-- ===== HEADER CONTENT AREA: UPGRADES LEFT | DECKS RIGHT ===== -->
 
-  <!-- Main horizontal divider -->
+  <!-- Vertical separator between upgrades and decks -->
+  <line x1="284" y1="54" x2="284" y2="198" stroke="#3A5A3A" stroke-width="1"/>
+
+  <!-- LEFT: UPGRADE SLOTS (3 slots, x=18/106/194, y=72-182) -->
+  <text x="145" y="64" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" text-anchor="middle">UPGRADE SLOTS  ·  CAP: 3</text>
+  <rect x="22" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="61" y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+  <rect x="110" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="149" y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+  <rect x="198" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="237" y="136" font-family="Arial,sans-serif" font-size="8" fill="#4A6A4A" text-anchor="middle">upgrade</text>
+
+  <!-- RIGHT: DECK PAIRS (Event | Enemy | Boss) -->
+  <!-- Event deck (draw x=314, discard x=402) -->
+  <text x="397" y="64" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" text-anchor="middle">EVENT DECK</text>
+  <rect x="318" y="80" width="78" height="110" rx="5" fill="#0E1810"/>
+  <rect x="314" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5"/>
+  <text x="353" y="136" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DRAW</text>
+  <rect x="402" y="76" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
+  <text x="441" y="136" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DISCARD</text>
+
+  <!-- Enemy deck (draw x=490, discard x=578) -->
+  <text x="573" y="64" font-family="Arial,sans-serif" font-size="9" fill="#8888CC" text-anchor="middle">ENEMY DECK</text>
+  <rect x="494" y="80" width="78" height="110" rx="5" fill="#0A0A18"/>
+  <rect x="490" y="76" width="78" height="110" rx="5" fill="#12122A" stroke="#5555AA" stroke-width="1.5"/>
+  <text x="529" y="136" font-family="Arial,sans-serif" font-size="7" fill="#5555AA" text-anchor="middle">DRAW</text>
+  <rect x="578" y="76" width="78" height="110" rx="5" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="7,4"/>
+  <text x="617" y="136" font-family="Arial,sans-serif" font-size="7" fill="#444488" text-anchor="middle">DISCARD</text>
+
+  <!-- Boss deck (draw x=666, discard x=754) -->
+  <text x="749" y="64" font-family="Arial,sans-serif" font-size="9" fill="#AA5555" text-anchor="middle">BOSS DECK</text>
+  <rect x="670" y="80" width="78" height="110" rx="5" fill="#180A0A"/>
+  <rect x="666" y="76" width="78" height="110" rx="5" fill="#1A0A0A" stroke="#AA4444" stroke-width="1.5"/>
+  <text x="705" y="136" font-family="Arial,sans-serif" font-size="7" fill="#AA4444" text-anchor="middle">DRAW</text>
+  <rect x="754" y="76" width="78" height="110" rx="5" fill="#1A0A0A" stroke="#884444" stroke-width="1" stroke-dasharray="7,4"/>
+  <text x="793" y="136" font-family="Arial,sans-serif" font-size="7" fill="#884444" text-anchor="middle">DISCARD</text>
+
+  <!-- ===== MAIN HORIZONTAL DIVIDER ===== -->
   <line x1="10" y1="202" x2="850" y2="202" stroke="#5A7A5A" stroke-width="2"/>
 
   <!-- Lane vertical dividers -->
-  <line x1="222" y1="202" x2="222" y2="718" stroke="#5A7A5A" stroke-width="2"/>
-  <line x1="434" y1="202" x2="434" y2="718" stroke="#5A7A5A" stroke-width="2"/>
-  <line x1="646" y1="202" x2="646" y2="718" stroke="#5A7A5A" stroke-width="2"/>
+  <line x1="222" y1="202" x2="222" y2="714" stroke="#5A7A5A" stroke-width="2"/>
+  <line x1="434" y1="202" x2="434" y2="714" stroke="#5A7A5A" stroke-width="2"/>
+  <line x1="646" y1="202" x2="646" y2="714" stroke="#5A7A5A" stroke-width="2"/>
 
   <!-- Lane title labels -->
   <text x="116" y="220" font-family="Arial,sans-serif" font-size="11" font-weight="bold" fill="#E8DDB5" text-anchor="middle">LANE 1</text>
@@ -129,114 +159,55 @@
   <rect x="724" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
   <rect x="787" y="624" width="55" height="77" rx="4" fill="#2A1208" stroke="#775533" stroke-width="1" stroke-dasharray="5,3"/>
 
-  <!-- ===== BOTTOM SECTION: DECKS + TRACKERS ===== -->
-  <line x1="10" y1="718" x2="850" y2="718" stroke="#5A7A5A" stroke-width="2"/>
+  <!-- ===== COMBINED TRACKER (0-20) ===== -->
+  <line x1="10" y1="714" x2="850" y2="714" stroke="#5A7A5A" stroke-width="2"/>
+  <text x="18" y="730" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">PROGRESS / OVERRUN  ·  0-20  ·  USE TWO TOKENS</text>
 
-  <!-- Zone dividers for 3 deck areas -->
-  <line x1="287" y1="718" x2="287" y2="854" stroke="#3A5A3A" stroke-width="1"/>
-  <line x1="574" y1="718" x2="574" y2="854" stroke="#3A5A3A" stroke-width="1"/>
-
-  <!-- ZONE 1: EVENT DECK (x=0-287, center=143) -->
-  <text x="143" y="734" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" text-anchor="middle" letter-spacing="1">EVENT DECK</text>
-  <rect x="65" y="748" width="78" height="110" rx="5" fill="#0E1810"/>
-  <rect x="61" y="744" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5"/>
-  <text x="100" y="804" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DRAW</text>
-  <rect x="149" y="744" width="78" height="110" rx="5" fill="#162018" stroke="#4A6A4A" stroke-width="1.5" stroke-dasharray="7,4"/>
-  <text x="188" y="804" font-family="Arial,sans-serif" font-size="7" fill="#4A6A4A" text-anchor="middle">DISCARD</text>
-
-  <!-- ZONE 2: ENEMY DECK (x=287-574, center=430) -->
-  <text x="430" y="734" font-family="Arial,sans-serif" font-size="9" fill="#8888CC" text-anchor="middle" letter-spacing="1">ENEMY DECK</text>
-  <rect x="352" y="748" width="78" height="110" rx="5" fill="#0A0A18"/>
-  <rect x="348" y="744" width="78" height="110" rx="5" fill="#12122A" stroke="#5555AA" stroke-width="1.5"/>
-  <text x="387" y="804" font-family="Arial,sans-serif" font-size="7" fill="#5555AA" text-anchor="middle">DRAW</text>
-  <rect x="436" y="744" width="78" height="110" rx="5" fill="#12122A" stroke="#444488" stroke-width="1" stroke-dasharray="7,4"/>
-  <text x="475" y="804" font-family="Arial,sans-serif" font-size="7" fill="#444488" text-anchor="middle">DISCARD</text>
-
-  <!-- ZONE 3: BOSS DECK (x=574-860, center=717) -->
-  <text x="717" y="734" font-family="Arial,sans-serif" font-size="9" fill="#AA5555" text-anchor="middle" letter-spacing="1">BOSS DECK</text>
-  <rect x="639" y="748" width="78" height="110" rx="5" fill="#180A0A"/>
-  <rect x="635" y="744" width="78" height="110" rx="5" fill="#1A0A0A" stroke="#AA4444" stroke-width="1.5"/>
-  <text x="674" y="804" font-family="Arial,sans-serif" font-size="7" fill="#AA4444" text-anchor="middle">DRAW</text>
-  <rect x="723" y="744" width="78" height="110" rx="5" fill="#1A0A0A" stroke="#884444" stroke-width="1" stroke-dasharray="7,4"/>
-  <text x="762" y="804" font-family="Arial,sans-serif" font-size="7" fill="#884444" text-anchor="middle">DISCARD</text>
-
-  <!-- Divider above trackers -->
-  <line x1="10" y1="862" x2="850" y2="862" stroke="#5A7A5A" stroke-width="2"/>
-
-  <!-- PROGRESS TRACKER (0-10): 11 boxes, each 76px, starting x=10 -->
-  <text x="18" y="878" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">PROGRESS TRACKER  ·  0-10</text>
-  <rect x="10"  y="884" width="76" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="48"  y="911" font-family="Arial,sans-serif" font-size="14" fill="#E8DDB5" text-anchor="middle">0</text>
-  <rect x="86"  y="884" width="76" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="124" y="911" font-family="Arial,sans-serif" font-size="14" fill="#E8DDB5" text-anchor="middle">1</text>
-  <rect x="162" y="884" width="76" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="200" y="911" font-family="Arial,sans-serif" font-size="14" fill="#E8DDB5" text-anchor="middle">2</text>
-  <rect x="238" y="884" width="76" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="276" y="911" font-family="Arial,sans-serif" font-size="14" fill="#E8DDB5" text-anchor="middle">3</text>
-  <rect x="314" y="884" width="76" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="352" y="911" font-family="Arial,sans-serif" font-size="14" fill="#E8DDB5" text-anchor="middle">4</text>
-  <rect x="390" y="884" width="76" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="428" y="911" font-family="Arial,sans-serif" font-size="14" fill="#E8DDB5" text-anchor="middle">5</text>
-  <rect x="466" y="884" width="76" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="504" y="911" font-family="Arial,sans-serif" font-size="14" fill="#E8DDB5" text-anchor="middle">6</text>
-  <rect x="542" y="884" width="76" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="580" y="911" font-family="Arial,sans-serif" font-size="14" fill="#E8DDB5" text-anchor="middle">7</text>
-  <rect x="618" y="884" width="76" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="656" y="911" font-family="Arial,sans-serif" font-size="14" fill="#E8DDB5" text-anchor="middle">8</text>
-  <rect x="694" y="884" width="76" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="732" y="911" font-family="Arial,sans-serif" font-size="14" fill="#E8DDB5" text-anchor="middle">9</text>
-  <rect x="770" y="884" width="76" height="44" rx="3" fill="#162018" stroke="#6A4A4A" stroke-width="1.5"/>
-  <text x="808" y="911" font-family="Arial,sans-serif" font-size="14" fill="#AA6655" text-anchor="middle">10</text>
-
-  <!-- Divider between trackers -->
-  <line x1="10" y1="936" x2="850" y2="936" stroke="#3A5A3A" stroke-width="1"/>
-
-  <!-- OVERRUN TRACKER (0-20): 21 boxes, each 40px, starting x=10 -->
-  <text x="18" y="952" font-family="Arial,sans-serif" font-size="9" fill="#8AAA78" letter-spacing="1.5">OVERRUN TRACKER  ·  0-20</text>
-  <rect x="10"  y="958" width="40" height="18" rx="2" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="30"  y="971" font-family="Arial,sans-serif" font-size="9" fill="#E8DDB5" text-anchor="middle">0</text>
-  <rect x="50"  y="958" width="40" height="18" rx="2" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="70"  y="971" font-family="Arial,sans-serif" font-size="9" fill="#E8DDB5" text-anchor="middle">1</text>
-  <rect x="90"  y="958" width="40" height="18" rx="2" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="110" y="971" font-family="Arial,sans-serif" font-size="9" fill="#E8DDB5" text-anchor="middle">2</text>
-  <rect x="130" y="958" width="40" height="18" rx="2" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="150" y="971" font-family="Arial,sans-serif" font-size="9" fill="#E8DDB5" text-anchor="middle">3</text>
-  <rect x="170" y="958" width="40" height="18" rx="2" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="190" y="971" font-family="Arial,sans-serif" font-size="9" fill="#E8DDB5" text-anchor="middle">4</text>
-  <rect x="210" y="958" width="40" height="18" rx="2" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="230" y="971" font-family="Arial,sans-serif" font-size="9" fill="#E8DDB5" text-anchor="middle">5</text>
-  <rect x="250" y="958" width="40" height="18" rx="2" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="270" y="971" font-family="Arial,sans-serif" font-size="9" fill="#E8DDB5" text-anchor="middle">6</text>
-  <rect x="290" y="958" width="40" height="18" rx="2" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="310" y="971" font-family="Arial,sans-serif" font-size="9" fill="#E8DDB5" text-anchor="middle">7</text>
-  <rect x="330" y="958" width="40" height="18" rx="2" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="350" y="971" font-family="Arial,sans-serif" font-size="9" fill="#E8DDB5" text-anchor="middle">8</text>
-  <rect x="370" y="958" width="40" height="18" rx="2" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
-  <text x="390" y="971" font-family="Arial,sans-serif" font-size="9" fill="#E8DDB5" text-anchor="middle">9</text>
-  <rect x="410" y="958" width="40" height="18" rx="2" fill="#162018" stroke="#5A5A3A" stroke-width="1"/>
-  <text x="430" y="971" font-family="Arial,sans-serif" font-size="9" fill="#CCCC88" text-anchor="middle">10</text>
-  <rect x="450" y="958" width="40" height="18" rx="2" fill="#1C1810" stroke="#6A5030" stroke-width="1"/>
-  <text x="470" y="971" font-family="Arial,sans-serif" font-size="9" fill="#CCAA55" text-anchor="middle">11</text>
-  <rect x="490" y="958" width="40" height="18" rx="2" fill="#1C1410" stroke="#7A4020" stroke-width="1"/>
-  <text x="510" y="971" font-family="Arial,sans-serif" font-size="9" fill="#CC8840" text-anchor="middle">12</text>
-  <rect x="530" y="958" width="40" height="18" rx="2" fill="#1C1010" stroke="#8A3020" stroke-width="1"/>
-  <text x="550" y="971" font-family="Arial,sans-serif" font-size="9" fill="#CC6640" text-anchor="middle">13</text>
-  <rect x="570" y="958" width="40" height="18" rx="2" fill="#1C0E0E" stroke="#9A2828" stroke-width="1"/>
-  <text x="590" y="971" font-family="Arial,sans-serif" font-size="9" fill="#CC4040" text-anchor="middle">14</text>
-  <rect x="610" y="958" width="40" height="18" rx="2" fill="#1C0C0C" stroke="#AA2020" stroke-width="1"/>
-  <text x="630" y="971" font-family="Arial,sans-serif" font-size="9" fill="#DD2828" text-anchor="middle">15</text>
-  <rect x="650" y="958" width="40" height="18" rx="2" fill="#1E0A0A" stroke="#AA1A1A" stroke-width="1"/>
-  <text x="670" y="971" font-family="Arial,sans-serif" font-size="9" fill="#DD1C1C" text-anchor="middle">16</text>
-  <rect x="690" y="958" width="40" height="18" rx="2" fill="#200808" stroke="#BB1414" stroke-width="1.5"/>
-  <text x="710" y="971" font-family="Arial,sans-serif" font-size="9" fill="#EE1818" text-anchor="middle">17</text>
-  <rect x="730" y="958" width="40" height="18" rx="2" fill="#220606" stroke="#CC1010" stroke-width="1.5"/>
-  <text x="750" y="971" font-family="Arial,sans-serif" font-size="9" fill="#EE1010" text-anchor="middle">18</text>
-  <rect x="770" y="958" width="40" height="18" rx="2" fill="#240404" stroke="#DD0C0C" stroke-width="1.5"/>
-  <text x="790" y="971" font-family="Arial,sans-serif" font-size="9" fill="#FF0C0C" text-anchor="middle">19</text>
-  <rect x="810" y="958" width="40" height="18" rx="2" fill="#2A0202" stroke="#FF0000" stroke-width="2"/>
-  <text x="830" y="971" font-family="Arial,sans-serif" font-size="10" font-weight="bold" fill="#FF0000" text-anchor="middle">20</text>
+  <!-- 21 boxes: each 40px wide x 44px tall, x=10-850 -->
+  <rect x="10"  y="736" width="40" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="30"  y="763" font-family="Arial,sans-serif" font-size="13" fill="#E8DDB5" text-anchor="middle">0</text>
+  <rect x="50"  y="736" width="40" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="70"  y="763" font-family="Arial,sans-serif" font-size="13" fill="#E8DDB5" text-anchor="middle">1</text>
+  <rect x="90"  y="736" width="40" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="110" y="763" font-family="Arial,sans-serif" font-size="13" fill="#E8DDB5" text-anchor="middle">2</text>
+  <rect x="130" y="736" width="40" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="150" y="763" font-family="Arial,sans-serif" font-size="13" fill="#E8DDB5" text-anchor="middle">3</text>
+  <rect x="170" y="736" width="40" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="190" y="763" font-family="Arial,sans-serif" font-size="13" fill="#E8DDB5" text-anchor="middle">4</text>
+  <rect x="210" y="736" width="40" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="230" y="763" font-family="Arial,sans-serif" font-size="13" fill="#E8DDB5" text-anchor="middle">5</text>
+  <rect x="250" y="736" width="40" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="270" y="763" font-family="Arial,sans-serif" font-size="13" fill="#E8DDB5" text-anchor="middle">6</text>
+  <rect x="290" y="736" width="40" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="310" y="763" font-family="Arial,sans-serif" font-size="13" fill="#E8DDB5" text-anchor="middle">7</text>
+  <rect x="330" y="736" width="40" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="350" y="763" font-family="Arial,sans-serif" font-size="13" fill="#E8DDB5" text-anchor="middle">8</text>
+  <rect x="370" y="736" width="40" height="44" rx="3" fill="#162018" stroke="#4A6A4A" stroke-width="1"/>
+  <text x="390" y="763" font-family="Arial,sans-serif" font-size="13" fill="#E8DDB5" text-anchor="middle">9</text>
+  <rect x="410" y="736" width="40" height="44" rx="3" fill="#162018" stroke="#5A5A3A" stroke-width="1"/>
+  <text x="430" y="763" font-family="Arial,sans-serif" font-size="13" fill="#CCCC88" text-anchor="middle">10</text>
+  <rect x="450" y="736" width="40" height="44" rx="3" fill="#1C1810" stroke="#6A5030" stroke-width="1"/>
+  <text x="470" y="763" font-family="Arial,sans-serif" font-size="13" fill="#CCAA55" text-anchor="middle">11</text>
+  <rect x="490" y="736" width="40" height="44" rx="3" fill="#1C1410" stroke="#7A4020" stroke-width="1"/>
+  <text x="510" y="763" font-family="Arial,sans-serif" font-size="13" fill="#CC8840" text-anchor="middle">12</text>
+  <rect x="530" y="736" width="40" height="44" rx="3" fill="#1C1010" stroke="#8A3020" stroke-width="1"/>
+  <text x="550" y="763" font-family="Arial,sans-serif" font-size="13" fill="#CC6640" text-anchor="middle">13</text>
+  <rect x="570" y="736" width="40" height="44" rx="3" fill="#1C0E0E" stroke="#9A2828" stroke-width="1"/>
+  <text x="590" y="763" font-family="Arial,sans-serif" font-size="13" fill="#CC4040" text-anchor="middle">14</text>
+  <rect x="610" y="736" width="40" height="44" rx="3" fill="#1C0C0C" stroke="#AA2020" stroke-width="1"/>
+  <text x="630" y="763" font-family="Arial,sans-serif" font-size="13" fill="#DD2828" text-anchor="middle">15</text>
+  <rect x="650" y="736" width="40" height="44" rx="3" fill="#1E0A0A" stroke="#AA1A1A" stroke-width="1"/>
+  <text x="670" y="763" font-family="Arial,sans-serif" font-size="13" fill="#DD1C1C" text-anchor="middle">16</text>
+  <rect x="690" y="736" width="40" height="44" rx="3" fill="#200808" stroke="#BB1414" stroke-width="1.5"/>
+  <text x="710" y="763" font-family="Arial,sans-serif" font-size="13" fill="#EE1818" text-anchor="middle">17</text>
+  <rect x="730" y="736" width="40" height="44" rx="3" fill="#220606" stroke="#CC1010" stroke-width="1.5"/>
+  <text x="750" y="763" font-family="Arial,sans-serif" font-size="13" fill="#EE1010" text-anchor="middle">18</text>
+  <rect x="770" y="736" width="40" height="44" rx="3" fill="#240404" stroke="#DD0C0C" stroke-width="1.5"/>
+  <text x="790" y="763" font-family="Arial,sans-serif" font-size="13" fill="#FF0C0C" text-anchor="middle">19</text>
+  <rect x="810" y="736" width="40" height="44" rx="3" fill="#2A0202" stroke="#FF0000" stroke-width="2"/>
+  <text x="830" y="763" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#FF0000" text-anchor="middle">20</text>
 
   <!-- Bottom strip -->
-  <rect x="0" y="972" width="860" height="16" rx="10" fill="#1A2E1B"/>
+  <rect x="0" y="784" width="860" height="16" rx="10" fill="#1A2E1B"/>
 
 </svg>
