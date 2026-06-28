@@ -3,7 +3,6 @@ Barracks,Mech Station,Mechs added to deck,Next Mech Purchased this round is Free
 Barracks,Vehicle Bay,Vehicles Added to deck,Next Vehicle Purchased this round is Free upto your rank,5,5,3
 Barracks,Additional Bedding,Unlocks Shop Slots,Recruit 1 unit for free upto your rank,5,5,3
 Barracks,Conscription,The lowest rank soldier in the shop at start of round is placed into reserves for one of the lanes.,"Place the lowest ranked soldier into lane, bench the active unit with its gear",5,5,3
-Barracks,Rapid Deployment,You can purchase units during combat directly into the lane,players can purchase units during combat directly into the lane this turn only,5,5,3
 Barracks,Advanced Mechanized,"reduce -2 Tech costs of mechs, -3 Tech cost of Vehicles","reduce -2 Tech costs of mechs, -3 Tech cost of Vehicles for this turn only",5,5,3
 Barracks,AI advancements,Organic costs can be covered by Tech or Alien resource,Remove organics costs from units for this turn,5,5,3
 Barracks,Gene Modding,Tech costs can be covered by Organics,Tech costs can be covered by Organics for this turn,5,5,3

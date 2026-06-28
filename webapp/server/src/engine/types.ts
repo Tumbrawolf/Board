@@ -9,7 +9,7 @@ import type {
   TacticianCard,
   UnitCard,
 } from "./data.js";
-import type { Difficulty, Location } from "./constants.js";
+import type { Difficulty, EnemyRank, Location } from "./constants.js";
 
 export interface ResourcePool {
   Organic: number;
@@ -37,11 +37,22 @@ export interface GamePlayer {
   res: ResourcePool;
   active: UnitInstance | null;
   reserve: UnitInstance[];
+  /** Units removed from reserve during "Silence in no mans land" so bots can meet the ≤1
+   * reserve condition without permanently losing the units. Restored to reserve at round start. */
+  benchedUnits: UnitInstance[];
+  /** Units sent to Medical Bay instead of dying. Each worker placed at Medical Bay retrieves one
+   * unit from this pool, heals it to full, and returns it to reserve. Persists across rounds. */
+  medBayUnits: UnitInstance[];
   laneEnemyReserve: EnemyCard[];
   hand: CommandCard[];
   gearHand: GearCard[];
   graveyard: UnitInstance[];
   overrunLastRound: boolean;
+  /** Which physical lane (by lane-owner seatIndex) this player controls this round. Default: own
+   * seatIndex (identity). Commander may reassign at round start; resets to identity each round.
+   * Units/gear stay in their physical lane; resources/workers/hand stay with the player; combat
+   * stats (kills, overruns) are credited to the controller of each lane. */
+  controlledLaneSeat: number;
   missions: MissionCard[];
   secretObjectives: SecretObjectiveCard[];
   tactician: TacticianCard | null;
@@ -56,14 +67,28 @@ export interface GamePlayer {
     deaths: number;
     overrunsSuffered: number;
     promotionsReceived: number;
-    donationsMade: number;
+    donationsMade: ResourcePool;
     healsGiven: number;
     gearEquipped: number;
+    gearEquippedToAllies: number;
+    gearDiscarded: number;
+    misdirectorOtherOverruns: number;
+    misdirectorLaneClean: boolean;
+    commanderStolenFromHigher: number;
+    conductorCommandFromLower: number;
+    progressAsCommander: number;
     missionsCompleted: number;
     eventsPassed: number;
     eventsFailed: number;
     commanderRounds: number;
     unitsRetired: number;
+    /** Hunter SO: how many enemies with a non-empty Reveal or Passive ability this player has killed. */
+    abilityEnemyKills: number;
+    /** Survivor SO: the highest consecutive-round survival count achieved by any single active unit
+     * this player has ever controlled. Incremented after each round the same unit is still active. */
+    longestActiveSurvival: number;
+    /** Leroy SO: number of rounds this player entered with exactly 1 unit in lane (active, no reserve). */
+    roundsWithSingleUnit: number;
     secretObjectiveComplete: string | null;
     accusationsMade: number;
     accusationsCorrect: number;
@@ -107,6 +132,40 @@ export interface GameState {
   shopUnits: UnitCard[];
   shopGear: GearCard[];
   unitDeck: UnitCard[];
+  /** Mech and Vehicle units start locked -- added to unitDeck when Mech Station / Vehicle Bay is built. */
+  mechDeckLocked: UnitCard[];
+  vehicleDeckLocked: UnitCard[];
+  mechUnlocked: boolean;
+  vehicleUnlocked: boolean;
+  /** Unit shop slot cap -- starts at 3, raised to 4 when Additional Bedding is built. */
+  unitShopCap: number;
+  /** Per-round Tech cost discount on Mech/Vehicle unit purchases. Set by Advanced Mechanized
+   * passive (permanent while built) and active (this-round bonus). Reset to passive-only value
+   * at round start. */
+  mechTechDiscount: number;
+  vehicleTechDiscount: number;
+  /** AI advancements active: unit Organic costs = 0 this round. */
+  unitOrganicFree: boolean;
+  /** AI advancements passive: unit Organic costs can be covered by Tech or Alien. */
+  unitOrganicCanUseTechOrAlien: boolean;
+  /** Gene Modding passive/active: Tech costs on purchases can be covered by Organic. */
+  techCanUseOrganic: boolean;
+  /** Flash Sale: cost multiplier applied to all shop purchases this round (default 1).
+   * 0.5 = half price (rounded up); 2 = double price. */
+  shopCostMultiplier: number;
+  /** Flash Sale penalty: becomes shopCostMultiplier at start of the following round. */
+  shopCostMultiplierNextRound: number;
+  /** Experimental gear starts locked -- added to gearDeck when Experimental Science is built. */
+  experimentalGearDeckLocked: GearCard[];
+  experimentalGearUnlocked: boolean;
+  /** Mad Science passive: Experimental gear Organic and Tech costs = 0 (only Alien cost applies). */
+  experimentalOrganicTechFree: boolean;
+  /** Mad Science active: all gear Alien costs halved this round. */
+  gearAlienHalfThisRound: boolean;
+  /** Ethics Committee passive: non-Experimental gear Alien costs = 0 while built. */
+  basicGearAlienFree: boolean;
+  /** Ethics Committee active: all purchase Alien costs = 0 this round. */
+  allAlienFreeThisRound: boolean;
   gearDeck: GearCard[];
   commandDeck: CommandCard[];
   missionDeck: MissionCard[];
@@ -136,9 +195,7 @@ export interface GameState {
    * Event draw -- see runRound. Each backs one Event's Round Effect that needs to be checked from
    * a different part of the round loop than events.ts itself (worker income, gear equip cost,
    * Medical Bay, worker placement eligibility, Containment capacity, commander handoff). */
-  missionRankReqRemoved: boolean;
   medicalBayCostsOrganic: boolean;
-  equipCostDoubled: boolean;
   gearActiveCostDoubledType: string | null;
   locationsWithUpgradesBlocked: boolean;
   disabledLocation: Location | null;
@@ -153,6 +210,10 @@ export interface GameState {
    * reserve retirement (runRetireFromDuty) and Honorable Discharge's "units retire on death
    * instead of dying" Round Effect. Used by Honorable Discharge's own Completion Condition. */
   retiresThisRound: Map<number, number>;
+  /** Sum of RANK_NUM values of all missions completed this round. Used by Lead by example's exact
+   * Completion Condition ("combined rank of completed missions = rank total of players"). Reset
+   * each round. */
+  missionRankCompletedThisRound: number;
   /** Garbage Day's "Recycle" pile -- Command Cards pushed here when activated (while this Event
    * is active or garbageDayPermanent is set), so "restore from recycle to hand" has something
    * real to draw from. */
@@ -167,15 +228,16 @@ export interface GameState {
    * additional co-located worker (reward stacks positive, penalty stacks negative). Starts at 0,
    * never resets -- reward/penalty are standing rule changes, same as retireGivesNoResource. */
   locationSharingBonus: number;
-  /** Crowded Worksite: total resources donated to command this round (reset each round). Used by
-   * the Completion Condition ("Donate 10 resources to command"). */
-  donationsThisRound: number;
-  /** Crowded Worksite Completion Reward: when set, each worker income grant also adds 1 of the
-   * same resource to the command pool. Persistent once earned. */
-  crowdedWorksiteReward: boolean;
-  /** Crowded Worksite Failure Penalty: when set, only the first non-commander player to donate
-   * each round actually donates -- all subsequent donors are skipped. Persistent once triggered. */
-  donationCappedToOne: boolean;
+  /** Per-resource tally of resources players discarded to supply this round (Tax Fault, Cheap
+   * Knockoffs, Food Shortage, Forced Contribution completion conditions). Reset each round. */
+  returnedToSupplyThisRound: ResourcePool;
+  /** Tax Fault Completion Reward: permanent +N Alien granted to every player each round, after
+   * income. Stacks if reward fires multiple times. */
+  locationAlienBonus: number;
+  /** Persistent flat surcharge added to each resource's cost for all shop purchases (units and
+   * gear). Cheap Knockoffs penalty → .Tech += 2, Food Shortage → .Organic += 2,
+   * Tax Fault → .Alien += 2. Stacks each time a penalty fires. */
+  shopCostBonus: ResourcePool;
   /** Assigned Posts' "Roll Dice to select locations" -- one location rolled per seatIndex when
    * the Event becomes active. Normally cleared at the next round's Event-flag reset like every
    * other per-round Event flag; assignedPostsPersist (set by this card's own Failure Penalty,
@@ -202,11 +264,109 @@ export interface GameState {
    * "${unitId}-${abilityName}" (instance-specific) or just "${abilityName}" (name-wide).
    * Set by mission rewards or card text that grants extra uses; never reset per round. */
   abilityLimitOverrides: Map<string, number>;
-  /** The Breaker Tactician's Active ("Remove all Shields and Armor from active enemies") --
-   * seatIndices where the active fired this round. Consumed at enemy Combatant construction
-   * to zero curShields and apply max shredArmor for that lane. Reset each round. */
-  breakerActiveLanes: Set<number>;
+  /** The Breaker Tactician's Active ("Remove all Shields and Armor from active enemies in all
+   * lanes") -- set when the active fires this round. Consumed at enemy Combatant construction
+   * to zero curShields and apply max shredArmor across every lane. Reset each round. */
+  breakerActive: boolean;
+  /** The Chessmaster Tactician's Active -- cloned EnemyCard references that were swapped this
+   * round. Any enemy whose reference is in this Set has its Combatant curHp halved at
+   * construction (equivalent to taking double damage). Reset each round. */
+  chessmasterDoubledEnemies: Set<EnemyCard>;
+  /** Contained enemy pool -- moved from GameEngine's private field so Tactician actives (The
+   * Jailer), Events, and future mechanics can read/modify it without extra parameters. Fed by
+   * the containment logic in runDeploymentAndCombat. */
+  containedEnemyPool: EnemyRank[];
+  /** Per-round free-activation markers, keyed by "${unitId}-${gearName}". Set by The Engineer
+   * Tactician's Active (refresh + free next use). Consumed by the gear active loop: if the key
+   * is present, cost is skipped once and the entry is deleted. Reset each round. */
+  freeAbilityNextUse: Set<string>;
   /** The Kingmaker Tactician's Active ("Command cannot change next turn") -- skips the normal
    * commander-handoff block at end of the round it is set, then cleared. */
   commanderLocked: boolean;
+  /** Silence in no mans land Completion Reward: "Scouts reveal additional enemies" -- permanently
+   * adds to every round's scout reveal count. Stacks if the reward fires multiple times. */
+  permanentScoutRevealBonus: number;
+  /** Silence in no mans land Failure Penalty: "No reserve ability activations" -- reserve units'
+   * gear combat mods are skipped this round. Reset at the start of the next round. */
+  reserveAbilitiesDisabled: boolean;
+  /** Gear-freeze Event Reward ("Active effects free this round") -- the gear type whose actives
+   * cost 0 Tech this round. Copied from gearActiveFreeNextRound at round start, then that field
+   * is cleared. Null = no free type active. */
+  gearActiveFreeType: string | null;
+  /** Carry field: set post-combat by a gear-freeze Completion Reward, copied into gearActiveFreeType
+   * at the next round's reset so the reward applies during the following round's combat. */
+  gearActiveFreeNextRound: string | null;
+  /** Carry field: set post-combat by a gear-freeze Failure Penalty, copied into
+   * gearActiveCostDoubledType at the next round's reset so the penalty applies next round. */
+  gearActiveCostDoubledNextRound: string | null;
+  /** Recall Event Completion Reward: gear of this type in the shop is free to purchase next round.
+   * "any" = all types (Total Disarmament). Copied from shopGearFreeTypeNextRound at round start. */
+  shopGearFreeType: string | null;
+  /** Carry field: set post-combat by a Recall Completion Reward, applied next round then cleared. */
+  shopGearFreeTypeNextRound: string | null;
+  /** Emergency Triage Completion Reward ("Double future Healing") -- each worker at Medical Bay
+   * retrieves this many extra units per visit (stacks if reward fires multiple times). */
+  healingPerWorkerBonus: number;
+  /** Medical Focus Completion Reward ("Healing Generates organics") -- permanently, Med Bay
+   * retrievals always generate Organic even if a future Medical Focus round effect is active. */
+  medBayAlwaysGeneratesOrganic: boolean;
+  /** Medical Focus Failure Penalty ("Healing costs organics with cap") -- permanently, Med Bay
+   * retrievals cost 2 Organic per unit retrieved instead of granting Organic. */
+  medBayCostOrganicPermanently: boolean;
+  /** Kill Contest Completion Reward -- every round, the highest-rank active unit across all lanes
+   * deals double damage at combat start. Permanent once set. */
+  killContestHighRankDoubled: boolean;
+  /** Kill Contest Failure Penalty -- every round, the highest-rank active unit across all lanes
+   * deals half damage at combat start. Permanent once set. */
+  killContestHighRankHalved: boolean;
+  /** Leadership Crisis: seatIndex of the unanimous winner of this round's blind vote, or null if
+   * the vote was split. Reset each round. Used by eventConditionMet and the commander handoff. */
+  leadershipCrisisWinner: number | null;
+  /** Leadership Crisis Failure Penalty: every other round the commander is forced to change.
+   * Permanent once set; commanderEveryOtherRoundParity determines which rounds it fires on. */
+  commanderMustChangeEveryOtherRound: boolean;
+  /** Parity (0 or 1) that determines which rounds the every-other-round forced change fires.
+   * Set to (roundNum + 1) % 2 when the penalty first fires. */
+  commanderEveryOtherRoundParity: number;
+  /** Isolation Orders Completion Reward: permanent solo income bonus — each worker alone at a
+   * location grants +isolationSoloBonus of the player's lowest resource. Stacks per pass. */
+  isolationSoloBonus: number;
+  /** Isolation Orders Failure Penalty: permanent co-location penalty — each co-located worker
+   * costs isolationSharingPenalty of that location's primary resource. Stacks per failure. */
+  isolationSharingPenalty: number;
+  /** Saboteur Investigation Completion Reward: bonus upgrades drawn from the deck and placed at
+   * each location beyond the normal slot cap. Per-location count so canBuildCard can exclude
+   * them from the regular-upgrade tally when checking the slot limit. */
+  locationBonusUpgradesCount: Record<Location, number>;
+  /** Saboteur Investigation / Capacity Threshold Failure Penalty: permanent cumulative −1 to the
+   * effective upgrade slot cap at every location. Stacks each time a penalty fires. */
+  locationUpgradeLimitPenalty: number;
+  /** Renovations round effect: built upgrades at each location, temporarily moved aside while the
+   * round runs. Restored after event resolution; excess goes to the commander's hand. Null when
+   * Renovations is not the active event this round. */
+  renovationSetAsideUpgrades: Record<Location, CommandCard[]> | null;
+  /** Companion bonus-count snapshot taken when renovationSetAsideUpgrades is populated, so
+   * restoration can correctly distinguish regular vs. bonus upgrades. */
+  renovationSetAsideBonusCounts: Record<Location, number> | null;
+  /** Renovations Completion Reward: players may remove any built upgrade from a location to free
+   * a slot (builds at cap auto-remove the cheapest existing upgrade to make room). */
+  renovationRemoveUnlock: boolean;
+  /** Renovations Failure Penalty: at the end of every future round all built upgrades are
+   * stripped from their locations and returned to the command deck. */
+  renovationEndOfRoundStrip: boolean;
+  /** Annihilation Clause Completion Reward: enemies killed by a player whose rank exceeds the
+   * current enemy tier rank have deleteOnKill set — they skip containment. Permanent once set. */
+  annihilationEnemiesDeletedByHigherRank: boolean;
+  /** Annihilation Clause Failure Penalty: allies killed by enemies of higher tier than the player's
+   * rank bypass all saves (Chronostasis, doctor, revive). Permanent once set. */
+  annihilationAlliesDeletedByHigherRank: boolean;
+  /** Ion Storm Completion Reward: permanently strips all shields from each enemy when its Combatant
+   * is created (i.e., scouted/revealed at combat start). Permanent once set. */
+  ionStormScoutedLoseShields: boolean;
+  /** Ion Storm Failure Penalty: permanent cumulative bonus shields added to each enemy at combat
+   * entry. Stacks +10 per failure. */
+  ionStormEnemyEntryShields: number;
+  /** Per-round total shield points absorbed (destroyed) across all combatants in both combat passes.
+   * Used by Ion Storm's Completion Condition ("40 shields destroyed this round"). Reset each round. */
+  shieldsDestroyedThisRound: number;
 }

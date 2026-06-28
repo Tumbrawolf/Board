@@ -2,10 +2,13 @@ import {
   COMMAND_HAND_SIZE,
   COMMANDER_HAND_SIZE,
   ENEMY_RANK_NUM,
+  GEAR_HAND_LIMIT,
+  LOCATION_PRIMARY_RESOURCE,
   LOCATIONS,
   OVERRUN_START,
   RANK_NUM,
   RANK_ORDER,
+  UPGRADE_SLOT_CAP,
   bossTierFromProgress,
   enemyRankFromProgress,
   hoardCount,
@@ -23,7 +26,7 @@ import {
   Combatant,
 } from "./combat.js";
 import { applyBattlefieldActive, applyCommandActive } from "./commandCards.js";
-import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, tryReviveOnce } from "./units.js";
+import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, tryDoctorSave, tryReviveOnce } from "./units.js";
 import { applyEnemyCombatMods } from "./enemies.js";
 import { applyGearCombatMods, applyPrecombatGear, tryChronostasisSave } from "./gear.js";
 import { applyBossBoardWideMods, applyBossTier, resolveBossExchange } from "./bosses.js";
@@ -32,6 +35,7 @@ import { applyMissionReward, missionRequirementMet } from "./missions.js";
 import { checkSecretObjectives } from "./secretObjectives.js";
 import { payEscrow, resolveAccusation } from "./accusations.js";
 import {
+  applyTacticianActive,
   applyTacticianCombatMods,
   applyTacticianPrecombat,
   tacticianContainmentBuildDiscount,
@@ -51,6 +55,7 @@ import {
   canUseEffect,
   healUnit,
   instancePower,
+  makeUnitInstance,
   recordEffectUse,
   scoutValue,
   weakestPlayer,
@@ -107,7 +112,6 @@ export class GameEngine {
   private decisions: DecisionProvider;
   private onLog: LogFn;
   private placementsThisRound: Record<number, Location[]> = {};
-  private containedEnemies: EnemyRank[] = [];
   /** sim.py's containment_slots: starts at 0 (Containment storage genuinely does nothing until
    * "Containment Protocol" is built, unlike the other Passive-unlock flags it sets alongside,
    * which are inert everywhere in the source too -- only this one is actually consumed). */
@@ -134,8 +138,10 @@ export class GameEngine {
   ) {
     this.optionalRules = optionalRules;
     const data = loadGameData();
-    this.unitDeckFull = shuffle(data.units);
-    this.gearDeckFull = shuffle(data.gear) as any;
+    const allUnits = shuffle(data.units);
+    this.unitDeckFull = allUnits.filter((u) => !u.Type.includes("Mech") && !u.Type.includes("Vehicle"));
+    const allGear = shuffle(data.gear) as any[];
+    this.gearDeckFull = allGear.filter((g) => g.Type !== "Experimental") as any;
     this.commandDeckFull = shuffle(data.commandCards);
     this.enemyByRank = {} as any;
     for (const e of data.enemies) {
@@ -158,11 +164,14 @@ export class GameEngine {
       res: { Organic: 2, Tech: 0, Alien: 0 }, // README #36 starting Organic lever
       active: null,
       reserve: [],
+      benchedUnits: [],
+      medBayUnits: [],
       laneEnemyReserve: [],
       hand: [],
       gearHand: [],
       graveyard: [],
       overrunLastRound: false,
+      controlledLaneSeat: s.seatIndex,
       missions: [],
       secretObjectives: secretObjectiveDeck.length >= 2 ? [secretObjectiveDeck.pop()!, secretObjectiveDeck.pop()!] : [],
       tactician: tacticianDeck.pop() ?? null,
@@ -174,14 +183,24 @@ export class GameEngine {
         deaths: 0,
         overrunsSuffered: 0,
         promotionsReceived: 0,
-        donationsMade: 0,
+        donationsMade: { Organic: 0, Tech: 0, Alien: 0 },
         healsGiven: 0,
         gearEquipped: 0,
+        gearEquippedToAllies: 0,
+        gearDiscarded: 0,
+        misdirectorOtherOverruns: 0,
+        misdirectorLaneClean: true,
+        commanderStolenFromHigher: 0,
+        conductorCommandFromLower: 0,
+        progressAsCommander: 0,
         missionsCompleted: 0,
         eventsPassed: 0,
         eventsFailed: 0,
         commanderRounds: 0,
         unitsRetired: 0,
+        abilityEnemyKills: 0,
+        longestActiveSurvival: 0,
+        roundsWithSingleUnit: 0,
         secretObjectiveComplete: null,
         accusationsMade: 0,
         accusationsCorrect: 0,
@@ -207,10 +226,28 @@ export class GameEngine {
       shopUnits: [],
       shopGear: [] as any,
       unitDeck: this.unitDeckFull,
+      mechDeckLocked: allUnits.filter((u) => u.Type.includes("Mech")),
+      vehicleDeckLocked: allUnits.filter((u) => u.Type.includes("Vehicle")),
+      mechUnlocked: false,
+      vehicleUnlocked: false,
+      unitShopCap: 3,
+      mechTechDiscount: 0,
+      vehicleTechDiscount: 0,
+      unitOrganicFree: false,
+      unitOrganicCanUseTechOrAlien: false,
+      techCanUseOrganic: false,
+      shopCostMultiplier: 1,
+      shopCostMultiplierNextRound: 1,
+      experimentalOrganicTechFree: false,
+      gearAlienHalfThisRound: false,
+      basicGearAlienFree: false,
+      allAlienFreeThisRound: false,
       gearDeck: this.gearDeckFull as any,
+      experimentalGearDeckLocked: allGear.filter((g) => g.Type === "Experimental") as any,
+      experimentalGearUnlocked: false,
       commandDeck: this.commandDeckFull,
       missionDeck,
-      eventDeck: shuffle(data.events.filter((e) => e["Event name"] !== "Forced Disposal")),
+      eventDeck: shuffle(data.events.filter((e) => e["Event name"] !== "Forced Disposal" && e["Event name"] !== "Crowded Worksite" && e["Event name"] !== "Prove your worth")),
       secretObjectiveDeck,
       tacticianDeck,
       bossDeck: shuffle(data.bosses),
@@ -223,9 +260,7 @@ export class GameEngine {
       effectUses: new Map(),
       lastKilledEnemy: null,
       activeEvent: null,
-      missionRankReqRemoved: false,
       medicalBayCostsOrganic: false,
-      equipCostDoubled: false,
       gearActiveCostDoubledType: null,
       locationsWithUpgradesBlocked: false,
       disabledLocation: null,
@@ -234,13 +269,14 @@ export class GameEngine {
       killsThisRound: new Map(),
       deathsThisRound: new Map(),
       retiresThisRound: new Map(),
+      missionRankCompletedThisRound: 0,
       recyclePile: [],
       recycledThisRound: new Set(),
       garbageDayPermanent: false,
       locationSharingBonus: 0,
-      donationsThisRound: 0,
-      crowdedWorksiteReward: false,
-      donationCappedToOne: false,
+      returnedToSupplyThisRound: { Organic: 0, Tech: 0, Alien: 0 },
+      locationAlienBonus: 0,
+      shopCostBonus: { Organic: 0, Tech: 0, Alien: 0 },
       assignedPostLocations: new Map(),
       assignedPostsPersist: false,
       retireGivesNoResource: false,
@@ -248,8 +284,39 @@ export class GameEngine {
       activationsThisRound: new Map(),
       abilityUsesThisRound: new Map(),
       abilityLimitOverrides: new Map(),
-      breakerActiveLanes: new Set(),
+      breakerActive: false,
+      chessmasterDoubledEnemies: new Set(),
+      containedEnemyPool: [],
+      freeAbilityNextUse: new Set(),
       commanderLocked: false,
+      permanentScoutRevealBonus: 0,
+      reserveAbilitiesDisabled: false,
+      gearActiveFreeType: null,
+      gearActiveFreeNextRound: null,
+      gearActiveCostDoubledNextRound: null,
+      shopGearFreeType: null,
+      shopGearFreeTypeNextRound: null,
+      healingPerWorkerBonus: 0,
+      medBayAlwaysGeneratesOrganic: false,
+      medBayCostOrganicPermanently: false,
+      killContestHighRankDoubled: false,
+      killContestHighRankHalved: false,
+      leadershipCrisisWinner: null,
+      commanderMustChangeEveryOtherRound: false,
+      commanderEveryOtherRoundParity: 0,
+      isolationSoloBonus: 0,
+      isolationSharingPenalty: 0,
+      locationBonusUpgradesCount: Object.fromEntries(LOCATIONS.map((l) => [l, 0])) as Record<Location, number>,
+      locationUpgradeLimitPenalty: 0,
+      ionStormScoutedLoseShields: false,
+      ionStormEnemyEntryShields: 0,
+      shieldsDestroyedThisRound: 0,
+      renovationSetAsideUpgrades: null,
+      renovationSetAsideBonusCounts: null,
+      renovationRemoveUnlock: false,
+      renovationEndOfRoundStrip: false,
+      annihilationEnemiesDeletedByHigherRank: false,
+      annihilationAlliesDeletedByHigherRank: false,
     };
 
     refillShopUnit(this.game);
@@ -333,28 +400,55 @@ export class GameEngine {
 
     // Commander draws 2 Events and chooses 1 to be active this round (README #32: skipped on
     // Round 0 -- there's no Combat Stage for a Round Effect to apply to, nothing to resolve later).
-    // Drawn BEFORE Missions (moved here) so "Prove your worth"'s Round Effect (mission Rank
-    // requirements removed) can actually affect the SAME round's mission draw, not just the next
-    // one.
     let activeEvent: EventCard | null = null;
-    game.missionRankReqRemoved = false;
     game.medicalBayCostsOrganic = false;
-    game.equipCostDoubled = false;
-    game.gearActiveCostDoubledType = null;
+    game.gearActiveCostDoubledType = game.gearActiveCostDoubledNextRound;
+    game.gearActiveCostDoubledNextRound = null;
+    game.gearActiveFreeType = game.gearActiveFreeNextRound;
+    game.gearActiveFreeNextRound = null;
+    game.shopGearFreeType = game.shopGearFreeTypeNextRound;
+    game.shopGearFreeTypeNextRound = null;
+    game.shopCostMultiplier = game.shopCostMultiplierNextRound;
+    game.shopCostMultiplierNextRound = 1;
     game.locationsWithUpgradesBlocked = false;
     game.disabledLocation = null;
     game.forceCommanderChange = false;
+    game.leadershipCrisisWinner = null;
+    if (game.commanderMustChangeEveryOtherRound && game.roundNum % 2 === game.commanderEveryOtherRoundParity) {
+      game.forceCommanderChange = true;
+    }
     game.containmentCapacityDoubled = false;
     game.killsThisRound = new Map();
     game.deathsThisRound = new Map();
     game.retiresThisRound = new Map();
+    game.missionRankCompletedThisRound = 0;
     game.recycledThisRound = new Set();
-    game.donationsThisRound = 0;
+    game.returnedToSupplyThisRound = { Organic: 0, Tech: 0, Alien: 0 };
     game.containedThisRound = 0;
+    game.shieldsDestroyedThisRound = 0;
     game.activationsThisRound = new Map();
     game.abilityUsesThisRound = new Map();
-    game.breakerActiveLanes = new Set();
+    game.mechTechDiscount = 0;
+    game.vehicleTechDiscount = 0;
+    game.unitOrganicFree = false;
+    game.unitOrganicCanUseTechOrAlien = false;
+    game.techCanUseOrganic = false;
+    game.experimentalOrganicTechFree = false;
+    game.gearAlienHalfThisRound = false;
+    game.basicGearAlienFree = false;
+    game.allAlienFreeThisRound = false;
+    game.breakerActive = false;
+    game.chessmasterDoubledEnemies = new Set();
+    game.freeAbilityNextUse = new Set();
     game.commanderLocked = false;
+    game.reserveAbilitiesDisabled = false;
+    // Reset lane assignments to identity each round (commander re-assigns below after Event pick).
+    for (const p of game.players) p.controlledLaneSeat = p.seatIndex;
+    // Silence in no mans land: restore any units benched last round back to reserve.
+    for (const p of game.players) {
+      p.reserve.push(...p.benchedUnits);
+      p.benchedUnits = [];
+    }
     // Assigned Posts' Failure Penalty: re-roll locations each persist round, then force first
     // worker placement in runWorkerPlacementAndIncome (detected by activeEvent !== "Assigned Posts"
     // with assignedPostLocations non-empty). Consumed after 1 extra round.
@@ -365,7 +459,7 @@ export class GameEngine {
       game.assignedPostLocations = new Map();
     }
     if (!isPrepRound) {
-      if (!game.eventDeck.length) game.eventDeck = shuffle(loadGameData().events.filter((e) => e["Event name"] !== "Forced Disposal"));
+      if (!game.eventDeck.length) game.eventDeck = shuffle(loadGameData().events.filter((e) => e["Event name"] !== "Forced Disposal" && e["Event name"] !== "Crowded Worksite" && e["Event name"] !== "Prove your worth"));
       const drawn = [];
       for (let i = 0; i < Math.min(2, game.eventDeck.length); i++) drawn.push(game.eventDeck.pop()!);
       // Commander picks which of the 2 drawn cards becomes active -- previously a random pick in
@@ -379,12 +473,58 @@ export class GameEngine {
         this.log(`  [Event] Active this round: ${activeEvent["Event name"]} -- ${activeEvent["Round Effect"]}`);
         applyEventRoundEffect(game, activeEvent, (t) => this.log(t));
       }
+      // Leadership Crisis: collect blind commander votes right after the event is revealed,
+      // before worker placement so players know the stakes when choosing their locations.
+      if (activeEvent?.["Event name"] === "Leadership Crisis") {
+        const candidates = game.players.map((p) => ({ seatIndex: p.seatIndex, name: p.name, rank: p.rank }));
+        const votes = new Map<number, number>();
+        for (const p of game.players) {
+          const voted = await this.decisions.chooseCommanderVote(p, game, candidates, votes);
+          votes.set(p.seatIndex, voted);
+        }
+        const votedSeats = new Set([...votes.values()]);
+        if (votedSeats.size === 1) {
+          game.leadershipCrisisWinner = [...votedSeats][0];
+          const winnerName = game.players.find((p) => p.seatIndex === game.leadershipCrisisWinner)?.name ?? "?";
+          this.log(`  [Leadership Crisis] Unanimous vote — ${winnerName} elected next commander`);
+        } else {
+          game.leadershipCrisisWinner = null;
+          const tally = [...votes.entries()].map(([voter, pick]) => {
+            const vName = game.players.find((p) => p.seatIndex === voter)?.name ?? "?";
+            const pName = game.players.find((p) => p.seatIndex === pick)?.name ?? "?";
+            return `${vName}→${pName}`;
+          }).join(", ");
+          this.log(`  [Leadership Crisis] Split vote (${tally}) — no consensus`);
+        }
+      }
     }
     game.activeEvent = activeEvent;
     // Garbage Day permanent effect: once earned, the restore-from-recycle mechanic applies every
     // round even when some other event is active (Garbage Day itself already handles it above).
     if (game.garbageDayPermanent && game.activeEvent?.["Event name"] !== "Garbage Day") {
       applyGarbageDayRestore(game, (t) => this.log(t));
+    }
+
+    // Commander lane assignment: commander may reassign which player controls which physical lane
+    // this round. Returns a Map<controllerSeatIndex, laneOwnerSeatIndex>. Bot always returns
+    // identity (no change). Human commander gets a socket prompt with current lane states.
+    if (!isPrepRound) {
+      const assignments = await this.decisions.chooseLaneAssignments(commander, game);
+      if (assignments.size) {
+        for (const p of game.players) {
+          const assigned = assignments.get(p.seatIndex);
+          if (typeof assigned === "number") p.controlledLaneSeat = assigned;
+        }
+        const nonIdentity = game.players.filter((p) => p.controlledLaneSeat !== p.seatIndex);
+        if (nonIdentity.length) {
+          this.log(
+            `  [Lane Assignment] ${nonIdentity.map((p) => {
+              const lp = game.players.find((q) => q.seatIndex === p.controlledLaneSeat)!;
+              return `${p.name} → ${lp.name}'s lane`;
+            }).join(", ")}`
+          );
+        }
+      }
     }
 
     // Tiered Mission Draw (optional rule, README #19): Rank 1-3 missions are always available;
@@ -410,7 +550,7 @@ export class GameEngine {
     for (const p of game.players) {
       for (let draw = 0; draw < missionDrawsThisRound; draw++) {
         if (p.missions.length < 3 && game.missionDeck.length) {
-          let candidates = game.missionDeck.filter((m) => RANK_NUM[m["Player Rank"]] <= p.rank + 1 || game.missionRankReqRemoved);
+          let candidates = game.missionDeck.filter((m) => RANK_NUM[m["Player Rank"]] <= p.rank + 1);
           if (this.optionalRules.tieredMissionDraw) {
             candidates = candidates.filter((m) => RANK_NUM[m["Player Rank"]] <= 3 || RANK_NUM[m["Player Rank"]] <= highTierMissionCap);
           }
@@ -426,6 +566,84 @@ export class GameEngine {
     this.placementsThisRound = Object.fromEntries(game.players.map((p) => [p.seatIndex, []]));
     await this.runWorkerPlacementAndIncome(commander, diffCount);
 
+    // Advanced Mechanized passive: permanent Tech cost discount on Mech/Vehicle purchases while built
+    if (game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Advanced Mechanized")) {
+      game.mechTechDiscount += 2;
+      game.vehicleTechDiscount += 3;
+    }
+    // AI advancements passive: Organic costs on units can be covered by Tech or Alien while built
+    if (game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "AI advancements")) {
+      game.unitOrganicCanUseTechOrAlien = true;
+    }
+    // Gene Modding passive: Tech costs can be covered by Organic while built
+    if (game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Gene Modding")) {
+      game.techCanUseOrganic = true;
+    }
+    // Ethics Committee passive: ban Experimental gear, remove Alien costs from basic gear
+    if (game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Ethics Committee")) {
+      game.basicGearAlienFree = true;
+      // If Experimental Science was built, remove it from upgrades and re-lock its gear
+      const expSciIdx = game.locationUpgradesBuilt["Armory"].findIndex((c) => c.Name === "Experimental Science");
+      if (expSciIdx !== -1) {
+        const [removed] = game.locationUpgradesBuilt["Armory"].splice(expSciIdx, 1);
+        game.commandDeck.push(removed);
+        this.log(`  [Ethics Committee] Experimental Science removed from Armory -- Experimental gear banned`);
+      }
+      if (game.experimentalGearUnlocked) {
+        const expGear = game.gearDeck.filter((g) => (g as any).Type === "Experimental");
+        game.gearDeck = game.gearDeck.filter((g) => (g as any).Type !== "Experimental");
+        const expInShop = game.shopGear.filter((g) => (g as any).Type === "Experimental");
+        game.shopGear = game.shopGear.filter((g) => (g as any).Type !== "Experimental");
+        game.experimentalGearDeckLocked.push(...expGear, ...expInShop);
+        game.experimentalGearUnlocked = false;
+      }
+    }
+    // Experimental Science passive: add Experimental gear to deck when built
+    if (!game.experimentalGearUnlocked && game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Experimental Science")) {
+      game.gearDeck.push(...game.experimentalGearDeckLocked);
+      game.experimentalGearDeckLocked = [];
+      game.experimentalGearUnlocked = true;
+      this.log(`  [Experimental Science] Experimental gear added to gear deck`);
+    }
+    // Mad Science passive: Experimental gear Organic+Tech costs = 0 while built
+    if (game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Mad Science")) {
+      game.experimentalOrganicTechFree = true;
+    }
+    // Conscription passive: lowest rank unit from shop auto-placed into weakest player's reserve each round
+    if (game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Conscription") && game.shopUnits.length) {
+      const lowestRank = Math.min(...game.shopUnits.map((u) => RANK_NUM[u.Rank]));
+      const cPool = game.shopUnits.filter((u) => RANK_NUM[u.Rank] === lowestRank);
+      const cUnit = cPool[Math.floor(Math.random() * cPool.length)];
+      game.shopUnits.splice(game.shopUnits.indexOf(cUnit), 1);
+      refillShopUnit(game);
+      const cw = weakestPlayer(game);
+      if (cw.active === null) cw.active = makeUnitInstance(cUnit); else cw.reserve.push(makeUnitInstance(cUnit));
+      this.log(`  [Conscription passive] ${cUnit.Name} (Rank ${cUnit.Rank}) auto-deployed to ${cw.name}'s lane`);
+    }
+    // Unlock 4th unit shop slot when Additional Bedding is built
+    if (game.unitShopCap < 4 && game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Additional Bedding")) {
+      game.unitShopCap = 4;
+      this.log(`  [Additional Bedding] Unit shop expanded to 4 slots`);
+    }
+    // Unlock Mech/Vehicle unit pools when the respective upgrade has been built
+    if (!game.mechUnlocked) {
+      const built = game.locationUpgradesBuilt["Barracks"].map((c) => c.Name);
+      if (built.includes("Mech Station") || built.includes("Combined Arms")) {
+        game.unitDeck.push(...game.mechDeckLocked);
+        game.mechDeckLocked = [];
+        game.mechUnlocked = true;
+        this.log(`  [Mech Station] Mech units added to unit deck`);
+      }
+    }
+    if (!game.vehicleUnlocked) {
+      const built = game.locationUpgradesBuilt["Barracks"].map((c) => c.Name);
+      if (built.includes("Vehicle Bay") || built.includes("Combined Arms")) {
+        game.unitDeck.push(...game.vehicleDeckLocked);
+        game.vehicleDeckLocked = [];
+        game.vehicleUnlocked = true;
+        this.log(`  [Vehicle Bay] Vehicle units added to unit deck`);
+      }
+    }
     ensureLowestRankUnit(game);
     ensureLowestRankGear(game);
 
@@ -480,21 +698,13 @@ export class GameEngine {
     );
 
     commander.stats.commanderRounds += 1;
-    let hasDonatedThisRound = false;
     for (const p of game.players) {
       if (p !== commander) {
-        // Crowded Worksite Penalty: only the first donor each round actually donates.
-        if (game.donationCappedToOne && hasDonatedThisRound) continue;
-        let donatedTotal = 0;
         for (const res of ["Organic", "Tech", "Alien"] as const) {
           const donate = Math.floor(p.res[res] / 3);
           p.res[res] -= donate;
           game.commandPool[res] += donate;
-          if (donate) { p.stats.donationsMade += donate; donatedTotal += donate; }
-        }
-        if (donatedTotal > 0) {
-          game.donationsThisRound += donatedTotal;
-          hasDonatedThisRound = true;
+          if (donate) p.stats.donationsMade[res] += donate;
         }
       }
     }
@@ -502,15 +712,43 @@ export class GameEngine {
     await this.resolveCommanderCards(commander, tempState, diffRank);
     await this.resolveNonCommanderCards(commander, tempState, diffRank);
 
+    // Gear hand limit: players may not carry more than GEAR_HAND_LIMIT cards into combat.
+    for (const p of game.players) {
+      if (p.gearHand.length > GEAR_HAND_LIMIT) {
+        const toDiscard = await this.decisions.chooseGearHandDiscard(p, game, p.gearHand);
+        const discardSet = new Set(toDiscard);
+        const discarded = p.gearHand.filter((_, i) => discardSet.has(i));
+        p.gearHand = p.gearHand.filter((_, i) => !discardSet.has(i));
+        p.stats.gearDiscarded += discarded.length;
+        if (discarded.length) this.log(`  ${p.name} discards ${discarded.map((g) => (g as any).Name).join(", ")} (gear hand limit)`);
+      }
+    }
+
     this.log(`  Placements: ${JSON.stringify(this.placementsThisRound)}`);
     this.log(`  Command pool: O${game.commandPool.Organic} T${game.commandPool.Tech} A${game.commandPool.Alien}`);
 
     let overrunLanes = 0;
 
+    // Leroy SO: count rounds where the player enters combat with exactly 1 unit (active, no reserve).
+    for (const p of game.players) {
+      if (!isPrepRound && p.active !== null && p.reserve.length === 0) p.stats.roundsWithSingleUnit += 1;
+    }
+
+    // Survivor SO: snapshot pre-combat active unit IDs so we can detect same-unit survival.
+    const preActiveIds = new Map(game.players.map((p) => [p.seatIndex, p.active?.id]));
+
     if (!isPrepRound) {
       overrunLanes = await this.runDeploymentAndCombat(commander, diffCount, diffRank, tempState);
     } else {
       this.log("  [Round 0] No enemies, no Combat Stage this round.");
+    }
+
+    // Survivor SO: if the same unit is still active post-combat, increment its survival counter.
+    for (const p of game.players) {
+      if (p.active && p.active.id === preActiveIds.get(p.seatIndex)) {
+        p.active.charges["active_survival"] = (p.active.charges["active_survival"] ?? 0) + 1;
+        p.stats.longestActiveSurvival = Math.max(p.stats.longestActiveSurvival, p.active.charges["active_survival"]);
+      }
     }
 
     // ---------------- CLEANUP ----------------
@@ -572,6 +810,18 @@ export class GameEngine {
     // README #32: Round 0's Cleanup skips Event Resolution and Promotions entirely -- nothing
     // for either to act on yet.
     if (!isPrepRound) {
+      // Silence in no mans land: bots bench excess reserve units after combat so the ≤1 condition
+      // can be met without losing the units -- they're restored at the start of next round.
+      if (activeEvent?.["Event name"] === "Silence in no mans land") {
+        for (const p of game.players) {
+          if (p.isBot && p.reserve.length > 1) {
+            const sorted = [...p.reserve].sort((a, b) => instancePower(b) - instancePower(a));
+            p.reserve = sorted.slice(0, 1);
+            p.benchedUnits.push(...sorted.slice(1));
+          }
+        }
+      }
+
       // Completion Condition is now a real, fully keyword/state-matched check (eventConditionMet)
       // for every one of the 40 Events -- no card falls back to a coin flip any more. No active
       // event at all (vanishingly rare, only if the deck is somehow empty) still has nothing to
@@ -583,6 +833,40 @@ export class GameEngine {
         else p.stats.eventsFailed += 1;
       }
       if (activeEvent) applyEventResolution(game, activeEvent, eventPassed, commander);
+      // Renovations: restore set-aside upgrades after resolution; regular overflow → commander hand.
+      if (game.renovationSetAsideUpgrades) {
+        for (const loc of LOCATIONS) {
+          const setAside = game.renovationSetAsideUpgrades[loc] ?? [];
+          const bonusCount = game.renovationSetAsideBonusCounts?.[loc] ?? 0;
+          const regularCount = Math.max(0, setAside.length - bonusCount);
+          const bonusCards = setAside.slice(regularCount);
+          const regularCards = setAside.slice(0, regularCount);
+          const currentRegular = game.locationUpgradesBuilt[loc].length - (game.locationBonusUpgradesCount[loc] ?? 0);
+          const effectiveCap = Math.max(0, UPGRADE_SLOT_CAP[loc] - game.locationUpgradeLimitPenalty);
+          const slotsLeft = Math.max(0, effectiveCap - currentRegular);
+          const fittingRegular = regularCards.slice(0, slotsLeft);
+          const overflowRegular = regularCards.slice(slotsLeft);
+          game.locationUpgradesBuilt[loc].push(...fittingRegular, ...bonusCards);
+          game.locationBonusUpgradesCount[loc] = (game.locationBonusUpgradesCount[loc] ?? 0) + bonusCount;
+          if (overflowRegular.length) {
+            commander.hand.push(...overflowRegular.filter((c) => "Name" in (c as any)));
+            this.log(`  [Renovations] ${overflowRegular.length} upgrade(s) overflow from ${loc} → ${commander.name}'s hand`);
+          }
+        }
+        game.renovationSetAsideUpgrades = null;
+        game.renovationSetAsideBonusCounts = null;
+      }
+      // Renovations penalty: strip all built upgrades at end of every round once set.
+      if (game.renovationEndOfRoundStrip) {
+        for (const loc of LOCATIONS) {
+          if (game.locationUpgradesBuilt[loc].length) {
+            game.commandDeck.unshift(...game.locationUpgradesBuilt[loc].filter((c) => "Name" in (c as any)));
+            game.locationUpgradesBuilt[loc] = [];
+            game.locationBonusUpgradesCount[loc] = 0;
+          }
+        }
+        this.log(`  [Renovations penalty] All built upgrades returned to command deck`);
+      }
       // Research drive's Failure Penalty ("Disable a Containment Block slot") touches
       // GameEngine's private containmentSlots, which events.ts (a free function over GameState)
       // can't reach -- handled here instead, same pattern as onContainmentBuilt.
@@ -617,6 +901,7 @@ export class GameEngine {
         p.rank = Math.min(RANK_ORDER.length, p.rank + gain);
         p.stats.promotionsReceived += 1;
         applyMissionReward(game, m, p);
+        game.missionRankCompletedThisRound += RANK_NUM[m["Player Rank"]] ?? 1;
         this.log(`  Mission complete: ${p.name} finishes '${m.Name}' (+${gain} Rank) -> Rank ${RANK_ORDER[p.rank - 1]}`);
         p.stats.missionsCompleted += 1;
         if (p.hasReconSatellite && canUseEffect(game, "Recon Satellite", 3)) {
@@ -629,7 +914,7 @@ export class GameEngine {
 
     if (game.roundNum > 1) {
       game.enemyProgress = Math.min(10, game.enemyProgress + 1);
-      if (overrunLanes === 0) game.playerProgress += 1;
+      if (overrunLanes === 0) { game.playerProgress += 1; commander.stats.progressAsCommander += 1; }
     }
     this.log(`  After Escalate: PlayerProg ${game.playerProgress}/10, EnemyProg ${game.enemyProgress}/10`);
 
@@ -640,12 +925,18 @@ export class GameEngine {
       this.log(`  [Rank Trickle] Every player +1 Rank -> [${game.players.map((p) => RANK_ORDER[p.rank - 1]).join(", ")}]`);
     }
 
-    // Leadership Crisis Event: "Group blind votes on next commander" -- overrides the normal
-    // handoff with a random pick (a blind vote has no real preference signal to simulate for
-    // bots anyway, so this is the same outcome a true vote mechanic would produce on average).
-    if (game.forceCommanderChange) {
-      game.commanderIdx = Math.floor(Math.random() * game.players.length);
-      this.log(`  [Event] Leadership Crisis -- the table blind-votes ${game.players[game.commanderIdx].name} in as next commander`);
+    const prevCommanderRank = game.players[game.commanderIdx].rank;
+    if (game.commanderLocked) {
+      // The Kingmaker's active locked the commander for this round -- skip the handoff.
+      this.log(`  [The Kingmaker] Commander position locked -- ${game.players[game.commanderIdx].name} remains commander next round`);
+    } else if (game.forceCommanderChange) {
+      // Leadership Crisis (or every-other-round penalty): use unanimous vote winner if available,
+      // otherwise pick randomly (split vote = no agreed candidate, someone gets picked anyway).
+      const target = game.leadershipCrisisWinner ?? game.players[Math.floor(Math.random() * game.players.length)].seatIndex;
+      const idx = game.players.findIndex((p) => p.seatIndex === target);
+      game.commanderIdx = idx !== -1 ? idx : game.commanderIdx;
+      const how = game.leadershipCrisisWinner !== null ? "unanimous vote" : "random (split vote)";
+      this.log(`  [Leadership Crisis] Commander handoff via ${how} → ${game.players[game.commanderIdx].name}`);
     } else if (this.nextCommanderSeatIndex !== null) {
       // README 4.5/7.2: the commander is whoever placed the FIRST worker at Command this round
       // (a real race now that placement is turn-based -- see runWorkerPlacementAndIncome). Falls
@@ -661,6 +952,12 @@ export class GameEngine {
       const kingmaker = game.players[game.commanderIdx];
       game.commanderIdx = (game.commanderIdx + 1) % game.players.length;
       this.log(`  [The Kingmaker] ${kingmaker.name} cannot be commander -- passes the role to ${game.players[game.commanderIdx].name}`);
+    }
+    // Usurper / Conductor SO: track handoffs where incoming rank is lower / higher than outgoing.
+    if (!game.commanderLocked) {
+      const newCommander = game.players[game.commanderIdx];
+      if (newCommander.rank < prevCommanderRank) newCommander.stats.commanderStolenFromHigher += 1;
+      if (newCommander.rank > prevCommanderRank) newCommander.stats.conductorCommandFromLower += 1;
     }
 
     if (game.playerProgress >= 10) {
@@ -768,8 +1065,6 @@ export class GameEngine {
         game.commandPool[key] += amt;
       } else {
         p.res[key] += amt;
-        // Crowded Worksite Reward: each income grant also adds 1 of the same resource to command.
-        if (game.crowdedWorksiteReward && amt > 0) game.commandPool[key] += 1;
       }
     };
     for (const loc of LOCATIONS) {
@@ -784,10 +1079,6 @@ export class GameEngine {
         const full = idx < 2;
         // Forced Contribution Event: "Income +1 if another worker at location."
         if (eventName === "Forced Contribution" && workers.length > 1) p.res.Tech += 1;
-        // Crowded Worksite Event: "-1 income per additional worker at location."
-        if (eventName === "Crowded Worksite" && workers.length > 1 && loc !== "Battlefield") {
-          p.res.Organic = Math.max(0, p.res.Organic - (workers.length - 1));
-        }
         if (loc === "Barracks") {
           const totalRank = game.shopUnits.reduce((s, u) => s + RANK_NUM[u.Rank], 0) + (4 - game.shopUnits.length);
           const amt = full ? totalRank : Math.floor(totalRank / 2);
@@ -799,25 +1090,29 @@ export class GameEngine {
           grantIncome(p, "Tech", amt);
           grantIncome(p, "Organic", Math.floor(amt / 2));
         } else if (loc === "Medical Bay") {
-          grantIncome(p, "Organic", full ? 1 : 0);
-          const wounded = [...(p.active ? [p.active] : []), ...p.reserve].filter((u) => u.curHp < u.maxHp);
+          // +1 Organic per worker regardless (Location Actions.csv: "plus 1 Organic per worker")
+          grantIncome(p, "Organic", 1);
           const isDoctor = p.tactician?.Name === "The Doctor";
-          // Emergency Triage Event: "Unlock all med bay slots this round" -- no per-worker heal cap.
-          const emergencyTriage = game.activeEvent?.["Event name"] === "Emergency Triage";
-          const targetsPerWorker = emergencyTriage ? Infinity : isDoctor ? 2 : 1; // "Medical bay heals double" when your workers are there
-          for (const target of wounded.slice(0, targetsPerWorker === Infinity ? wounded.length : targetsPerWorker)) {
-            // Medical Focus Event: "Medbay costs organics to heal" instead of granting them.
-            if (game.medicalBayCostsOrganic && p.res.Organic < 2) continue;
-            const healed = healUnit(target);
-            if (healed) {
-              if (game.medicalBayCostsOrganic) p.res.Organic -= 2;
-              else grantIncome(p, "Organic", 2 + (isDoctor ? p.rank : 0));
-              p.stats.healsGiven += 1;
-              this.log(`  ${p.name} heals ${target.card.Name} at Medical Bay (+${healed} HP)`);
+          const increasedBudgetBuilt = (game.locationUpgradesBuilt["Medical Bay"] ?? []).some((c) => c.Name === "Increased Budget");
+          const targetsPerWorker = 1 + game.healingPerWorkerBonus + (isDoctor ? 1 : 0) + (increasedBudgetBuilt ? 1 : 0);
+          // Retrieve up to targetsPerWorker units from this player's Med Bay pool, heal to full, return to reserve
+          // Cost mode: Medical Focus round effect OR permanent penalty flag (overridden by permanent reward flag)
+          const costOrganic = (game.medicalBayCostsOrganic || game.medBayCostOrganicPermanently) && !game.medBayAlwaysGeneratesOrganic;
+          for (let i = 0; i < targetsPerWorker && p.medBayUnits.length > 0; i++) {
+            const ui = p.medBayUnits.shift()!;
+            if (costOrganic) {
+              if (p.res.Organic < 2) { p.medBayUnits.unshift(ui); break; }
+              p.res.Organic -= 2;
+            } else {
+              grantIncome(p, "Organic", 2 + (isDoctor ? p.rank : 0));
             }
+            healUnit(ui);
+            p.reserve.push(ui);
+            p.stats.healsGiven += 1;
+            this.log(`  ${p.name} retrieves ${ui.card.Name} from Medical Bay`);
           }
         } else if (loc === "Containment Block") {
-          const containedRank = this.containedEnemies.reduce((s, r) => s + ENEMY_RANK_NUM[r], 0);
+          const containedRank = game.containedEnemyPool.reduce((s, r) => s + ENEMY_RANK_NUM[r], 0);
           const capacityMult = game.containmentCapacityDoubled ? 2 : 1;
           const amt = (full ? containedRank + 1 : Math.floor((containedRank + 1) / 2)) * capacityMult;
           grantIncome(p, "Alien", amt);
@@ -836,7 +1131,70 @@ export class GameEngine {
           if (sharing > 0) grantIncome(p, "Organic", sharing);
           else p.res.Organic = Math.max(0, p.res.Organic + sharing);
         }
+        // Isolation Orders reward: +isolationSoloBonus of lowest resource when alone at location.
+        // Isolation Orders penalty: −isolationSharingPenalty of location's primary resource per
+        // co-located worker. Both skip Battlefield (income goes to command pool, not player stock).
+        if (loc !== "Battlefield") {
+          if (game.isolationSoloBonus > 0 && workers.length === 1) {
+            const res = (["Organic", "Tech", "Alien"] as const).reduce((a, b) => p.res[a] <= p.res[b] ? a : b);
+            grantIncome(p, res, game.isolationSoloBonus);
+          }
+          if (game.isolationSharingPenalty > 0 && workers.length > 1) {
+            const primaryRes = LOCATION_PRIMARY_RESOURCE[loc];
+            if (primaryRes) {
+              p.res[primaryRes] = Math.max(0, p.res[primaryRes] - game.isolationSharingPenalty * (workers.length - 1));
+            }
+          }
+        }
       });
+    }
+
+    // Tax Fault Reward: every player gains locationAlienBonus Alien per round, applied after
+    // all location income (so it's immune to Command Requisition interference).
+    if (game.locationAlienBonus > 0) {
+      for (const p of game.players) {
+        p.res.Alien += game.locationAlienBonus;
+      }
+    }
+
+    // Return-to-supply events: bots collectively donate the minimum needed to pass the Completion
+    // Condition, then stop. Cheap Knockoffs needs 10 Tech, Food Shortage needs 10 Organic, Tax
+    // Fault and Forced Contribution need 15/20 total. Each bot donates its fair share of what's
+    // still needed (excess above floor 3), but never more than needed.
+    const rtsEvent = game.activeEvent?.["Event name"];
+    const RTS_THRESHOLDS: Record<string, number> = {
+      "Cheap Knockoffs": 10,
+      "Food Shortage": 10,
+      "Tax Fault": 15,
+      "Forced Contribution": 20,
+    };
+    if (rtsEvent && rtsEvent in RTS_THRESHOLDS) {
+      const threshold = RTS_THRESHOLDS[rtsEvent];
+      const wantRes = (res: "Organic" | "Tech" | "Alien") =>
+        rtsEvent === "Cheap Knockoffs" ? res === "Tech" :
+        rtsEvent === "Food Shortage"   ? res === "Organic" : true;
+      let totalReturned = 0;
+      for (const p of game.players) {
+        const currentTotal =
+          game.returnedToSupplyThisRound.Organic +
+          game.returnedToSupplyThisRound.Tech +
+          game.returnedToSupplyThisRound.Alien;
+        if (currentTotal >= threshold) break;
+        for (const res of ["Organic", "Tech", "Alien"] as const) {
+          if (!wantRes(res)) continue;
+          const needed = threshold - (game.returnedToSupplyThisRound.Organic + game.returnedToSupplyThisRound.Tech + game.returnedToSupplyThisRound.Alien);
+          if (needed <= 0) break;
+          const donate = Math.min(Math.max(0, p.res[res] - 3), needed);
+          if (donate > 0) {
+            p.res[res] -= donate;
+            game.returnedToSupplyThisRound[res] += donate;
+            totalReturned += donate;
+          }
+        }
+      }
+      if (totalReturned > 0) {
+        this.log(`  [${rtsEvent}] Players returned ${totalReturned} resources to supply`);
+      }
     }
   }
 
@@ -917,11 +1275,16 @@ export class GameEngine {
     }
   }
 
-  /** Honorable Discharge Event: "Units Retire on death this round" -- redirects what would
-   * normally be a graveyard death into the same retire-for-partial-refund treatment
-   * runRetireFromDuty uses for obsolete reserve units, so the card's own Completion Condition
-   * ("Retire Between 5 and 10 units this turn") has a real per-round count to check instead of
-   * an approximation. Falls through to normal graveyard/death bookkeeping otherwise. */
+  /** Shared slot cap for Med Bay: 2 base, 4 with Share Rooms built, Infinity during Emergency Triage. */
+  private effectiveMedBaySlotCap(): number {
+    const game = this.game;
+    // Emergency Triage unlocks to the board max (4); Share Rooms built also unlocks to 4; base is 2.
+    const shareRoomsBuilt = (game.locationUpgradesBuilt["Medical Bay"] ?? []).some((c) => c.Name === "Share Rooms");
+    if (game.activeEvent?.["Event name"] === "Emergency Triage" || shareRoomsBuilt) return 4;
+    return 2;
+  }
+
+  /** Priority: Honorable Discharge retire → Med Bay (if space) → graveyard. */
   private retireOrGraveyard(p: GamePlayer, ui: UnitInstance) {
     const game = this.game;
     if (game.activeEvent?.["Event name"] === "Honorable Discharge") {
@@ -936,7 +1299,13 @@ export class GameEngine {
       game.retiresThisRound.set(p.seatIndex, (game.retiresThisRound.get(p.seatIndex) ?? 0) + 1);
       this.log(`  [Honorable Discharge] ${ui.card.Name} retires instead of dying`);
     } else {
-      p.graveyard.push(ui);
+      const totalInMedBay = game.players.reduce((s, pl) => s + pl.medBayUnits.length, 0);
+      if (totalInMedBay < this.effectiveMedBaySlotCap()) {
+        p.medBayUnits.push(ui);
+        this.log(`  ${p.name}'s ${ui.card.Name} is transferred to Medical Bay`);
+      } else {
+        p.graveyard.push(ui);
+      }
       p.stats.deaths += 1;
       game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
     }
@@ -977,6 +1346,7 @@ export class GameEngine {
           this.dispatchEffect(c, loc, commander, tempState, diffRank);
           game.commandDeck.unshift(c);
         });
+        game.activationsThisRound.set(commander.seatIndex, (game.activationsThisRound.get(commander.seatIndex) ?? 0) + 1);
       }
     }
   }
@@ -1024,6 +1394,7 @@ export class GameEngine {
             game.commandDeck.unshift(c);
           });
         }
+        game.activationsThisRound.set(actor.seatIndex, (game.activationsThisRound.get(actor.seatIndex) ?? 0) + 1);
       }
     }
   }
@@ -1078,7 +1449,7 @@ export class GameEngine {
   ): Promise<number> {
     const game = this.game;
 
-    let revealCount = 2 + (game.nightVisionRevealBonus ?? 0);
+    let revealCount = 2 + (game.nightVisionRevealBonus ?? 0) + game.permanentScoutRevealBonus;
     game.nightVisionRevealBonus = 0;
     if (game.teamScoutPool.length) {
       const scout = game.teamScoutPool.reduce((a, b) =>
@@ -1147,20 +1518,48 @@ export class GameEngine {
       }
     }
 
+    // Lane control swap: move each controller's assigned lane's units and enemies into their own
+    // player slot for the duration of combat. Airburst splash (above) uses physical adjacency and
+    // runs before the swap intentionally. After all combat and post-combat steps, swap-back
+    // restores units to their physical lane (units stay with the lane, stats stay with the controller).
+    const hasNonIdentityAssignment = game.players.some((p) => p.controlledLaneSeat !== p.seatIndex);
+    const preCombatActive = new Map(game.players.map((p) => [p.seatIndex, p.active]));
+    const preCombatReserve = new Map(game.players.map((p) => [p.seatIndex, p.reserve]));
+    const preCombatEnemies = new Map(game.players.map((p) => [p.seatIndex, p.laneEnemyReserve]));
+    if (hasNonIdentityAssignment) {
+      for (const p of game.players) {
+        p.active = preCombatActive.get(p.controlledLaneSeat) ?? null;
+        p.reserve = preCombatReserve.get(p.controlledLaneSeat) ?? [];
+        p.laneEnemyReserve = preCombatEnemies.get(p.controlledLaneSeat) ?? [];
+      }
+    }
+
     let overrunLanes = 0;
     const overranPlayers = new Set<GamePlayer>();
     const lanesWon = new Set<GamePlayer>();
     const lanesWithKill: GamePlayer[] = [];
     const overrunLeftover = new Map<GamePlayer, Combatant[]>();
 
+    // Tactician actives fire BEFORE gear actives so The Engineer's "refresh + free next use"
+    // takes effect in the same round's gear active loop.
+    for (const p of game.players) {
+      await applyTacticianActive(game, p, this.decisions, (t) => this.log(t), tempState, (card, loc) => {
+        this.dispatchEffect(card, loc, commander, tempState, diffRank);
+        game.activationsThisRound.set(p.seatIndex, (game.activationsThisRound.get(p.seatIndex) ?? 0) + 1);
+      });
+    }
+
     for (const p of game.players) {
       applyPrecombatGear(game, p, (t) => this.log(t), tempState);
       applyPrecombatUnit(p, tempState);
       applyTacticianPrecombat(p);
       const pUnits = [...(p.active ? [p.active] : []), ...p.reserve];
-      const pCombatants = pUnits.map((ui) => {
+      const activeCount = p.active ? 1 : 0;
+      const pCombatants = pUnits.map((ui, i) => {
         const c = combatantFromUnit(ui);
-        applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
+        if (!game.reserveAbilitiesDisabled || i < activeCount) {
+          applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
+        }
         applyUnitCombatMods(c, ui);
         applyTacticianCombatMods(c, p);
         applyBossBoardWideMods(game, c, false);
@@ -1172,13 +1571,28 @@ export class GameEngine {
         applyEnemyCombatMods(c, e);
         applyBossBoardWideMods(game, c, true);
         applyEventCombatMods(game, c, true);
+        // The Breaker: strip all shields and armor from every enemy this round.
+        if (game.breakerActive) {
+          c.curShields = 0;
+          c.armor = 0;
+        }
+        // The Chessmaster: swapped enemies take double damage (halve starting HP so the same
+        // damage math yields double the kill rate without a separate damage multiplier path).
+        if (game.chessmasterDoubledEnemies.has(e)) {
+          c.curHp = Math.max(1, Math.floor(c.curHp / 2));
+        }
+        // Annihilation Clause reward: enemies in a lane where player rank > enemy tier are deleted on kill.
+        if (game.annihilationEnemiesDeletedByHigherRank && p.rank > ENEMY_RANK_NUM[diffRank]) {
+          c.deleteOnKill = true;
+        }
         return c;
       });
       if (!eCombatants.length) {
         this.log(`  ${p.name}: no enemies this lane (clean).`);
         continue;
       }
-      const { overrun, playerSurvivors, enemySurvivors } = resolveLaneCombat(pCombatants, eCombatants);
+      const { overrun, playerSurvivors, enemySurvivors, totalShieldsAbsorbed } = resolveLaneCombat(pCombatants, eCombatants);
+      game.shieldsDestroyedThisRound += totalShieldsAbsorbed;
       const kills = eCombatants.length - enemySurvivors.length;
       if (kills > 0) {
         lanesWithKill.push(p);
@@ -1188,6 +1602,12 @@ export class GameEngine {
         if (killedCombatants.length) {
           const lastKilledIdx = eCombatants.lastIndexOf(killedCombatants[killedCombatants.length - 1]);
           game.lastKilledEnemy = p.laneEnemyReserve[lastKilledIdx] ?? game.lastKilledEnemy;
+          // Hunter SO: count kills on enemies that have a Reveal or Passive ability.
+          for (const kc of killedCombatants) {
+            const ekIdx = eCombatants.indexOf(kc);
+            const ek = p.laneEnemyReserve[ekIdx];
+            if (ek && ((ek as any).Reveal || (ek as any).Passive)) p.stats.abilityEnemyKills += 1;
+          }
         }
       }
       if (overrun) {
@@ -1200,6 +1620,9 @@ export class GameEngine {
         this.log(`  ${p.name}'s lane CLEARED (${playerSurvivors.length} units survived)`);
         lanesWon.add(p);
       }
+      const annihilationNoSaves =
+        game.activeEvent?.["Event name"] === "Annihilation Clause" ||
+        (game.annihilationAlliesDeletedByHigherRank && ENEMY_RANK_NUM[diffRank] > p.rank);
       const newUnits: UnitInstance[] = [];
       pUnits.forEach((ui, i) => {
         const c = pCombatants[i];
@@ -1207,12 +1630,14 @@ export class GameEngine {
           ui.curHp = c.curHp;
           ui.curShields = c.curShields;
           newUnits.push(ui);
-        } else if (tempState.cannotDie.has(ui.id)) {
+        } else if (!annihilationNoSaves && tempState.cannotDie.has(ui.id)) {
           ui.curHp = 1;
           newUnits.push(ui);
-        } else if (tryChronostasisSave(game, p, ui, (t) => this.log(t))) {
+        } else if (!annihilationNoSaves && tryChronostasisSave(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
-        } else if (tryReviveOnce(game, p, ui, (t) => this.log(t))) {
+        } else if (!annihilationNoSaves && tryReviveOnce(game, p, ui, (t) => this.log(t))) {
+          newUnits.push(ui);
+        } else if (!annihilationNoSaves && tryDoctorSave(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
         } else {
           applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
@@ -1257,10 +1682,11 @@ export class GameEngine {
         applyEventCombatMods(game, c, false, ui);
         return c;
       });
-      const { overrun: overrun2, playerSurvivors: rSurv, enemySurvivors: eSurv2 } = resolveLaneCombat(
+      const { overrun: overrun2, playerSurvivors: rSurv, enemySurvivors: eSurv2, totalShieldsAbsorbed: osa } = resolveLaneCombat(
         rCombatants,
         overrunLeftover.get(target)!
       );
+      game.shieldsDestroyedThisRound += osa;
       const newReinforcements: UnitInstance[] = [];
       reinforcements.forEach((ui, i) => {
         const c = rCombatants[i];
@@ -1290,6 +1716,18 @@ export class GameEngine {
 
     for (const p of game.players) p.overrunLastRound = overranPlayers.has(p);
 
+    // Misdirector SO tracking: count other-lane overruns while own lane stays clean between them.
+    for (const p of game.players) {
+      const ownOverran = overranPlayers.has(p);
+      const othersOverran = [...overranPlayers].some((q) => q !== p);
+      if (othersOverran) {
+        if (!ownOverran && p.stats.misdirectorLaneClean) p.stats.misdirectorOtherOverruns += 1;
+        p.stats.misdirectorLaneClean = !ownOverran;
+      } else if (ownOverran) {
+        p.stats.misdirectorLaneClean = false;
+      }
+    }
+
     // Redeploy: a player whose lane WON may send a spare reserve unit to the weakest teammate.
     for (const p of [...lanesWon].sort((a, b) => {
       const ap = a.reserve.length ? instancePower(a.reserve[0]) : 0;
@@ -1310,13 +1748,25 @@ export class GameEngine {
     }
 
     if (game.bossActive) {
-      resolveBossExchange(game, (t) => this.log(t));
+      resolveBossExchange(game, (t) => this.log(t), (p, ui) => this.retireOrGraveyard(p, ui));
     }
 
-    if (lanesWithKill.length && this.containmentSlots > 0 && this.containedEnemies.length < this.containmentSlots) {
-      this.containedEnemies.push(diffRank);
+    if (lanesWithKill.length && game.activeEvent?.["Event name"] !== "Annihilation Clause" && this.containmentSlots > 0 && game.containedEnemyPool.length < this.containmentSlots) {
+      game.containedEnemyPool.push(diffRank);
       game.containedThisRound += 1;
-      this.log(`  [Containment] stores a ${diffRank} (${this.containedEnemies.length}/${this.containmentSlots} cells filled)`);
+      this.log(`  [Containment] stores a ${diffRank} (${game.containedEnemyPool.length}/${this.containmentSlots} cells filled)`);
+    }
+
+    // Lane control swap-back: units return to their physical lanes. Each controller's current
+    // active/reserve (post-combat, possibly updated by reinforcement/redeploy) is written back
+    // into the physical lane slot the controller was assigned to this round.
+    if (hasNonIdentityAssignment) {
+      const postActive = new Map(game.players.map((p) => [p.controlledLaneSeat, p.active]));
+      const postReserve = new Map(game.players.map((p) => [p.controlledLaneSeat, p.reserve]));
+      for (const p of game.players) {
+        p.active = postActive.get(p.seatIndex) ?? null;
+        p.reserve = postReserve.get(p.seatIndex) ?? [];
+      }
     }
 
     return overrunLanes;

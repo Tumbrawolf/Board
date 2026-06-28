@@ -40,57 +40,99 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
   const w = weakestPlayer(game);
 
   switch (name) {
-    case "Mech Station":
-    case "Vehicle Bay":
-      // These two specifically pull from sim.py's locked Vehicle/Mech sub-deck, which isn't
-      // ported (all units are in one pool from the start) -- documented no-op until it is.
-      break;
-    case "Combined Arms":
-      // sim.py sets vehicle_unlocked/mech_unlocked flags here, but nothing in either engine
-      // actually gates a purchase on them (Mech Station/Vehicle Bay pull from the locked deck
-      // directly) -- inert in both, not just here.
-      break;
-    case "Conscription": {
-      // Pulls from the regular unit_deck (Rank 1 only) -- doesn't touch the locked Vehicle/Mech
-      // deck at all, fully portable.
-      const pool = game.unitDeck.filter((u) => RANK_NUM[u.Rank] === 1);
-      if (pool.length) {
-        const u = pool[Math.floor(Math.random() * pool.length)];
-        game.unitDeck.splice(game.unitDeck.indexOf(u), 1);
-        addTempUnitPerm(w, makeUnitInstance(u));
+    case "Mech Station": {
+      if (!game.mechUnlocked) break;
+      const freeMech = game.shopUnits
+        .filter((u) => u.Type.includes("Mech") && RANK_NUM[u.Rank] <= commander.rank)
+        .sort((a, b) => RANK_NUM[b.Rank] - RANK_NUM[a.Rank])[0];
+      if (freeMech) {
+        game.shopUnits.splice(game.shopUnits.indexOf(freeMech), 1);
+        refillShopUnit(game);
+        addTempUnitPerm(commander, makeUnitInstance(freeMech));
+        ctx.log(`  [Mech Station] ${commander.name} recruits ${freeMech.Name} for free`);
       }
       break;
     }
-    case "Rapid Deployment":
-      w.res.Organic += 3;
-      w.res.Tech += 3;
+    case "Vehicle Bay": {
+      if (!game.vehicleUnlocked) break;
+      const freeVehicle = game.shopUnits
+        .filter((u) => u.Type.includes("Vehicle") && RANK_NUM[u.Rank] <= commander.rank)
+        .sort((a, b) => RANK_NUM[b.Rank] - RANK_NUM[a.Rank])[0];
+      if (freeVehicle) {
+        game.shopUnits.splice(game.shopUnits.indexOf(freeVehicle), 1);
+        refillShopUnit(game);
+        addTempUnitPerm(commander, makeUnitInstance(freeVehicle));
+        ctx.log(`  [Vehicle Bay] ${commander.name} recruits ${freeVehicle.Name} for free`);
+      }
       break;
+    }
+    case "Combined Arms": {
+      // Active can be used to unlock both types immediately (simulating "upgrade Mech Station or Vehicle Bay")
+      if (!game.mechUnlocked) {
+        game.unitDeck.push(...game.mechDeckLocked);
+        game.mechDeckLocked = [];
+        game.mechUnlocked = true;
+        ctx.log(`  [Combined Arms] Mech units added to unit deck`);
+      }
+      if (!game.vehicleUnlocked) {
+        game.unitDeck.push(...game.vehicleDeckLocked);
+        game.vehicleDeckLocked = [];
+        game.vehicleUnlocked = true;
+        ctx.log(`  [Combined Arms] Vehicle units added to unit deck`);
+      }
+      break;
+    }
+    case "Conscription": {
+      if (!game.shopUnits.length) break;
+      const lowestRank = Math.min(...game.shopUnits.map((u) => RANK_NUM[u.Rank]));
+      const pool = game.shopUnits.filter((u) => RANK_NUM[u.Rank] === lowestRank);
+      const u = pool[Math.floor(Math.random() * pool.length)];
+      game.shopUnits.splice(game.shopUnits.indexOf(u), 1);
+      refillShopUnit(game);
+      const ui = makeUnitInstance(u);
+      if (w.active) {
+        w.benchedUnits.push(w.active);
+        w.active = ui;
+      } else {
+        w.active = ui;
+      }
+      break;
+    }
     case "Additional Bedding": {
-      const pool = game.unitDeck.filter((u) => RANK_NUM[u.Rank] <= commander.rank);
+      const pool = game.shopUnits.filter((u) => RANK_NUM[u.Rank] <= commander.rank);
       if (pool.length) {
         const u = pool[Math.floor(Math.random() * pool.length)];
-        game.unitDeck.splice(game.unitDeck.indexOf(u), 1);
+        game.shopUnits.splice(game.shopUnits.indexOf(u), 1);
+        refillShopUnit(game);
         addTempUnitPerm(commander, makeUnitInstance(u));
       }
       break;
     }
     case "Advanced Mechanized":
+      game.mechTechDiscount += 2;
+      game.vehicleTechDiscount += 3;
+      break;
     case "AI advancements":
+      game.unitOrganicFree = true;
+      break;
     case "Gene Modding":
+      game.techCanUseOrganic = true;
+      break;
     case "Ammo Stockpiles":
       commander.res.Tech += 5;
       break;
     case "Flash Sale":
-      commander.res.Tech += 5;
+      game.shopCostMultiplier = 0.5;
+      game.shopCostMultiplierNextRound = 2;
       break;
     case "Mad Science":
-      commander.res.Alien += 3;
+      game.gearAlienHalfThisRound = true;
       break;
     case "Experimental Science":
       for (const p of game.players) p.res.Alien *= 2;
       break;
     case "Ethics Committee":
-      commander.res.Alien += 5;
+      game.allAlienFreeThisRound = true;
       break;
     case "Containment Protocol": {
       if (ctx.enemyPool.length) {
@@ -154,14 +196,17 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       }
       break;
     case "Donor Organs": {
-      const units = [...(w.active ? [w.active] : []), ...w.reserve];
-      const target = units.reduce(
-        (best, ui) => (ui.maxHp - ui.curHp > (best ? best.maxHp - best.curHp : -1) ? ui : best),
-        null as (typeof units)[number] | null
-      );
-      if (target) {
-        healUnit(target);
-        w.stats.healsGiven += 1;
+      // Pay the infantry unit's Organic cost to retrieve it from the weakest player's Med Bay pool
+      const infantry = w.medBayUnits.find((ui) => ui.card.Type.includes("Infantry"));
+      if (infantry) {
+        const cost = toInt(infantry.card["Organic Cost"]);
+        if (w.res.Organic >= cost) {
+          w.res.Organic -= cost;
+          w.medBayUnits.splice(w.medBayUnits.indexOf(infantry), 1);
+          healUnit(infantry);
+          if (w.active === null) w.active = infantry; else w.reserve.push(infantry);
+          w.stats.healsGiven += 1;
+        }
       }
       break;
     }
@@ -174,11 +219,27 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       }
       break;
     case "Share Rooms":
+      // Retrieve all units from all players' Med Bay pools to their reserves
+      for (const p of game.players) {
+        while (p.medBayUnits.length > 0) {
+          const ui = p.medBayUnits.shift()!;
+          healUnit(ui);
+          if (p.active === null) p.active = ui; else p.reserve.push(ui);
+          p.stats.healsGiven += 1;
+        }
+      }
+      break;
     case "Battle Medics":
+      // Heal active (battlefield) units to full
+      for (const p of game.players) {
+        if (p.active && healUnit(p.active)) p.stats.healsGiven += 1;
+      }
+      break;
     case "We can Rebuild them":
+      // Heal living units under half HP back to full
       for (const p of game.players) {
         for (const ui of [...(p.active ? [p.active] : []), ...p.reserve]) {
-          if (healUnit(ui)) p.stats.healsGiven += 1;
+          if (ui.curHp < ui.maxHp / 2 && healUnit(ui)) p.stats.healsGiven += 1;
         }
       }
       break;
@@ -237,7 +298,7 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       }
       break;
     case "Leader Speech":
-      game.playerProgress = Math.min(10, game.playerProgress + 1);
+      if (game.playerProgress < 10) { game.playerProgress += 1; commander.stats.progressAsCommander += 1; }
       break;
     case "Nuke": {
       const target = game.players.reduce((a, b) =>
@@ -272,16 +333,23 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       tempState.hoardReduction.set("__global__", (tempState.hoardReduction.get("__global__") ?? 0) + 1);
       break;
     case "Field Testing": {
-      const target = w.active;
-      if (target && game.shopGear.length) {
+      // Target the lowest-rank player with an active unit (rank 1 = most junior, most in need).
+      // Break ties by fewest equipped gear (most gear-starved). Human commander targeting among
+      // tied-rank players is deferred -- bot uses the deterministic fewest-gear tiebreaker.
+      const withUnit = game.players.filter((p) => p.active !== null);
+      if (withUnit.length && game.shopGear.length) {
+        const minRank = Math.min(...withUnit.map((p) => p.rank));
+        const tied = withUnit.filter((p) => p.rank === minRank);
+        const ft = tied.reduce((a, b) => ((a.active?.equipped.length ?? 0) <= (b.active?.equipped.length ?? 0) ? a : b));
         const g = game.shopGear.reduce((a, b) => (RANK_NUM[b["Rank Name"]] > RANK_NUM[a["Rank Name"]] ? b : a));
         game.shopGear.splice(game.shopGear.indexOf(g), 1);
         refillShopGear(game);
-        target.equipped.push(g);
-        target.maxHp += toInt(g.HP);
-        target.curHp += toInt(g.HP);
-        target.curShields += toInt(g.Shields);
-        w.stats.gearEquipped += 1;
+        ft.active!.equipped.push(g);
+        ft.active!.maxHp += toInt(g.HP);
+        ft.active!.curHp += toInt(g.HP);
+        ft.active!.curShields += toInt(g.Shields);
+        ft.stats.gearEquipped += 1;
+        if (commander !== ft) commander.stats.gearEquippedToAllies += 1;
       }
       break;
     }

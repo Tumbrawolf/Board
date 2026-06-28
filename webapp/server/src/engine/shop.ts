@@ -33,7 +33,7 @@ export function ensureLowestRankGear(game: GameState) {
 }
 
 export function refillShopUnit(game: GameState) {
-  while (game.shopUnits.length < 4) {
+  while (game.shopUnits.length < (game.unitShopCap ?? 4)) {
     let pool: UnitCard[];
     if (Math.random() < 0.5) {
       pool = game.unitDeck.filter((u) => RANK_NUM[u.Rank] <= 3);
