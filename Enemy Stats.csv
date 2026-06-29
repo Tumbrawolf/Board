@@ -73,8 +73,7 @@ Alpha Thorn Hide,Reflects damage until Shields broken,Beast,General,Gain 40 shie
 Alpha Storm Claw,"Chain attacks hit all lanes, stacks",Beast,General,Attack 6 times,"Hit all lanes, hits an additional time for each attack on the same target",16,27,21,4,4,2,12
 Alpha Ravager,"Grizly and a Rino had a Child, Changes lanes to target weakest target",Beast,General,Gain 3 Multistrike,"Has Lifesteal, changes lane to target lowest HP unit",18,23,20,4,4,0,0
 Black Rain,"Artillery unit, hits whole board",Mechanised,General,Hit all units 4 times,Attacks Hit all units,23,28,5,15,8,0,0
-Equivilence,Retaliates with copy of any abilities used while in reserve,Mechanised,General,Move to reserve,Mimics abilites cast by players,20,33,5,16,8,2,12
-Titan,Walking armory,Mechanised,General,Deal 15 damage to active units 3 times,"Shreds shields and armor, hits all active, Stuns units on ability activation.",20,33,5,16,8,2,12
+Titan,Walking armory,Mechanised,General,Deal 15 damage to active units 3 times,"Removes all Armor and Shields on hit, Attacks Hit All Active, Stuns units on ability activation",20,33,5,16,8,2,12
 Oblivion Walker,"3 legged walker, Deletes units on kill",Mechanised,General,Gains 30 attack,"Delets on Kill, Gains 15 attack on hit",20,33,5,16,8,2,12
 Totem of Decay,Non mechanical units take DoT,Mechanised,General,Stun all units,Deals 5 damage to all non mechanical units whenever an enemy attacks,20,33,5,16,8,2,12
 Scarab Tank,Armor Piercing,Mechanised,General,Deal 50 damage to unit,Ignores Armor,23,28,5,15,8,0,0
@@ -88,9 +87,7 @@ High General,Buffs all enemies,Infantry,Conqueror,Move this unit to reserve,"Giv
 Blood Hunter,Snake like creature that frenzies on kill,Beast,Conqueror,Kill Lowest HP unit,"Attacks an additional time per kill, moves to lowest HP unit on kill",22,33,26,5,5,2,15
 Machine Mind,Steals Abilities of units it kills,Mechanised,Conqueror,Kill highest rank unit with an targeted ability,Gain the abilities of units this kills,22,42,6,20,10,2,15
 Siege Ender,bonus damage based on progress,Mechanised,Conqueror,all units Gain 10 damage and shields per progress,Gains 10 attack per progress,19,48,6,21,11,8,50
-Hydra,Every 25% HP missing Hydra gains a multi attack,Abomination,Conqueror,Gain Shields = Health,"Doubled attack for every 25% missing HP,
-/
-Gain Shield = current Health every time it loses 25% of max HP,",22,50,16,5,15,2,15
+Hydra,Every 25% HP missing Hydra gains a multi attack,Abomination,Conqueror,Gain Shields = Health,"Doubled attack for every 25% missing HP, Gain Shield = current Health every time it loses 25% of max HP",22,50,16,5,15,2,15
 Amalgamation,combines the top 3 organic units of both graveyards,Abomination,Conqueror,Kill the highest ranked unit,"Take the last 3 enemies and allies to have died, combined their abilities and stats onto this unit",22,50,16,5,15,2,15
 Zeus,"Stuns Mechanical, Hits all lanes",Experimental,Conqueror,Stun all Mechanical units for 2 rounds,"Hits all lanes, double damage to vehicles and Mechs",22,58,6,15,15,2,15
 Cerberus,Different effects per lane,Experimental,Conqueror,Half the HP of all units,"Roll 2 dice to assign abilities: 

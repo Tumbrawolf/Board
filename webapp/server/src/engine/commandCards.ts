@@ -205,7 +205,7 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
         if (commander.res.Organic >= cost) {
           commander.res.Organic -= cost;
           commander.medBayUnits.splice(pickIdx, 1);
-          healUnit(ui);
+          healUnit(ui, undefined, ctx.game);
           addTempUnitPerm(commander, ui);
           commander.stats.healsGiven += 1;
           ctx.log(`  [Donor Organs] ${commander.name} returns ${ui.card.Name} to lane (paid ${cost} Organic)`);
@@ -230,7 +230,7 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       for (const p of game.players) {
         while (p.medBayUnits.length > 0) {
           const ui = p.medBayUnits.shift()!;
-          healUnit(ui);
+          healUnit(ui, undefined, ctx.game);
           if (p.active === null) p.active = ui; else p.reserve.push(ui);
           p.stats.healsGiven += 1;
         }
@@ -252,7 +252,7 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       for (const p of game.players) {
         while (p.medBayUnits.length > 0) {
           const ui = p.medBayUnits.shift()!;
-          healUnit(ui);
+          healUnit(ui, undefined, ctx.game);
           addTempUnitPerm(p, ui);
           p.stats.healsGiven += 1;
           ctx.log(`  [Increased Budget] ${p.name} retrieves ${ui.card.Name} from Med Bay`);

@@ -81,7 +81,7 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
     for (const g of ui.equipped) {
       const amt = GEAR_RESERVE_HEAL[(g as any).Name];
       if (amt && activeUnit) {
-        const healed = healUnit(activeUnit, amt);
+        const healed = healUnit(activeUnit, amt, game);
         if (healed) p.stats.healsGiven += 1;
       }
     }
@@ -91,7 +91,7 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
     for (const g of ui.equipped) {
       const name = (g as any).Name as string | undefined;
       if (!name) continue;
-      if (name in GEAR_PRECOMBAT_HEAL) healUnit(ui, GEAR_PRECOMBAT_HEAL[name]);
+      if (name in GEAR_PRECOMBAT_HEAL) healUnit(ui, GEAR_PRECOMBAT_HEAL[name], game);
       if (name in GEAR_PRECOMBAT_SHIELD) ui.curShields += GEAR_PRECOMBAT_SHIELD[name];
       if (name === "XVL3" || name === "XVL33") {
         const roll = roll1to6();
@@ -218,7 +218,7 @@ function applyGearActive(
       const targets = unitsOf(w).filter((u) => u.curHp < u.maxHp);
       if (targets.length) {
         const t = targets.reduce((a, b) => (b.curHp - b.maxHp < a.curHp - a.maxHp ? b : a));
-        if (healUnit(t, Math.floor(t.maxHp / 2) + 1)) w.stats.healsGiven += 1;
+        if (healUnit(t, Math.floor(t.maxHp / 2) + 1, game)) w.stats.healsGiven += 1;
       }
       break;
     }
@@ -264,7 +264,7 @@ function applyGearActive(
       break;
     }
     case "Regen Plates":
-      healUnit(ui);
+      healUnit(ui, undefined, game);
       break;
     case "Repair Kit": {
       const candidates = unitsOf(w).filter(
@@ -272,7 +272,7 @@ function applyGearActive(
       );
       if (candidates.length) {
         const t = candidates.reduce((a, b) => (b.curHp - b.maxHp < a.curHp - a.maxHp ? b : a));
-        if (healUnit(t, Math.floor(t.maxHp / 2))) w.stats.healsGiven += 1;
+        if (healUnit(t, Math.floor(t.maxHp / 2), game)) w.stats.healsGiven += 1;
       }
       break;
     }

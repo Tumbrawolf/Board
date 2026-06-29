@@ -33,7 +33,7 @@ const ENEMY_KEYWORD_RULES: [string, string[]][] = [
   ["all_enemies_gain_shields_passive", ["gives all enemies 10 shields before combat"]],
   ["add_dmg_to_allies_passive", ["add this units damage to all active enemies"]],
   ["blocks_abilities_in_lane", ["prevents activation of abilities in lane"]],
-  ["targets_lowest_hp_player", ["attacks target lowest hp unit", "target lowest hp unit"]],
+  ["targets_lowest_hp_player", ["attacks target lowest hp unit", "target lowest hp unit", "moves to lowest hp unit on kill"]],
   ["shield_on_player_kill_overkill", ["gain shields = excess damage on kill", "gain shield = excess damage on kill"]],
   ["double_dmg_on_activation", ["double this units damage when humans activate abilities"]],
   ["splash_adjacent_half_on_attack", ["attacks hit adjacent lanes for half damage", "attacks hit adjacent lanes at half damage"]],
@@ -55,13 +55,17 @@ const ENEMY_KEYWORD_RULES: [string, string[]][] = [
   ["armor_reset_on_kill", ["reset on kill"]],
   ["reflect_with_shields", ["reflects damage while unit has shields"]],
   ["crown_splitter_infantry_dmg_boost", ["enemies deal 15 bonus damage to infantry"]],
-  ["attacks_all_lanes", ["attacks hit all units", "hits all active", "attacks hit all active", "hits all lanes"]],
+  ["attacks_all_lanes", ["attacks hit all units", "hits all active", "attacks hit all active", "hits all lanes", "hit all lanes"]],
   ["gain_dmg_on_hit", ["gains 15 attack on hit", "gain 15 attack on hit"]],
   ["totem_nonmech_dot", ["deals 5 damage to all non mechanical units"]],
   ["absorb_half_stats_on_kill", ["when any unit dies, add half of its stats"]],
   ["all_enemies_buff_20", ["give all enemies 20 damage"]],
   ["bonus_attack_on_kill", ["attacks an additional time per kill"]],
   ["halves_to_reserve", ["half of damage targeting this unit is moved onto reserve"]],
+  ["stun_on_hit_roll_d8", ["roll d8, stun", "roll d8 stun"]],
+  ["heal_all_enemies_on_attack", ["heal all enemies by"]],
+  ["absorb_full_stats_on_kill", ["gain the abilities of units this kills"]],
+  ["hydra_threshold_double", ["doubled attack for every 25%", "double attack for every 25%"]],
 ];
 
 const enemyTagCache = new Map<string, Set<string>>();
@@ -166,8 +170,15 @@ export function applyEnemyCombatMods(c: Combatant, card: EnemyCard, suppressed =
     c.gainDmgOnHit = gainMatch ? parseInt(gainMatch[1]) : 15;
   }
   if (tags.has("absorb_half_stats_on_kill")) c.absorbHalfStatsOnKill = true;
+  if (tags.has("absorb_full_stats_on_kill")) c.absorbFullStatsOnKill = true;
+  if (tags.has("hydra_threshold_double")) c.hydraThresholdActive = true;
   if (tags.has("bonus_attack_on_kill")) c.bonusAttackOnKill = true;
   if (tags.has("halves_to_reserve")) c.halvesToReserveOnHit = true;
+  if (tags.has("stun_on_hit_roll_d8")) c.stunOnHitChance = 0.5;
+  if (tags.has("heal_all_enemies_on_attack")) {
+    const healMatch = (card.Passive ?? "").match(/heal all enemies by (\d+)/i);
+    c.healAllEnemiesOnAttack = healMatch ? parseInt(healMatch[1]) : 5;
+  }
   if (tags.has("armor_equals_shields")) c.armor = toInt(card.Shields);
   if (tags.has("armor_blocks_extra_50")) c.armorBonusFraction = 0.5;
   if (tags.has("takes_half_damage")) {

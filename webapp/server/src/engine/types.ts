@@ -217,6 +217,7 @@ export interface GameState {
   gearActiveCostDoubledType: string | null;
   locationsWithUpgradesBlocked: boolean;
   disabledLocation: Location | null;
+  grandSaboteurDisabledLocation: Location | null;
   forceCommanderChange: boolean;
   containmentCapacityDoubled: boolean;
   /** Per-round kill/death counts by seatIndex, reset at the start of each round -- distinct from
@@ -286,6 +287,10 @@ export interface GameState {
    * lanes") -- set when the active fires this round. Consumed at enemy Combatant construction
    * to zero curShields and apply max shredArmor across every lane. Reset each round. */
   breakerActive: boolean;
+  /** Plague passive: blocks all player unit healing while Plague is alive. */
+  plagueActive: boolean;
+  /** Shadow Sower passive: blocks scout pool effects and scout-targeting enemy mods while alive. */
+  shadowSowerActive: boolean;
   /** The Chessmaster Tactician's Active -- cloned EnemyCard references that were swapped this
    * round. Any enemy whose reference is in this Set has its Combatant curHp halved at
    * construction (equivalent to taking double damage). Reset each round. */

@@ -100,7 +100,8 @@ export function dealPreCombatDamage(ui: UnitInstance, rawDmg: number, ignoreArmo
   return dmg;
 }
 
-export function healUnit(ui: UnitInstance, amount?: number): number {
+export function healUnit(ui: UnitInstance, amount?: number, game?: { plagueActive: boolean }): number {
+  if (game?.plagueActive) return 0;
   if (amount === undefined) {
     const healed = ui.maxHp - ui.curHp;
     ui.curHp = ui.maxHp;
@@ -144,6 +145,8 @@ export class RoundTempState {
   pendingEnemyStunSeats = new Set<number>();
   /** Extra shields to add to the active enemy combatant in each lane when built. */
   pendingEnemyActiveShields = new Map<number, number>();
+  /** Player seat indices whose active unit starts combat stunned because they activated an ability while Titan is alive. */
+  titanStunnedSeats = new Set<number>();
 
   tempBuff(ui: UnitInstance, stats: { Damage?: number; Armor?: number; HP?: number; Shields?: number }) {
     const buff: any = { ...stats };

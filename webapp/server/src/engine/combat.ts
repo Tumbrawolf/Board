@@ -86,12 +86,28 @@ export class Combatant {
   gainDmgOnHit = 0;
   /** Soul Eater: absorb half of attack and max HP from each player unit this enemy kills. */
   absorbHalfStatsOnKill = false;
+  /** Machine Mind: absorb full attack, max HP, and armor from each player unit this enemy kills. */
+  absorbFullStatsOnKill = false;
+  /** Hydra: doubles attack and gains shields at each 25%-HP threshold crossed during combat. */
+  hydraThresholdActive = false;
+  /** Hydra: how many 25%-HP thresholds have already been crossed (tracks double-attack stacks and shield grants). */
+  hydraThresholdsFired = 0;
   /** Blood Hunter: gain one additional attack (baseDmg added to dmg) per player unit killed. */
   bonusAttackOnKill = false;
+  /** Cerberus face 2: gain this many flat attack points per player unit killed. */
+  gainFlatDmgOnKill = 0;
+  /** Cerberus face 3: gain this many armor points per player unit killed. */
+  gainArmorOnKill = 0;
+  /** Cerberus face 4: heal this many HP per player unit killed. */
+  healSelfOnKill = 0;
   /** Manipulator: half of incoming player damage is redirected to the first reserve enemy. */
   halvesToReserveOnHit = false;
   /** Mobile Temple aura: active enemy heals this much HP each time it deals damage to a player. */
   healSelfFlatOnHit = 0;
+  /** Icon of Fear: probability (0–1) of stunning the target player unit on each attack. */
+  stunOnHitChance = 0;
+  /** High Priest: heal all enemies in lane by this amount each exchange, and grant each healed enemy shields = healed. */
+  healAllEnemiesOnAttack = 0;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
@@ -193,6 +209,11 @@ export interface LaneCombatOptions {
    *  damage is redirected to the Death Cloak combatant found in the enemy queue. The floor
    *  deactivates automatically once Death Cloak is removed from eq. */
   deathCloakFloor?: boolean;
+  /** Alpha Storm Claw passive: hits accumulate +1 per exchange on the same target; resets to 0 on kill. */
+  stackAttacksOnSameTarget?: boolean;
+  /** Rotation combat system: stop after the active enemy (eq[0]) is killed so the outer loop can
+   *  rotate to the next lane before continuing. Does not stop on reserve-enemy incidental kills. */
+  exitAfterFirstEnemyKill?: boolean;
 }
 
 /** Default: both sides attack simultaneously each exchange — deaths resolve after both attacks land.
@@ -215,12 +236,15 @@ export function resolveLaneCombat(
     splashAllyOnPlayerAttack = false,
     enemyGroupAttack,
     deathCloakFloor = false,
+    stackAttacksOnSameTarget = false,
+    exitAfterFirstEnemyKill = false,
   } = options;
   const pq = [...playerCombatants];
   const eq = [...enemyCombatants];
   let totalShieldsAbsorbed = 0;
   let deathCb = onFirstPlayerDeath;
   let firstExchangeDone = false;
+  let alphaStack = 0; // Alpha Storm Claw: extra hits per exchange on same target; resets on kill
   const fireDeathCb = (dying: Combatant) => {
     if (deathCb && eq[0]) { deathCb(dying, eq[0]); deathCb = undefined; }
   };
@@ -249,6 +273,7 @@ export function resolveLaneCombat(
     if (totalDmg > 0) {
       if (e.stunOnHitCharges > 0) { p.stunned = true; if (isFinite(e.stunOnHitCharges)) e.stunOnHitCharges--; }
       if (e.stunOnHitInterval > 0) { e.stunHitCount++; if (e.stunHitCount % e.stunOnHitInterval === 0) p.stunned = true; }
+      if (e.stunOnHitChance > 0 && Math.random() < e.stunOnHitChance) p.stunned = true;
       if (e.gainArmorOnHit > 0) e.armor += e.gainArmorOnHit;
       if (e.gainShieldOnHit > 0) e.curShields += e.gainShieldOnHit;
       if (e.gainDmgOnHit > 0) { e.dmg += e.gainDmgOnHit; e.baseDmg += e.gainDmgOnHit; }
@@ -350,7 +375,9 @@ export function resolveLaneCombat(
           if (e.explodeOnDeathFraction > 0) pq[0].curHp -= Math.floor(e.dmg * e.explodeOnDeathFraction);
           if (e.explodeOnDeathFlat > 0) pq[0].curHp -= e.explodeOnDeathFlat;
         }
-        fireKillCb(p); eq.shift(); continue;
+        fireKillCb(p); eq.shift();
+        if (exitAfterFirstEnemyKill) break;
+        continue;
       }
       enemyAttacks(e, eTarget, mult);
     } else if (e.attacksFirst) {
@@ -365,7 +392,11 @@ export function resolveLaneCombat(
         if (e.stunAllOnKill) for (const pc of pq) pc.stunned = true;
         if (e.armorResetOnKill > 0) e.armor = e.armorResetOnKill;
         if (e.absorbHalfStatsOnKill) { e.dmg += Math.floor(eTarget.dmg / 2); e.hp += Math.floor(eTarget.hp / 2); e.curHp += Math.floor(eTarget.hp / 2); }
+        if (e.absorbFullStatsOnKill) { e.dmg += eTarget.dmg; e.hp += eTarget.hp; e.curHp += eTarget.hp; e.armor += eTarget.armor; e.baseDmg += eTarget.dmg; }
         if (e.bonusAttackOnKill) { e.dmg += e.baseDmg; }
+        if (e.gainFlatDmgOnKill > 0) { e.dmg += e.gainFlatDmgOnKill; e.baseDmg += e.gainFlatDmgOnKill; }
+        if (e.gainArmorOnKill > 0) e.armor += e.gainArmorOnKill;
+        if (e.healSelfOnKill > 0) e.curHp = Math.min(e.hp, e.curHp + e.healSelfOnKill);
         continue;
       }
       playerAttacks(p, e, mult);
@@ -373,6 +404,10 @@ export function resolveLaneCombat(
     } else {
       // Default: simultaneous — both attack, deaths resolve after both land.
       enemyAttacks(e, eTarget, mult);
+      // Alpha Storm Claw stacking: +1 additional hit per consecutive exchange on the same target.
+      for (let h = 0; h < alphaStack && eTarget.curHp > 0; h++) {
+        enemyAttacks(e, eTarget, mult);
+      }
       playerAttacks(p, e, mult);
       applyDeathCloakFloor(e);
     }
@@ -385,7 +420,14 @@ export function resolveLaneCombat(
       if (e.stunAllOnKill) for (const pc of pq) pc.stunned = true;
       if (eTargetIdx === 0 && e.armorResetOnKill > 0) e.armor = e.armorResetOnKill;
       if (eTargetIdx === 0 && e.absorbHalfStatsOnKill) { e.dmg += Math.floor(eTarget.dmg / 2); e.hp += Math.floor(eTarget.hp / 2); e.curHp += Math.floor(eTarget.hp / 2); }
+      if (eTargetIdx === 0 && e.absorbFullStatsOnKill) { e.dmg += eTarget.dmg; e.hp += eTarget.hp; e.curHp += eTarget.hp; e.armor += eTarget.armor; e.baseDmg += eTarget.dmg; }
       if (eTargetIdx === 0 && e.bonusAttackOnKill) { e.dmg += e.baseDmg; }
+      if (e.gainFlatDmgOnKill > 0) { e.dmg += e.gainFlatDmgOnKill; e.baseDmg += e.gainFlatDmgOnKill; }
+      if (e.gainArmorOnKill > 0) e.armor += e.gainArmorOnKill;
+      if (e.healSelfOnKill > 0) e.curHp = Math.min(e.hp, e.curHp + e.healSelfOnKill);
+      if (stackAttacksOnSameTarget) alphaStack = 0; // target killed — reset stack for new target
+    } else if (stackAttacksOnSameTarget) {
+      alphaStack++; // same target survived — stack grows
     }
     if (e.curHp <= 0) {
       if (pq[0]) {
@@ -393,6 +435,7 @@ export function resolveLaneCombat(
         if (e.explodeOnDeathFlat > 0) pq[0].curHp -= e.explodeOnDeathFlat;
       }
       fireKillCb(pq[0] ?? p); eq.shift();
+      if (exitAfterFirstEnemyKill) break;
     }
     // Reserve enemy healers (e.g. Cleric passive): heal the active enemy after each exchange.
     if (eq[0]) {
@@ -400,6 +443,25 @@ export function resolveLaneCombat(
         if (eq[i].healActiveAllyPerExchange > 0) {
           eq[0].curHp = Math.min(eq[0].hp, eq[0].curHp + eq[i].healActiveAllyPerExchange);
         }
+      }
+    }
+    // High Priest passive: heal all enemies in lane by N and grant shields = healed after each exchange.
+    for (const healer of eq) {
+      if (healer.healAllEnemiesOnAttack <= 0) continue;
+      for (const ally of eq) {
+        const healed = Math.min(healer.healAllEnemiesOnAttack, ally.hp - ally.curHp);
+        if (healed > 0) { ally.curHp += healed; ally.curShields += healed; }
+      }
+    }
+    // Hydra passive: for each new 25%-HP threshold crossed, double attack and gain shields = curHp.
+    for (const en of eq) {
+      if (!en.hydraThresholdActive || en.hp <= 0) continue;
+      const thresholdsCrossed = Math.min(3, Math.floor((en.hp - Math.max(0, en.curHp)) / (en.hp * 0.25)));
+      while (en.hydraThresholdsFired < thresholdsCrossed) {
+        en.dmg *= 2;
+        en.baseDmg *= 2;
+        en.curShields += Math.max(0, en.curHp);
+        en.hydraThresholdsFired++;
       }
     }
     // Execute check: kill any player unit whose HP fell below the threshold this exchange.

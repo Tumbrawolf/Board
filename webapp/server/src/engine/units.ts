@@ -97,15 +97,15 @@ export function applyExplodeOnDeath(game: GameState, p: GamePlayer, ui: UnitInst
 /** Unit-ability passives that resolve once before combat: lane-self-heals, no-reserve bonuses,
  * and building this round's consecutive-hit damage stack. resource_on_kill/boost_others_damage
  * are documented no-ops (need a multi-unit-active model this engine doesn't have, same as sim.py). */
-export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState) {
+export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, game?: GameState) {
   const allUnits = [...(p.active ? [p.active] : []), ...p.reserve];
   const noReserve = p.reserve.length === 0;
   for (const ui of allUnits) {
     const tags = classifyUnit(ui.card);
-    if (tags.has("precombat_heal")) healUnit(ui, 4);
+    if (tags.has("precombat_heal")) healUnit(ui, 4, game);
     if (tags.has("precombat_shield")) ui.curShields += 5;
     if (tags.has("lane_heal") && ui === p.active) {
-      for (const other of p.reserve) healUnit(other, 2);
+      for (const other of p.reserve) healUnit(other, 2, game);
     }
     if (tags.has("shields_no_reserve") && noReserve && ui === p.active) {
       ui.curShields += 20;
