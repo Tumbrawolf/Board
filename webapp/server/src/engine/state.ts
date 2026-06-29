@@ -84,6 +84,22 @@ export function strongestPlayer(game: GameState): GamePlayer {
   return game.players.reduce((a, b) => (lanePower(b) > lanePower(a) ? b : a));
 }
 
+/** Apply damage to a UnitInstance before combat (armor reduces, shields absorb after armor,
+ * minimum 1 HP damage if anything gets through). Returns actual HP damage dealt. */
+export function dealPreCombatDamage(ui: UnitInstance, rawDmg: number, ignoreArmor = false): number {
+  if (rawDmg <= 0) return 0;
+  const armor = ignoreArmor ? 0 : Math.max(0, toInt((ui.card as any).Armor ?? 0) + equippedBonus(ui, "Armor"));
+  let dmg = Math.max(1, rawDmg - armor);
+  if (ui.curShields > 0) {
+    const absorbed = Math.min(ui.curShields, dmg);
+    ui.curShields -= absorbed;
+    dmg -= absorbed;
+  }
+  dmg = Math.max(0, dmg);
+  ui.curHp -= dmg;
+  return dmg;
+}
+
 export function healUnit(ui: UnitInstance, amount?: number): number {
   if (amount === undefined) {
     const healed = ui.maxHp - ui.curHp;
@@ -120,6 +136,14 @@ export class RoundTempState {
   reserveImmuneThisRound = false;
   youShallNotPassArmed = false;
   tranqRoundsActiveThisRound = false;
+  /** Player seat indices where Gloom (or similar) blocks unit/gear ability activations this round. */
+  abilityBlockedSeats = new Set<number>();
+  /** Player seat indices whose active unit starts combat stunned (set by cross-lane reveal effects). */
+  pendingPlayerStunSeats = new Set<number>();
+  /** Player seat indices whose active enemy starts combat stunned (set by cross-lane reveal effects). */
+  pendingEnemyStunSeats = new Set<number>();
+  /** Extra shields to add to the active enemy combatant in each lane when built. */
+  pendingEnemyActiveShields = new Map<number, number>();
 
   tempBuff(ui: UnitInstance, stats: { Damage?: number; Armor?: number; HP?: number; Shields?: number }) {
     const buff: any = { ...stats };
@@ -162,7 +186,22 @@ export class RoundTempState {
     this.reserveImmuneThisRound = false;
     this.youShallNotPassArmed = false;
     this.tranqRoundsActiveThisRound = false;
+    this.abilityBlockedSeats.clear();
+    this.pendingPlayerStunSeats.clear();
+    this.pendingEnemyStunSeats.clear();
+    this.pendingEnemyActiveShields.clear();
   }
+}
+
+/** Returns the seat indices of lanes immediately adjacent to `seatIndex` in player order. */
+export function adjacentSeats(game: GameState, seatIndex: number): number[] {
+  const seats = game.players.map((p) => p.seatIndex);
+  const idx = seats.indexOf(seatIndex);
+  if (idx === -1) return [];
+  const result: number[] = [];
+  if (idx > 0) result.push(seats[idx - 1]);
+  if (idx < seats.length - 1) result.push(seats[idx + 1]);
+  return result;
 }
 
 export function addTempUnitPerm(player: GamePlayer, ui: UnitInstance) {

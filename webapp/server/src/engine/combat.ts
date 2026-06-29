@@ -15,15 +15,82 @@ export class Combatant {
   ignoreArmor = false;
   shieldMultiplier = 1;
   shredArmor = 0;
+  /** Bypass up to this many armor points per hit without removing them. */
+  pierceArmor = 0;
   firstHitPrevented = false;
   deleteOnKill = false;
   attacksFirst = false;
   reflectFraction = 0;
   lifestealFraction = 0;
+  /** Unit skips its next attack (clears after the skipped turn). */
+  stunned = false;
+  /** Remaining stun-on-hit charges. 0 = off, finite N = one-off/limited, Infinity = always. */
+  stunOnHitCharges = 0;
+  /** Redirect all attacks to the scout unit instead of the active player combatant. */
+  targetsScout = false;
+  /** Heal the active ally (eq[0]) by this amount after each exchange while this unit is in reserve. */
+  healActiveAllyPerExchange = 0;
+  /** Enemy attacks the lowest-curHp player combatant each exchange instead of the active. */
+  targetsLowestHpPlayer = false;
+  /** Enemy attacks the first reserve player slot (pq[1]) instead of the active (pq[0]). */
+  targetsReservePlayer = false;
+  /** Gain shields equal to overkill damage each time this enemy kills a player unit. */
+  gainShieldOnKillOverkill = false;
+  /** On death deal (dmg × this fraction) to the active player combatant. */
+  explodeOnDeathFraction = 0;
+  /** On death deal this flat amount of damage to the active player combatant (bypasses armor). */
+  explodeOnDeathFlat = 0;
+  /** Unit type string from the source card (e.g. "Infantry", "Vehicle"). Used for type-targeted effects. */
+  unitType = "";
+  /** Flat bonus damage applied after armor/shields when attacking a specific unit type (lowercased key). */
+  bonusDmgVsType: Record<string, number> = {};
+  /** Execute: instantly kill any player combatant whose curHp is below this fixed value (Sniper Squad). */
+  executeBelowFixed = 0;
+  /** Execute: instantly kill any player combatant whose curHp < (maxHp × this fraction) (Ravager). */
+  executeBelowFraction = 0;
+  /** Gain this much armor each time this unit deals damage. */
+  gainArmorOnHit = 0;
+  /** Grant this much shield to self each time this unit deals damage. */
+  gainShieldOnHit = 0;
+  /** Bonus armor fraction: effectiveArmor *= (1 + armorBonusFraction). Crawling Forge passive. */
+  armorBonusFraction = 0;
+  /** Thorn Hide: when damaged, deal this unit's current armor value back to the attacker. */
+  reflectEqualToArmor = false;
+  /** Cryo Spitter: stun the target every Nth attack (0 = off). */
+  stunOnHitInterval = 0;
+  /** Cryo Spitter: tracks how many attacks have been made for interval-stun. */
+  stunHitCount = 0;
+  /** Plasma Artillery / Inferno Artillery: fraction of damage (0=none, 0.5=half, 1=full) dealt to adjacent lanes. */
+  splashAdjacentFraction = 0;
+  /** Plasma Artillery / Inferno Artillery: unit types (lowercased) this enemy deals double effective damage to. */
+  doubleDmgVsTypes: Set<string> = new Set();
+  /** Annihilator Tank: deal half attack damage to the next reserve unit after killing the active player unit. */
+  splashToReserveOnKill = false;
+  /** Base damage before any per-exchange recalculation (e.g. Super Grunt). Set once at construction. */
+  baseDmg = 0;
+  /** Super Grunt: attack bonus = (maxHp - curHp) each exchange. */
+  dmgPlusMissingHp = false;
+  /** Shatter Cannon: shred this many shields from the target on each hit. */
+  shredShieldOnHit = 0;
+  /** Shatter Cannon: stun all remaining player units when this enemy kills one. */
+  stunAllOnKill = false;
+  /** High Praetor: after killing a player unit, reset armor to this value (0 = disabled). */
+  armorResetOnKill = 0;
+  /** Alpha Thorn Hide: only apply reflectFraction when the defender had shields at the start of the hit. */
+  reflectOnlyWithShields = false;
+  /** Black Rain / Titan: each attack also deals damage to active player combatants in all other lanes (resolved via callback). */
+  attacksAllLanes = false;
+  /** Oblivion Walker: gain this much flat attack each time this unit deals damage. */
+  gainDmgOnHit = 0;
+  /** Soul Eater: absorb half of attack and max HP from each player unit this enemy kills. */
+  absorbHalfStatsOnKill = false;
+  /** Blood Hunter: gain one additional attack (baseDmg added to dmg) per player unit killed. */
+  bonusAttackOnKill = false;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
     this.dmg = toInt(card.Damage);
+    this.baseDmg = this.dmg;
     this.hp = toInt(card.HP) || 1;
     this.curHp = this.hp;
     this.armor = toInt(card.Armor);
@@ -38,6 +105,7 @@ export function combatantFromUnit(ui: UnitInstance): Combatant {
   c.hp = ui.maxHp;
   c.curHp = ui.curHp;
   c.curShields = ui.curShields;
+  c.unitType = (ui.card as any).Type ?? "";
   return c;
 }
 
@@ -51,7 +119,11 @@ export function computeDealt(attacker: Combatant, defender: Combatant): number {
     defender.firstHitPrevented = false;
     return 0;
   }
-  const effectiveArmor = attacker.ignoreArmor ? 0 : defender.armor;
+  const hadShields = defender.curShields > 0;
+  const baseArmor = attacker.ignoreArmor ? 0 : Math.max(0, defender.armor - attacker.pierceArmor);
+  const effectiveArmor = defender.armorBonusFraction
+    ? Math.floor(baseArmor * (1 + defender.armorBonusFraction))
+    : baseArmor;
   if (attacker.shredArmor && defender.armor > 0) {
     defender.armor -= Math.min(attacker.shredArmor, defender.armor);
   }
@@ -63,8 +135,11 @@ export function computeDealt(attacker: Combatant, defender: Combatant): number {
     dealt -= Math.floor(absorbed / attacker.shieldMultiplier);
   }
   dealt = Math.max(0, dealt);
-  if (defender.reflectFraction) {
+  if (defender.reflectFraction && (!defender.reflectOnlyWithShields || hadShields)) {
     attacker.curHp -= Math.floor(dealt * defender.reflectFraction);
+  }
+  if (defender.reflectEqualToArmor && dealt > 0) {
+    attacker.curHp -= defender.armor;
   }
   if (attacker.lifestealFraction) {
     attacker.curHp = Math.min(attacker.hp, attacker.curHp + Math.floor(dealt * attacker.lifestealFraction));
@@ -79,18 +154,46 @@ export interface LaneCombatResult {
   totalShieldsAbsorbed: number;
 }
 
+export interface LaneCombatOptions {
+  /** Tag Team passive: flat bonus damage added to the enemy after each player attack. */
+  bonusPlayerDmgPerAttack?: number;
+  /** You Shall Not Pass: fires once when the first player unit dies. */
+  onFirstPlayerDeath?: (dying: Combatant, currentEnemy: Combatant) => void;
+  /** Whites of Their Eyes: doubles damage on both sides for the first exchange. */
+  doubleFirstAttack?: boolean;
+  /** Punch Through: fires each time an enemy is killed. */
+  onEnemyKill?: (killer: Combatant) => void;
+  /** Scorpions / redirect: called instead of normal enemy→player damage each time the enemy attacks.
+   *  The callback is responsible for applying damage elsewhere (e.g. to the scout). */
+  onEnemyAttack?: (attacker: Combatant) => void;
+  /** Shard Beast / splash: called after normal enemy attack with the damage actually dealt,
+   *  so the callback can apply secondary effects (e.g. half damage to adjacent lanes). */
+  onAfterEnemyAttack?: (attacker: Combatant, dmgDealt: number) => void;
+  /** Emmiter passive: flat HP damage (ignores armor/shields) applied to every Infantry player
+   *  combatant at the top of each exchange before attacks resolve. */
+  perExchangeInfantryDoT?: number;
+  /** Totem of Decay passive: flat HP damage applied to every non-Mechanical (non-Vehicle/Mech) player
+   *  combatant at the top of each exchange. */
+  perExchangeNonMechDoT?: number;
+}
+
 /** Default (per README #33): the enemy's Active card deals damage first each exchange,
- * resolving completely (including an outright kill) before the player's unit responds.
- * bonusPlayerDmgPerAttack: Tag Team passive -- flat bonus damage applied to the enemy after each
- * player attack (sum of reserve unit damage values, no additional armor interaction). */
+ * resolving completely (including an outright kill) before the player's unit responds. */
 export function resolveLaneCombat(
   playerCombatants: Combatant[],
   enemyCombatants: Combatant[],
-  bonusPlayerDmgPerAttack = 0,
-  onFirstPlayerDeath?: (dying: Combatant, currentEnemy: Combatant) => void,
-  doubleFirstAttack = false,
-  onEnemyKill?: (killer: Combatant) => void
+  options: LaneCombatOptions = {}
 ): LaneCombatResult {
+  const {
+    bonusPlayerDmgPerAttack = 0,
+    onFirstPlayerDeath,
+    doubleFirstAttack = false,
+    onEnemyKill,
+    onEnemyAttack,
+    onAfterEnemyAttack,
+    perExchangeInfantryDoT = 0,
+    perExchangeNonMechDoT = 0,
+  } = options;
   const pq = [...playerCombatants];
   const eq = [...enemyCombatants];
   let totalShieldsAbsorbed = 0;
@@ -101,42 +204,150 @@ export function resolveLaneCombat(
   };
   const fireKillCb = (killer: Combatant) => { if (onEnemyKill) onEnemyKill(killer); };
   const dmgMult = () => (doubleFirstAttack && !firstExchangeDone) ? 2 : 1;
+
+  const enemyAttacks = (e: Combatant, p: Combatant, mult: number) => {
+    if (e.stunned) { e.stunned = false; return; }
+    if (onEnemyAttack) {
+      onEnemyAttack(e);
+      return;
+    }
+    if (e.dmgPlusMissingHp) e.dmg = e.baseDmg + Math.max(0, e.hp - e.curHp); // Super Grunt: recompute each attack
+    const pBefore = p.curShields;
+    const eDmg = computeDealt(e, p) * mult;
+    p.curHp -= eDmg;
+    totalShieldsAbsorbed += pBefore - p.curShields;
+    // Type-targeted bonus damage (e.g. Burner: +5 vs Infantry). Applied after armor; bypasses armor.
+    const typeBonus = Object.entries(e.bonusDmgVsType)
+      .find(([t]) => p.unitType.toLowerCase() === t)?.[1] ?? 0;
+    if (typeBonus > 0) p.curHp -= typeBonus;
+    // Double damage vs type (e.g. Plasma Artillery vs Vehicle/Mech): deal effective damage a second time.
+    if (eDmg > 0 && e.doubleDmgVsTypes.has(p.unitType.toLowerCase().replace(/s$/, ""))) p.curHp -= eDmg;
+    const totalDmg = eDmg + typeBonus;
+    if (totalDmg > 0) {
+      if (e.stunOnHitCharges > 0) { p.stunned = true; if (isFinite(e.stunOnHitCharges)) e.stunOnHitCharges--; }
+      if (e.stunOnHitInterval > 0) { e.stunHitCount++; if (e.stunHitCount % e.stunOnHitInterval === 0) p.stunned = true; }
+      if (e.gainArmorOnHit > 0) e.armor += e.gainArmorOnHit;
+      if (e.gainShieldOnHit > 0) e.curShields += e.gainShieldOnHit;
+      if (e.gainDmgOnHit > 0) { e.dmg += e.gainDmgOnHit; e.baseDmg += e.gainDmgOnHit; }
+      if (e.shredShieldOnHit > 0) p.curShields = Math.max(0, p.curShields - e.shredShieldOnHit);
+      if (onAfterEnemyAttack) onAfterEnemyAttack(e, eDmg);
+    }
+  };
+
+  const playerAttacks = (p: Combatant, e: Combatant, mult: number) => {
+    if (p.stunned) { p.stunned = false; return; }
+    const eBefore = e.curShields;
+    const pDmg = computeDealt(p, e) * mult;
+    e.curHp -= pDmg + bonusPlayerDmgPerAttack;
+    totalShieldsAbsorbed += eBefore - e.curShields;
+    if (p.stunOnHitCharges > 0 && pDmg > 0) { e.stunned = true; if (isFinite(p.stunOnHitCharges)) p.stunOnHitCharges--; }
+  };
+
+  // Sniper Squad / Ravager: instantly kill player units whose HP falls below the execute threshold.
+  const executeCheck = (activeEnemy: Combatant) => {
+    for (let j = pq.length - 1; j >= 0; j--) {
+      const pc = pq[j];
+      const fixed = activeEnemy.executeBelowFixed;
+      const frac = activeEnemy.executeBelowFraction > 0 ? Math.floor(pc.hp * activeEnemy.executeBelowFraction) : 0;
+      const thresh = Math.max(fixed, frac);
+      if (thresh > 0 && pc.curHp > 0 && pc.curHp < thresh) {
+        pc.curHp = 0;
+        if (j === 0) fireDeathCb(pc);
+        pq.splice(j, 1);
+      }
+    }
+  };
+
   while (pq.length && eq.length) {
-    const p = pq[0];
+    // Emmiter passive: bypass-armor DoT on Infantry player combatants before each exchange.
+    if (perExchangeInfantryDoT > 0) {
+      for (const pc of pq) {
+        if (pc.unitType.toLowerCase() === "infantry") pc.curHp -= perExchangeInfantryDoT;
+      }
+      let j = 0;
+      while (j < pq.length) {
+        if (pq[j].curHp <= 0) { if (j === 0) fireDeathCb(pq[j]); pq.splice(j, 1); }
+        else j++;
+      }
+      if (!pq.length) break;
+    }
+    if (perExchangeNonMechDoT > 0) {
+      const mechTypes = new Set(["vehicle", "mech", "mechanised"]);
+      for (const pc of pq) {
+        if (!mechTypes.has(pc.unitType.toLowerCase())) pc.curHp -= perExchangeNonMechDoT;
+      }
+      let k = 0;
+      while (k < pq.length) {
+        if (pq[k].curHp <= 0) { if (k === 0) fireDeathCb(pq[k]); pq.splice(k, 1); }
+        else k++;
+      }
+      if (!pq.length) break;
+    }
+    if (eq[0]) executeCheck(eq[0]);
+    if (!pq.length) break;
+    const p = pq[0]; // active player — always retaliates
     const e = eq[0];
     const mult = dmgMult();
+    // Lance Turret / Shadow Knight: enemy may target a non-active player unit.
+    const eTargetIdx = e.targetsLowestHpPlayer
+      ? pq.reduce((minI, c, i) => c.curHp < pq[minI].curHp ? i : minI, 0)
+      : (e.targetsReservePlayer && pq.length > 1) ? 1
+      : 0;
+    const eTarget = pq[eTargetIdx];
     if (p.attacksFirst) {
-      const eBefore = e.curShields;
-      e.curHp -= computeDealt(p, e) * mult;
-      e.curHp -= bonusPlayerDmgPerAttack;
-      totalShieldsAbsorbed += eBefore - e.curShields;
+      playerAttacks(p, e, mult);
       if (e.curHp <= 0) {
         firstExchangeDone = true;
-        fireKillCb(p);
-        eq.shift();
-        continue;
+        if (pq[0]) {
+          if (e.explodeOnDeathFraction > 0) pq[0].curHp -= Math.floor(e.dmg * e.explodeOnDeathFraction);
+          if (e.explodeOnDeathFlat > 0) pq[0].curHp -= e.explodeOnDeathFlat;
+        }
+        fireKillCb(p); eq.shift(); continue;
       }
-      const pBefore = p.curShields;
-      p.curHp -= computeDealt(e, p) * mult;
-      totalShieldsAbsorbed += pBefore - p.curShields;
+      enemyAttacks(e, eTarget, mult);
     } else {
-      const pBefore = p.curShields;
-      p.curHp -= computeDealt(e, p) * mult;
-      totalShieldsAbsorbed += pBefore - p.curShields;
-      if (p.curHp <= 0) {
+      enemyAttacks(e, eTarget, mult);
+      // Active unit dying halts retaliation; reserve unit dying does not.
+      if (eTargetIdx === 0 && eTarget.curHp <= 0) {
         firstExchangeDone = true;
-        fireDeathCb(p);
-        pq.shift();
+        if (e.gainShieldOnKillOverkill && eTarget.curHp < 0) e.curShields += Math.abs(eTarget.curHp);
+        fireDeathCb(eTarget); pq.splice(0, 1);
+        if (e.splashToReserveOnKill && pq.length > 0) pq[0].curHp -= Math.floor(e.dmg / 2);
+        if (e.stunAllOnKill) for (const pc of pq) pc.stunned = true;
+        if (e.armorResetOnKill > 0) e.armor = e.armorResetOnKill;
+        if (e.absorbHalfStatsOnKill) { e.dmg += Math.floor(eTarget.dmg / 2); e.hp += Math.floor(eTarget.hp / 2); e.curHp += Math.floor(eTarget.hp / 2); }
+        if (e.bonusAttackOnKill) { e.dmg += e.baseDmg; }
         continue;
       }
-      const eBefore = e.curShields;
-      e.curHp -= computeDealt(p, e) * mult;
-      e.curHp -= bonusPlayerDmgPerAttack;
-      totalShieldsAbsorbed += eBefore - e.curShields;
+      playerAttacks(p, e, mult);
     }
     firstExchangeDone = true;
-    if (p.curHp <= 0) { fireDeathCb(p); pq.shift(); }
-    if (e.curHp <= 0) { fireKillCb(pq[0] ?? p); eq.shift(); }
+    if (eTarget.curHp <= 0) {
+      if (e.gainShieldOnKillOverkill && eTarget.curHp < 0) e.curShields += Math.abs(eTarget.curHp);
+      fireDeathCb(eTarget); pq.splice(eTargetIdx, 1);
+      if (eTargetIdx === 0 && e.splashToReserveOnKill && pq.length > 0) pq[0].curHp -= Math.floor(e.dmg / 2);
+      if (e.stunAllOnKill) for (const pc of pq) pc.stunned = true;
+      if (eTargetIdx === 0 && e.armorResetOnKill > 0) e.armor = e.armorResetOnKill;
+      if (eTargetIdx === 0 && e.absorbHalfStatsOnKill) { e.dmg += Math.floor(eTarget.dmg / 2); e.hp += Math.floor(eTarget.hp / 2); e.curHp += Math.floor(eTarget.hp / 2); }
+      if (eTargetIdx === 0 && e.bonusAttackOnKill) { e.dmg += e.baseDmg; }
+    }
+    if (e.curHp <= 0) {
+      if (pq[0]) {
+        if (e.explodeOnDeathFraction > 0) pq[0].curHp -= Math.floor(e.dmg * e.explodeOnDeathFraction);
+        if (e.explodeOnDeathFlat > 0) pq[0].curHp -= e.explodeOnDeathFlat;
+      }
+      fireKillCb(pq[0] ?? p); eq.shift();
+    }
+    // Reserve enemy healers (e.g. Cleric passive): heal the active enemy after each exchange.
+    if (eq[0]) {
+      for (let i = 1; i < eq.length; i++) {
+        if (eq[i].healActiveAllyPerExchange > 0) {
+          eq[0].curHp = Math.min(eq[0].hp, eq[0].curHp + eq[i].healActiveAllyPerExchange);
+        }
+      }
+    }
+    // Execute check: kill any player unit whose HP fell below the threshold this exchange.
+    if (eq[0]) executeCheck(eq[0]);
   }
   return { overrun: eq.length > 0, playerSurvivors: pq, enemySurvivors: eq, totalShieldsAbsorbed };
 }

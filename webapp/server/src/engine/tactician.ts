@@ -1,6 +1,7 @@
 import { RANK_NUM, type Location } from "./constants.js";
 import { toInt, type CommandCard, type EnemyCard, type GearCard, type UnitCard } from "./data.js";
 import type { TacticianActivePrompt, TacticianActiveResponse, DecisionProvider } from "./decisions.js";
+import { classifyEnemy } from "./enemies.js";
 import { canActivateAbility, makeUnitInstance, recordAbilityActivation, reorderActive, canUseEffect, recordEffectUse, type RoundTempState } from "./state.js";
 import type { GamePlayer, GameState } from "./types.js";
 
@@ -118,14 +119,15 @@ export async function applyTacticianActive(
     case "The Gunsmith": {
       if (!p.active) break;
       const laneEnemies = game.players
-        .filter(q => q.laneEnemyReserve.length)
+        .filter(q => q.laneEnemyReserve.some(e => !classifyEnemy(e).has("untargetable_by_abilities")))
         .map(q => ({
           seatIndex: q.seatIndex,
           playerName: q.name,
-          enemies: q.laneEnemyReserve.map((e, idx) => ({
-            name: e.Name, hp: toInt(e.HP), armor: toInt(e.Armor ?? "0"), idx,
-          })),
-        }));
+          enemies: q.laneEnemyReserve
+            .map((e, idx) => ({ name: e.Name, hp: toInt(e.HP), armor: toInt(e.Armor ?? "0"), idx }))
+            .filter(entry => !classifyEnemy(q.laneEnemyReserve[entry.idx]).has("untargetable_by_abilities")),
+        }))
+        .filter(lane => lane.enemies.length);
       if (!laneEnemies.length) break;
       const resp = await decisions.chooseTacticianActiveTarget(p, game, {
         tacticianName: name, kind: "enemy_pick", laneEnemies,
@@ -364,14 +366,15 @@ export async function applyTacticianActive(
     // ── The Chessmaster ───────────────────────────────────────────────────────
     case "The Chessmaster": {
       const laneEnemies = game.players
-        .filter(q => q.laneEnemyReserve.length)
+        .filter(q => q.laneEnemyReserve.some(e => !classifyEnemy(e).has("untargetable_by_abilities")))
         .map(q => ({
           seatIndex: q.seatIndex,
           playerName: q.name,
-          enemies: q.laneEnemyReserve.map((e, idx) => ({
-            name: e.Name, hp: toInt(e.HP), armor: toInt((e as any).Armor ?? "0"), idx,
-          })),
-        }));
+          enemies: q.laneEnemyReserve
+            .map((e, idx) => ({ name: e.Name, hp: toInt(e.HP), armor: toInt((e as any).Armor ?? "0"), idx }))
+            .filter(entry => !classifyEnemy(q.laneEnemyReserve[entry.idx]).has("untargetable_by_abilities")),
+        }))
+        .filter(lane => lane.enemies.length);
       if (laneEnemies.length < 2) break;
       const resp = await decisions.chooseTacticianActiveTarget(p, game, {
         tacticianName: name, kind: "swap_enemies", laneEnemies,
