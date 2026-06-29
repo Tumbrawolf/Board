@@ -6,6 +6,7 @@ import {
   type BattlefieldWindowCtx,
   type CommandCardChoice,
   type ContestedLocation,
+  type CombatRoundSnapshot,
   type DecisionProvider,
   type PlacedWorker,
   type PlanningWindowCtx,
@@ -28,6 +29,86 @@ import {
 } from "./engine/planningActions.js";
 import type { GamePlayer, GameState } from "./engine/types.js";
 import type { RoomState } from "./types.js";
+
+// --- Combat pacing (pause / skip / per-round ack) ---
+const COMBAT_ACK_TIMEOUT_MS = 15000;
+
+const combatPausedRooms = new Set<string>();
+const combatResumeCallbacks = new Map<string, Array<() => void>>();
+// socket.id → true once that client presses Skip for this combat session.
+const combatSkippedSocketIds = new Map<string, Set<string>>(); // roomCode → socketIds
+
+interface CombatRoundPending {
+  requestId: string;
+  pending: Map<string, { resolve: () => void; timerId: ReturnType<typeof setTimeout> }>;
+}
+const pendingCombatRound = new Map<string, CombatRoundPending>();
+
+function waitForResume(roomCode: string): Promise<void> {
+  if (!combatPausedRooms.has(roomCode)) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const callbacks = combatResumeCallbacks.get(roomCode) ?? [];
+    callbacks.push(resolve);
+    combatResumeCallbacks.set(roomCode, callbacks);
+  });
+}
+
+/** Called when a human socket sends `combat:ack`. */
+export function resolveCombatAck(socketId: string, requestId: string, roomCode: string) {
+  const round = pendingCombatRound.get(roomCode);
+  if (!round || round.requestId !== requestId) return;
+  const entry = round.pending.get(socketId);
+  if (!entry) return;
+  clearTimeout(entry.timerId);
+  round.pending.delete(socketId);
+  entry.resolve();
+}
+
+/** Toggle pause globally for a room. Broadcasts `combat:paused` to all clients. */
+export function setCombatPause(roomCode: string, io: Server) {
+  combatPausedRooms.add(roomCode);
+  io.to(roomCode).emit("combat:paused");
+}
+
+/** Resume a paused room. Immediately resolves all pending acks so combat continues. */
+export function setCombatResume(roomCode: string, io: Server) {
+  combatPausedRooms.delete(roomCode);
+  const callbacks = combatResumeCallbacks.get(roomCode) ?? [];
+  combatResumeCallbacks.delete(roomCode);
+  for (const cb of callbacks) cb();
+  // Immediately unblock any in-flight acks so the next exchange fires.
+  const round = pendingCombatRound.get(roomCode);
+  if (round) {
+    for (const [, entry] of round.pending) {
+      clearTimeout(entry.timerId);
+      entry.resolve();
+    }
+    round.pending.clear();
+  }
+  io.to(roomCode).emit("combat:resumed");
+}
+
+/** Mark a socket as "skip" — auto-resolves all future acks for them this combat. */
+export function setCombatSkip(socketId: string, roomCode: string) {
+  if (!combatSkippedSocketIds.has(roomCode)) combatSkippedSocketIds.set(roomCode, new Set());
+  combatSkippedSocketIds.get(roomCode)!.add(socketId);
+  // Immediately resolve any in-flight ack for this socket.
+  const round = pendingCombatRound.get(roomCode);
+  if (round) {
+    const entry = round.pending.get(socketId);
+    if (entry) {
+      clearTimeout(entry.timerId);
+      round.pending.delete(socketId);
+      entry.resolve();
+    }
+  }
+}
+
+/** Clear per-room combat skip state at the end of combat (call once combat finishes). */
+export function clearCombatSkip(roomCode: string) {
+  combatSkippedSocketIds.delete(roomCode);
+  pendingCombatRound.delete(roomCode);
+}
 
 const PLACEMENT_TIMEOUT_MS = 30000;
 const PLANNING_TIMEOUT_MS = 60000;
@@ -811,5 +892,46 @@ export class MixedDecisionProvider implements DecisionProvider {
     const totalAssigned = [...result.values()].reduce((s, arr) => s + arr.length, 0);
     if (totalAssigned !== flatPool.length) return this.bot.choosePerfectInfoLayout(commander, game);
     return result;
+  }
+
+  /** Emit one round of exchange data to all clients and wait for every non-skipped human to ack
+   * (or the hard timeout). Pauses freeze the wait; resumes immediately unblock all pending acks. */
+  async waitForCombatAck(game: GameState, snapshot: CombatRoundSnapshot): Promise<void> {
+    const roomCode = this.room.code;
+
+    // Hold here until any active pause clears.
+    await waitForResume(roomCode);
+
+    const requestId = randomUUID();
+    this.io.to(roomCode).emit("combat:round", { requestId, ...snapshot });
+
+    // Collect connected, non-skipped human socket ids.
+    const skipped = combatSkippedSocketIds.get(roomCode) ?? new Set<string>();
+    const humanSocketIds: string[] = [];
+    for (const seat of this.room.seats) {
+      if (!seat || seat.isBot) continue;
+      const sock = this.lookupSocket(seat.clientId);
+      if (!sock || skipped.has(sock.id)) continue;
+      humanSocketIds.push(sock.id);
+    }
+    if (humanSocketIds.length === 0) return;
+
+    const round: CombatRoundPending = { requestId, pending: new Map() };
+    pendingCombatRound.set(roomCode, round);
+
+    await Promise.all(
+      humanSocketIds.map(
+        (socketId) =>
+          new Promise<void>((resolve) => {
+            const timerId = setTimeout(() => {
+              round.pending.delete(socketId);
+              resolve();
+            }, COMBAT_ACK_TIMEOUT_MS);
+            round.pending.set(socketId, { resolve, timerId });
+          })
+      )
+    );
+
+    pendingCombatRound.delete(roomCode);
   }
 }

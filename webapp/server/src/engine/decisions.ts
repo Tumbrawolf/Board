@@ -242,6 +242,32 @@ export interface DecisionProvider {
     commander: GamePlayer,
     game: GameState
   ): Promise<Map<number, EnemyCard[]> | null>;
+
+  /** Mid-combat action window: called after each exchange across all active lanes. Implementations
+   * emit the snapshot to clients and wait until all non-skipping human players have acknowledged
+   * (or taken an action and then acknowledged). Bots resolve immediately. */
+  waitForCombatAck(game: GameState, snapshot: CombatRoundSnapshot): Promise<void>;
+}
+
+/** Per-lane result from one exchange, sent to clients for combat animation. */
+export interface LaneExchangeData {
+  seatIndex: number;
+  playerName: string;
+  playerUnitName: string;
+  playerHpBefore: number;
+  playerHpAfter: number | null;
+  playerMaxHp: number;
+  enemyName: string;
+  enemyHpBefore: number;
+  enemyHpAfter: number | null;
+  enemyMaxHp: number;
+  combatComplete: boolean;
+}
+
+/** Snapshot of one round of exchanges across all active lanes, broadcast after each exchange. */
+export interface CombatRoundSnapshot {
+  roundIndex: number;
+  lanes: LaneExchangeData[];
 }
 
 const BOT_LOCATION_PRIORITY: Location[] = [
@@ -523,5 +549,10 @@ export class BotDecisionProvider implements DecisionProvider {
       result.get(lane.seatIndex)!.push(e);
     });
     return result;
+  }
+
+  // Bots don't need to wait — resolve immediately so the server-side loop isn't blocked.
+  async waitForCombatAck(_game: GameState, _snapshot: CombatRoundSnapshot): Promise<void> {
+    return;
   }
 }

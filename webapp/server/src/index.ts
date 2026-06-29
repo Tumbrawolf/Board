@@ -7,6 +7,7 @@ import { runGame } from "./runGame.js";
 import {
   resolveAccusationChoice,
   resolveAccusationVote,
+  resolveCombatAck,
   resolveCommanderVote,
   resolveCommandersCallChoice,
   resolveEventChoice,
@@ -15,6 +16,9 @@ import {
   resolvePerfectInfoLayout,
   resolvePlacementChoice,
   resolveTacticianActiveChoice,
+  setCombatPause,
+  setCombatResume,
+  setCombatSkip,
 } from "./humanDecisions.js";
 import type { RoomSettings } from "./types.js";
 
@@ -130,6 +134,22 @@ io.on("connection", (socket) => {
   });
   socket.on("leadershipCrisis:vote", ({ requestId, seatIndex }: { requestId: string; seatIndex: number }) => {
     resolveCommanderVote(socket.id, requestId, seatIndex);
+  });
+
+  socket.on("combat:ack", ({ requestId }: { requestId: string }) => {
+    if (data.roomCode) resolveCombatAck(socket.id, requestId, data.roomCode);
+  });
+
+  socket.on("combat:skip", () => {
+    if (data.roomCode) setCombatSkip(socket.id, data.roomCode);
+  });
+
+  socket.on("combat:pause", () => {
+    if (data.roomCode) setCombatPause(data.roomCode, io);
+  });
+
+  socket.on("combat:resume", () => {
+    if (data.roomCode) setCombatResume(data.roomCode, io);
   });
 
   socket.on("room:toggleReady", ({ ready }: { ready: boolean }, ack) => {

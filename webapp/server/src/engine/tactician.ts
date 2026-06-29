@@ -140,9 +140,11 @@ export async function applyTacticianActive(
       const net = Math.max(0, dmg - armor);
       if (net >= toInt(enemy.HP)) {
         targetLane.laneEnemyReserve = targetLane.laneEnemyReserve.filter((_, i) => i !== resp.enemyIdx);
-        log(`  [The Gunsmith] ${p.name} deals ${dmg} dmg (ignoring shields, -${armor} armor) to ${enemy.Name} in ${targetLane.name}'s lane -- eliminated`);
+        log(`  [The Gunsmith] ${p.name} deals ${net} dmg to ${enemy.Name} in ${targetLane.name}'s lane -- eliminated`);
       } else {
-        log(`  [The Gunsmith] ${p.name} deals ${dmg} dmg (ignoring shields, -${armor} armor) to ${enemy.Name} -- ${net < toInt(enemy.HP) ? "survived" : "eliminated"}`);
+        const newHp = toInt(enemy.HP) - net;
+        (enemy as any).HP = String(newHp);
+        log(`  [The Gunsmith] ${p.name} deals ${net} dmg to ${enemy.Name} -- survived (${newHp} HP remaining, carries into combat)`);
       }
       activated = true;
       break;

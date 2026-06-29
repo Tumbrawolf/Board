@@ -42,7 +42,7 @@ import {
   applyTacticianPrecombat,
   tacticianContainmentBuildDiscount,
 } from "./tactician.js";
-import { type CommandCardChoice, type DecisionProvider } from "./decisions.js";
+import { type CommandCardChoice, type DecisionProvider, type CombatRoundSnapshot, type LaneExchangeData } from "./decisions.js";
 import {
   buildCardMutation,
   canActivateAsNonCommander,
@@ -132,6 +132,9 @@ export class GameEngine {
    * structured data, not a text line. */
   onPlacement?: (seatIndex: number, location: Location) => void;
   private optionalRules: OptionalRules;
+  /** Enemy combatants that survived a full round (overrun + reinforcement) carry their current HP
+   * into the next round's combat instead of a fresh enemy being dealt. Keyed by seatIndex. */
+  private persistedEnemyCombatants = new Map<number, import("./combat.js").Combatant[]>();
 
   constructor(
     seats: SeatInput[],
@@ -2082,6 +2085,11 @@ export class GameEngine {
     const fullPool: EnemyCard[] = [];
     const perPlayerCounts = new Map<number, number>();
     for (const p of game.players) {
+      // Lanes with a persisted overrun enemy don't get a new enemy dealt this round.
+      if (this.persistedEnemyCombatants.has(p.seatIndex)) {
+        perPlayerCounts.set(p.seatIndex, 0);
+        continue;
+      }
       const count = Math.max(0, diffCount - globalReduction - (tempState.hoardReduction.get(String(p.seatIndex)) ?? 0));
       perPlayerCounts.set(p.seatIndex, count);
       if (enemyPool.length) {
@@ -3151,6 +3159,16 @@ export class GameEngine {
         pCombatants[0].stunned = true;
         this.log(`  [Titan] Passive: ${p.name}'s active unit starts combat stunned (ability activated)`);
       }
+      // Overrun carryover: surviving enemy from last round keeps its combat stats; skip fresh build.
+      const _persisted = this.persistedEnemyCombatants.get(p.seatIndex);
+      if (_persisted?.length) {
+        this.persistedEnemyCombatants.delete(p.seatIndex);
+        p.laneEnemyReserve = []; // clear so global passive scan doesn't pick up the new (undealt) slot
+        const _tagTeamBonus = game.tagTeamPassive ? pCombatants.slice(1).reduce((s, c) => s + c.dmg, 0) : 0;
+        laneRuns.push({ p, pUnits, pCombatants, eCombatants: _persisted, pq: [...pCombatants], eq: [..._persisted], opts: { bonusPlayerDmgPerAttack: _tagTeamBonus }, totalShieldsAbsorbed: 0 });
+        this.log(`  ${p.name}'s lane: ${_persisted.length} overrun enemy/enemies (${_persisted.map(c => c.name).join(", ")}) carry forward from last round`);
+        continue;
+      }
       const eCombatants = p.laneEnemyReserve.map((e) => {
         const c = new Combatant(e);
         applyEnemyCombatMods(c, e, game.suppressedPassiveEnemyNames.has(e.Name));
@@ -3457,21 +3475,35 @@ export class GameEngine {
       }, totalShieldsAbsorbed: 0 });
     }
 
-    // Phase 2: per-kill combat rotation — cycle between lanes, stopping after each active enemy kill
-    // so that cross-lane effects (all_lanes passives, splash, etc.) apply across the full battlefield.
+    // Phase 2: exchange-by-exchange combat rotation. Each outer iteration runs ONE exchange per
+    // active lane, then awaits a client ack (pause / skip / timer auto-advance) before continuing.
+    // Cross-lane effects (Soul Eater, all_lanes passives, etc.) still apply between exchanges.
     {
       let anyActive = true;
+      let roundIndex = 0;
       while (anyActive) {
         anyActive = false;
+        const laneSnapshots: LaneExchangeData[] = [];
         for (const lane of laneRuns) {
           if (lane.pq.length > 0 && lane.eq.length > 0) {
             anyActive = true;
             const prevPq = lane.pq;
-            const result = resolveLaneCombat(lane.pq, lane.eq, { ...lane.opts, exitAfterFirstEnemyKill: true });
+            // Capture before-state for snapshot (exitAfterFirstEnemyKill may fire before lastExchange is set).
+            const preEName  = lane.eq[0]?.name  ?? "";
+            const preEHp    = lane.eq[0]?.curHp ?? 0;
+            const preEMax   = lane.eq[0]?.hp    ?? 0;
+            const prePName  = lane.pq[0]?.name  ?? "";
+            const prePHp    = lane.pq[0]?.curHp ?? 0;
+            const prePMax   = lane.pq[0]?.hp    ?? 0;
+            const result = resolveLaneCombat(lane.pq, lane.eq, {
+              ...lane.opts,
+              exitAfterFirstEnemyKill: true,
+              exitAfterEachExchange: true,
+            });
             lane.pq = result.playerSurvivors;
             lane.eq = result.enemySurvivors;
             lane.totalShieldsAbsorbed += result.totalShieldsAbsorbed;
-            // Soul Eater passive: "when any unit dies, add half its stats" — apply to Soul Eater in other lanes.
+            // Soul Eater passive: absorb half stats of any player unit that died this exchange.
             const newDeadPlayers = prevPq.filter((c) => !result.playerSurvivors.includes(c));
             if (newDeadPlayers.length > 0) {
               for (const otherLane of laneRuns) {
@@ -3487,7 +3519,28 @@ export class GameEngine {
                 }
               }
             }
+            // Build per-lane exchange snapshot for this iteration.
+            const x = result.lastExchange;
+            laneSnapshots.push({
+              seatIndex:      lane.p.seatIndex,
+              playerName:     lane.p.name,
+              playerUnitName: x?.playerUnitName ?? prePName,
+              playerHpBefore: x?.playerHpBefore ?? prePHp,
+              playerHpAfter:  x?.playerHpAfter  ?? (lane.pq[0]?.curHp ?? null),
+              playerMaxHp:    x?.playerMaxHp    ?? prePMax,
+              enemyName:      x?.enemyName      ?? preEName,
+              enemyHpBefore:  x?.enemyHpBefore  ?? preEHp,
+              enemyHpAfter:   x?.enemyHpAfter   ?? (lane.eq[0]?.curHp ?? null),
+              enemyMaxHp:     x?.enemyMaxHp     ?? preEMax,
+              combatComplete: lane.eq.length === 0 || lane.pq.length === 0,
+            });
           }
+        }
+        // Emit this round's exchange data to all clients and wait for ack (or skip/pause resolution).
+        if (laneSnapshots.length > 0) {
+          const snapshot: CombatRoundSnapshot = { roundIndex, lanes: laneSnapshots };
+          await this.decisions.waitForCombatAck(game, snapshot);
+          roundIndex++;
         }
       }
     }
@@ -3742,6 +3795,14 @@ export class GameEngine {
       } else {
         overrunLeftover.set(target, eSurv2);
         this.log(`  [Lane Reinforcement] ${p.name}'s survivors reinforce ${target.name}'s lane but it's still overrun`);
+      }
+    }
+
+    // Any enemies still in overrunLeftover after reinforcement carry their current HP into next round.
+    for (const [q, survivors] of overrunLeftover) {
+      if (survivors.length > 0) {
+        this.persistedEnemyCombatants.set(q.seatIndex, survivors);
+        this.log(`  [Overrun] ${survivors.map(c => c.name).join(", ")} carries into next round (${survivors.map(c => c.curHp).join("/") } HP remaining)`);
       }
     }
 

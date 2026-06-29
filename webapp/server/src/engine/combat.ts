@@ -171,11 +171,27 @@ export function computeDealt(attacker: Combatant, defender: Combatant): number {
   return dealt;
 }
 
+/** HP snapshot for one exchange, used by the client to render combat animations. */
+export interface ExchangeData {
+  playerUnitName: string;
+  playerHpBefore: number;
+  /** null when the player unit died this exchange. */
+  playerHpAfter: number | null;
+  playerMaxHp: number;
+  enemyName: string;
+  enemyHpBefore: number;
+  /** null when the enemy died this exchange. */
+  enemyHpAfter: number | null;
+  enemyMaxHp: number;
+}
+
 export interface LaneCombatResult {
   overrun: boolean;
   playerSurvivors: Combatant[];
   enemySurvivors: Combatant[];
   totalShieldsAbsorbed: number;
+  /** Populated only when exitAfterEachExchange is set — describes the one exchange that just ran. */
+  lastExchange?: ExchangeData;
 }
 
 export interface LaneCombatOptions {
@@ -214,6 +230,9 @@ export interface LaneCombatOptions {
   /** Rotation combat system: stop after the active enemy (eq[0]) is killed so the outer loop can
    *  rotate to the next lane before continuing. Does not stop on reserve-enemy incidental kills. */
   exitAfterFirstEnemyKill?: boolean;
+  /** Mid-combat action system: stop after a single exchange (one round of attacks across all
+   *  participants) so the engine can emit exchange data and await player actions before continuing. */
+  exitAfterEachExchange?: boolean;
 }
 
 /** Default: both sides attack simultaneously each exchange — deaths resolve after both attacks land.
@@ -238,7 +257,9 @@ export function resolveLaneCombat(
     deathCloakFloor = false,
     stackAttacksOnSameTarget = false,
     exitAfterFirstEnemyKill = false,
+    exitAfterEachExchange = false,
   } = options;
+  let lastExchange: ExchangeData | undefined;
   const pq = [...playerCombatants];
   const eq = [...enemyCombatants];
   let totalShieldsAbsorbed = 0;
@@ -330,6 +351,13 @@ export function resolveLaneCombat(
   };
 
   while (pq.length && eq.length) {
+    // Snapshot active combatant HP before any exchange code runs (for ExchangeData on exit).
+    const _xPName = pq[0]?.name ?? "";
+    const _xPHp   = pq[0]?.curHp ?? 0;
+    const _xPMax  = pq[0]?.hp ?? 0;
+    const _xEName = eq[0]?.name ?? "";
+    const _xEHp   = eq[0]?.curHp ?? 0;
+    const _xEMax  = eq[0]?.hp ?? 0;
     // Emmiter passive: bypass-armor DoT on Infantry player combatants before each exchange.
     if (perExchangeInfantryDoT > 0) {
       for (const pc of pq) {
@@ -472,6 +500,20 @@ export function resolveLaneCombat(
         if (pq[j].curHp <= 0) pq.splice(j, 1);
       }
     }
+    // Mid-combat action window: exit after one full exchange so the engine can prompt players.
+    if (exitAfterEachExchange) {
+      lastExchange = {
+        playerUnitName: _xPName,
+        playerHpBefore: _xPHp,
+        playerHpAfter: pq.some(c => c.name === _xPName) ? (pq.find(c => c.name === _xPName)!.curHp) : null,
+        playerMaxHp: _xPMax,
+        enemyName: _xEName,
+        enemyHpBefore: _xEHp,
+        enemyHpAfter: eq.some(c => c.name === _xEName) ? (eq.find(c => c.name === _xEName)!.curHp) : null,
+        enemyMaxHp: _xEMax,
+      };
+      break;
+    }
   }
-  return { overrun: eq.length > 0, playerSurvivors: pq, enemySurvivors: eq, totalShieldsAbsorbed };
+  return { overrun: eq.length > 0, playerSurvivors: pq, enemySurvivors: eq, totalShieldsAbsorbed, lastExchange };
 }
