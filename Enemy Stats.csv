@@ -59,14 +59,14 @@ Dragon,Alien Dragon that breaths acid,Beast,Elite,"Shred all armor from units, g
 Bastion,Shield Projector that regenerates Shield,Mechanised,Elite,"Move all Shields from allies to enemies, enemies gain Shield = 5xRank",Enemies gain 5 shield on hit,14,29,4,13,6,6,30
 Juggernaut Tank,Fortress on wheels,Mechanised,Elite,Gain 30 shields and 5 armor,Takes Half damage,14,29,4,13,6,6,30
 Black Rail,Dark Matter Railgun,Mechanised,Elite,Delete highest rank unit,"Deletes units on kill, Damage hits all active or all reserve, follows highest rank",16,25,4,12,6,2,9
-Mobile Temple,Heals Enemies,Mechanised,Elite,"Give all enemies 30 shield and restore all HP, move this unit to reserve",Enemies Heal 10 on hit,17,22,4,11,6,1,6
+Mobile Temple,Heals Enemies,Mechanised,Elite,"Give all enemies 30 shield, move this unit to reserve",Enemies Heal 10 on hit,17,22,4,11,6,1,6
 Nightmare,Can only attack units in Medical,Abomination,Elite,Stun all units,"Hits units in Medical, Highest Rank 1st",16,33,10,3,9,3,15
 Super Grunt,Grunt on Steroids with big gun,Experimental,Elite,Gain 10 armor,Missing health is added to damage,18,35,4,9,9,2,9
 Death Cloak,Enemies are Immortal on 1HP while this unit is alive,Experimental,Elite,"Move to reserve, this cannot be prevented","Double this units HP, Enemy HP cannot fall below 1, blocked damage is dealt to this unit instead",18,35,4,9,9,2,9
 Shatter Cannon,AOE Stuns on kills. Shreds Armor and Shields,Experimental,Elite,"Stun all units, shred half their shields and armor","Shred 4 armor and 5 shield on hit, Stun all units on kill.",18,35,4,9,9,2,9
 Oracle,Prevents any Targeting prevention,Drones,General,Prevent the next 20 damage delt to enemies,Enemies cannot have their abilities prevented,11,13,9,16,4,2,12
 High Praetor,Knight unit that gainst stacking armor when hit,Infantry,General,Gain 5 armor.,Gains 2 armor on hit. reset on kill.,12,23,18,8,4,7,40
-Tactician,Reduces the Overrun Tracker,Infantry,General,Reduce the Overrun Tracker by 3,Reduce the Overrun Tracker by 2 on death,14,20,17,8,4,2,12
+Tactician,Reduces the Overrun Tracker,Infantry,General,Move this unit to reserve,"If a unit dies in this lane, reduce the Overrun Tracker by 1",14,20,17,8,4,2,12
 Grand Saboteur,"Roll dice to select location, Disables all building upgrades while alive",Infantry,General,"Roll a D6, disable the upgrades at this location until the end of next turn",Gain 10 damage and health for each upgrade disabled,14,20,17,8,4,2,12
 Crown Splitter,Elite Sniper General,Infantry,General,Half HP of all infantry,Enemies deal 15 bonus damage to infantry,16,17,16,8,4,0,0
 Alpha Thorn Hide,Reflects damage until Shields broken,Beast,General,Gain 40 shield,Reflects damage while unit has shields,14,31,22,4,4,7,40

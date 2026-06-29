@@ -19,6 +19,8 @@ export class Combatant {
   pierceArmor = 0;
   firstHitPrevented = false;
   deleteOnKill = false;
+  /** Set to true when a deleteOnKill enemy kills this combatant — bypasses all revival effects. */
+  deletedByEnemy = false;
   attacksFirst = false;
   reflectFraction = 0;
   lifestealFraction = 0;
@@ -86,6 +88,10 @@ export class Combatant {
   absorbHalfStatsOnKill = false;
   /** Blood Hunter: gain one additional attack (baseDmg added to dmg) per player unit killed. */
   bonusAttackOnKill = false;
+  /** Manipulator: half of incoming player damage is redirected to the first reserve enemy. */
+  halvesToReserveOnHit = false;
+  /** Mobile Temple aura: active enemy heals this much HP each time it deals damage to a player. */
+  healSelfFlatOnHit = 0;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
@@ -120,21 +126,23 @@ export function computeDealt(attacker: Combatant, defender: Combatant): number {
     return 0;
   }
   const hadShields = defender.curShields > 0;
+  if (attacker.shredArmor && defender.armor > 0) {
+    defender.armor -= Math.min(attacker.shredArmor, defender.armor);
+  }
+  // Shields absorb from the raw attack value — armor does not reduce damage to shields.
+  let raw = attacker.dmg;
+  if (defender.curShields > 0) {
+    const shieldDmg = raw * attacker.shieldMultiplier;
+    const absorbed = Math.min(defender.curShields, shieldDmg);
+    defender.curShields -= absorbed;
+    raw -= Math.floor(absorbed / attacker.shieldMultiplier);
+  }
+  // Armor reduces whatever gets through shields; minimum 1 only when damage remains.
   const baseArmor = attacker.ignoreArmor ? 0 : Math.max(0, defender.armor - attacker.pierceArmor);
   const effectiveArmor = defender.armorBonusFraction
     ? Math.floor(baseArmor * (1 + defender.armorBonusFraction))
     : baseArmor;
-  if (attacker.shredArmor && defender.armor > 0) {
-    defender.armor -= Math.min(attacker.shredArmor, defender.armor);
-  }
-  let dealt = Math.max(1, attacker.dmg - effectiveArmor);
-  if (defender.curShields > 0) {
-    const shieldDmg = dealt * attacker.shieldMultiplier;
-    const absorbed = Math.min(defender.curShields, shieldDmg);
-    defender.curShields -= absorbed;
-    dealt -= Math.floor(absorbed / attacker.shieldMultiplier);
-  }
-  dealt = Math.max(0, dealt);
+  let dealt = raw > 0 ? Math.max(1, raw - effectiveArmor) : 0;
   if (defender.reflectFraction && (!defender.reflectOnlyWithShields || hadShields)) {
     attacker.curHp -= Math.floor(dealt * defender.reflectFraction);
   }
@@ -175,10 +183,21 @@ export interface LaneCombatOptions {
   /** Totem of Decay passive: flat HP damage applied to every non-Mechanical (non-Vehicle/Mech) player
    *  combatant at the top of each exchange. */
   perExchangeNonMechDoT?: number;
+  /** Puppeteer passive: after each player attack, the attacker also deals its raw dmg to a random
+   *  reserve ally (pq[1+]). Deaths from friendly fire are swept at the end of each exchange. */
+  splashAllyOnPlayerAttack?: boolean;
+  /** Black Rail passive: fires instead of the normal enemy attack; receives the live player queue
+   *  so the callback can target the active or reserve group as appropriate. */
+  enemyGroupAttack?: (attacker: Combatant, pq: Combatant[]) => void;
+  /** Death Cloak passive: while set, enemy HP is floored at 1 after player attacks; overflow
+   *  damage is redirected to the Death Cloak combatant found in the enemy queue. The floor
+   *  deactivates automatically once Death Cloak is removed from eq. */
+  deathCloakFloor?: boolean;
 }
 
-/** Default (per README #33): the enemy's Active card deals damage first each exchange,
- * resolving completely (including an outright kill) before the player's unit responds. */
+/** Default: both sides attack simultaneously each exchange — deaths resolve after both attacks land.
+ * p.attacksFirst: player strikes first; if enemy dies the enemy cannot retaliate.
+ * e.attacksFirst: enemy strikes first; if the active player unit dies it cannot retaliate. */
 export function resolveLaneCombat(
   playerCombatants: Combatant[],
   enemyCombatants: Combatant[],
@@ -193,6 +212,9 @@ export function resolveLaneCombat(
     onAfterEnemyAttack,
     perExchangeInfantryDoT = 0,
     perExchangeNonMechDoT = 0,
+    splashAllyOnPlayerAttack = false,
+    enemyGroupAttack,
+    deathCloakFloor = false,
   } = options;
   const pq = [...playerCombatants];
   const eq = [...enemyCombatants];
@@ -207,6 +229,7 @@ export function resolveLaneCombat(
 
   const enemyAttacks = (e: Combatant, p: Combatant, mult: number) => {
     if (e.stunned) { e.stunned = false; return; }
+    if (enemyGroupAttack) { enemyGroupAttack(e, pq); return; }
     if (onEnemyAttack) {
       onEnemyAttack(e);
       return;
@@ -230,6 +253,7 @@ export function resolveLaneCombat(
       if (e.gainShieldOnHit > 0) e.curShields += e.gainShieldOnHit;
       if (e.gainDmgOnHit > 0) { e.dmg += e.gainDmgOnHit; e.baseDmg += e.gainDmgOnHit; }
       if (e.shredShieldOnHit > 0) p.curShields = Math.max(0, p.curShields - e.shredShieldOnHit);
+      if (e.healSelfFlatOnHit > 0) e.curHp = Math.min(e.hp, e.curHp + e.healSelfFlatOnHit);
       if (onAfterEnemyAttack) onAfterEnemyAttack(e, eDmg);
     }
   };
@@ -237,10 +261,32 @@ export function resolveLaneCombat(
   const playerAttacks = (p: Combatant, e: Combatant, mult: number) => {
     if (p.stunned) { p.stunned = false; return; }
     const eBefore = e.curShields;
-    const pDmg = computeDealt(p, e) * mult;
+    let pDmg = computeDealt(p, e) * mult;
+    // Manipulator passive: redirect half of dealt damage to the first reserve enemy.
+    if (e.halvesToReserveOnHit && eq.length > 1) {
+      const redirected = Math.floor(pDmg / 2);
+      eq[1].curHp -= redirected;
+      pDmg -= redirected;
+    }
     e.curHp -= pDmg + bonusPlayerDmgPerAttack;
     totalShieldsAbsorbed += eBefore - e.curShields;
     if (p.stunOnHitCharges > 0 && pDmg > 0) { e.stunned = true; if (isFinite(p.stunOnHitCharges)) p.stunOnHitCharges--; }
+    if (splashAllyOnPlayerAttack && pq.length > 1) {
+      const allyIdx = 1 + Math.floor(Math.random() * (pq.length - 1));
+      pq[allyIdx].curHp -= p.dmg;
+    }
+  };
+
+  // Death Cloak passive: floor the attacked enemy at 1 HP; redirect overflow to Death Cloak in reserve.
+  // No-ops when Death Cloak is the active target, already dead, or not in the queue.
+  const applyDeathCloakFloor = (target: Combatant) => {
+    if (!deathCloakFloor || target.curHp >= 1 || target.name === "Death Cloak") return;
+    const dc = eq.find((c) => c.name === "Death Cloak");
+    if (!dc) return; // Death Cloak already gone — floor lifted.
+    const overflow = 1 - target.curHp;
+    target.curHp = 1;
+    dc.curHp -= overflow;
+    if (dc.curHp <= 0) eq.splice(eq.indexOf(dc), 1);
   };
 
   // Sniper Squad / Ravager: instantly kill player units whose HP falls below the execute threshold.
@@ -295,7 +341,9 @@ export function resolveLaneCombat(
       : 0;
     const eTarget = pq[eTargetIdx];
     if (p.attacksFirst) {
+      // Player strikes first — enemy cannot retaliate if killed this exchange.
       playerAttacks(p, e, mult);
+      applyDeathCloakFloor(e);
       if (e.curHp <= 0) {
         firstExchangeDone = true;
         if (pq[0]) {
@@ -305,12 +353,13 @@ export function resolveLaneCombat(
         fireKillCb(p); eq.shift(); continue;
       }
       enemyAttacks(e, eTarget, mult);
-    } else {
+    } else if (e.attacksFirst) {
+      // Enemy strikes first — active player unit cannot retaliate if killed this exchange.
       enemyAttacks(e, eTarget, mult);
-      // Active unit dying halts retaliation; reserve unit dying does not.
       if (eTargetIdx === 0 && eTarget.curHp <= 0) {
         firstExchangeDone = true;
         if (e.gainShieldOnKillOverkill && eTarget.curHp < 0) e.curShields += Math.abs(eTarget.curHp);
+        if (e.deleteOnKill) eTarget.deletedByEnemy = true;
         fireDeathCb(eTarget); pq.splice(0, 1);
         if (e.splashToReserveOnKill && pq.length > 0) pq[0].curHp -= Math.floor(e.dmg / 2);
         if (e.stunAllOnKill) for (const pc of pq) pc.stunned = true;
@@ -320,10 +369,17 @@ export function resolveLaneCombat(
         continue;
       }
       playerAttacks(p, e, mult);
+      applyDeathCloakFloor(e);
+    } else {
+      // Default: simultaneous — both attack, deaths resolve after both land.
+      enemyAttacks(e, eTarget, mult);
+      playerAttacks(p, e, mult);
+      applyDeathCloakFloor(e);
     }
     firstExchangeDone = true;
     if (eTarget.curHp <= 0) {
       if (e.gainShieldOnKillOverkill && eTarget.curHp < 0) e.curShields += Math.abs(eTarget.curHp);
+      if (e.deleteOnKill) eTarget.deletedByEnemy = true;
       fireDeathCb(eTarget); pq.splice(eTargetIdx, 1);
       if (eTargetIdx === 0 && e.splashToReserveOnKill && pq.length > 0) pq[0].curHp -= Math.floor(e.dmg / 2);
       if (e.stunAllOnKill) for (const pc of pq) pc.stunned = true;
@@ -348,6 +404,12 @@ export function resolveLaneCombat(
     }
     // Execute check: kill any player unit whose HP fell below the threshold this exchange.
     if (eq[0]) executeCheck(eq[0]);
+    // Puppeteer passive / Black Rail reserve-mode: sweep reserve units that died this exchange.
+    if (splashAllyOnPlayerAttack || enemyGroupAttack) {
+      for (let j = pq.length - 1; j >= 1; j--) {
+        if (pq[j].curHp <= 0) pq.splice(j, 1);
+      }
+    }
   }
   return { overrun: eq.length > 0, playerSurvivors: pq, enemySurvivors: eq, totalShieldsAbsorbed };
 }

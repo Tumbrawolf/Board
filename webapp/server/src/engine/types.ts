@@ -190,6 +190,18 @@ export interface GameState {
    * recent enemy card killed in normal lane combat (Boss kills and contained enemies don't set
    * this, only the everyday per-lane Combat Cycle). Consumed (set back to null) once revived. */
   lastKilledEnemy: EnemyCard | null;
+  /** Enemy cards killed during the current round's combat — rotated to enemiesKilledLastRound at round start. */
+  enemiesKilledThisRound: EnemyCard[];
+  /** Enemy cards killed last round — available for Reanimator's reveal. */
+  enemiesKilledLastRound: EnemyCard[];
+  /** Number of pending reveal-prevention charges available to players this round. Each preventable
+   * enemy reveal consumes one charge and is fully skipped. Reveals whose text contains
+   * "this cannot be prevented" bypass this check entirely. Set by scout/ability effects (not yet wired). */
+  revealPreventionCharges: number;
+  /** Enemy card Names whose passive effects are suppressed this round. Covers both keyword-driven
+   * passives (applyEnemyCombatMods) and all manual passive check sites. Reset each round.
+   * Set by player/scout effects (not yet wired). */
+  suppressedPassiveEnemyNames: Set<string>;
   /** Night Vision's "Roll D6, Reveal that many enemies" -- added to the round's base scout
    * reveal count, reset to 0 each round. */
   nightVisionRevealBonus?: number;

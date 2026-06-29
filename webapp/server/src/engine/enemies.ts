@@ -61,6 +61,7 @@ const ENEMY_KEYWORD_RULES: [string, string[]][] = [
   ["absorb_half_stats_on_kill", ["when any unit dies, add half of its stats"]],
   ["all_enemies_buff_20", ["give all enemies 20 damage"]],
   ["bonus_attack_on_kill", ["attacks an additional time per kill"]],
+  ["halves_to_reserve", ["half of damage targeting this unit is moved onto reserve"]],
 ];
 
 const enemyTagCache = new Map<string, Set<string>>();
@@ -78,11 +79,11 @@ export function classifyEnemy(card: EnemyCard): Set<string> {
   return tags;
 }
 
-/** Note: 'attacks_first' is classified but, exactly as in sim.py, never actually changes combat
- * order here -- resolveLaneCombat only branches on the PLAYER side's attacksFirst (the enemy
- * already acts first by default), so this flag is inert for enemies in both engines. Kept for
- * fidelity with the source rather than silently dropped. */
-export function applyEnemyCombatMods(c: Combatant, card: EnemyCard) {
+/** Note: 'attacks_first' for enemies gives the old sequential behaviour — enemy strikes first and
+ * the active player unit cannot retaliate if killed that exchange. Default combat is simultaneous.
+ * Pass suppressed=true to skip all keyword-driven passive mods (used by suppressedPassiveEnemyNames). */
+export function applyEnemyCombatMods(c: Combatant, card: EnemyCard, suppressed = false) {
+  if (suppressed) return;
   const tags = classifyEnemy(card);
   if (tags.has("ignore_armor")) c.ignoreArmor = true;
   if (tags.has("pierce_armor_2")) c.pierceArmor = 2;
@@ -123,9 +124,10 @@ export function applyEnemyCombatMods(c: Combatant, card: EnemyCard) {
   const bonusVsTypeMatch = (card.Passive ?? "").match(/deals? (\d+) bonus damage to (\w+)/i);
   if (bonusVsTypeMatch) c.bonusDmgVsType[bonusVsTypeMatch[2].toLowerCase()] = parseInt(bonusVsTypeMatch[1]);
   if (tags.has("heal_self_on_hit")) {
-    // "Heals 10 on hit" or "Enemies Heal 10 on hit" — heal active ally by 10 each exchange (reserve healer).
+    // "Enemies Heal N on hit" — flat self-heal applied in enemyAttacks each time damage is dealt.
+    // The global passive scan in game.ts propagates this to all active enemies while Mobile Temple is alive.
     const flatMatch = (card.Passive ?? "").match(/heal(?:s)?\s+(?:enemies\s+)?(\d+)\s+on\s+hit/i);
-    c.healActiveAllyPerExchange = flatMatch ? parseInt(flatMatch[1]) : 10;
+    if (flatMatch) c.healSelfFlatOnHit = parseInt(flatMatch[1]);
   }
   if (tags.has("heal_ally_on_exchange")) {
     const half = (card.Passive ?? "").toLowerCase().includes("half");
@@ -165,6 +167,7 @@ export function applyEnemyCombatMods(c: Combatant, card: EnemyCard) {
   }
   if (tags.has("absorb_half_stats_on_kill")) c.absorbHalfStatsOnKill = true;
   if (tags.has("bonus_attack_on_kill")) c.bonusAttackOnKill = true;
+  if (tags.has("halves_to_reserve")) c.halvesToReserveOnHit = true;
   if (tags.has("armor_equals_shields")) c.armor = toInt(card.Shields);
   if (tags.has("armor_blocks_extra_50")) c.armorBonusFraction = 0.5;
   if (tags.has("takes_half_damage")) {

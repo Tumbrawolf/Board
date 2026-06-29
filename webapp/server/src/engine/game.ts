@@ -21,6 +21,7 @@ import {
 import { loadGameData, toInt, type CommandCard, type EnemyCard, type EventCard, type SecretObjectiveCard, type UnitCard } from "./data.js";
 import {
   combatantFromUnit,
+  computeDealt,
   equippedBonus,
   resolveLaneCombat,
   Combatant,
@@ -265,6 +266,10 @@ export class GameEngine {
       log: [],
       effectUses: new Map(),
       lastKilledEnemy: null,
+      enemiesKilledThisRound: [],
+      enemiesKilledLastRound: [],
+      revealPreventionCharges: 0,
+      suppressedPassiveEnemyNames: new Set(),
       activeEvent: null,
       medicalBayCostsOrganic: false,
       gearActiveCostDoubledType: null,
@@ -458,6 +463,11 @@ export class GameEngine {
     game.containmentCapacityDoubled = false;
     game.killsThisRound = new Map();
     game.deathsThisRound = new Map();
+    // Rotate kill buffers: this round's kills become "last round" for Reanimator reveals.
+    game.enemiesKilledLastRound = game.enemiesKilledThisRound;
+    game.enemiesKilledThisRound = [];
+    game.revealPreventionCharges = 0;
+    game.suppressedPassiveEnemyNames = new Set();
     game.retiresThisRound = new Map();
     game.missionRankCompletedThisRound = 0;
     game.recycledThisRound = new Set();
@@ -639,21 +649,25 @@ export class GameEngine {
     this.placementsThisRound = Object.fromEntries(game.players.map((p) => [p.seatIndex, []]));
     await this.runWorkerPlacementAndIncome(commander, diffCount);
 
+    // Underminer passive: if Underminer is alive in any lane, all location upgrade effects are suppressed this round.
+    const underminerActive = game.players.some((p) => p.laneEnemyReserve.some((e) => e.Name === "Underminer" && !game.suppressedPassiveEnemyNames.has(e.Name)));
+    if (underminerActive) this.log(`  [Underminer] Passive: all location upgrade effects blocked this round`);
+
     // Advanced Mechanized passive: permanent Tech cost discount on Mech/Vehicle purchases while built
-    if (game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Advanced Mechanized")) {
+    if (!underminerActive && game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Advanced Mechanized")) {
       game.mechTechDiscount += 2;
       game.vehicleTechDiscount += 3;
     }
     // AI advancements passive: Organic costs on units can be covered by Tech or Alien while built
-    if (game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "AI advancements")) {
+    if (!underminerActive && game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "AI advancements")) {
       game.unitOrganicCanUseTechOrAlien = true;
     }
     // Gene Modding passive: Tech costs can be covered by Organic while built
-    if (game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Gene Modding")) {
+    if (!underminerActive && game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Gene Modding")) {
       game.techCanUseOrganic = true;
     }
     // Ethics Committee passive: ban Experimental gear, remove Alien costs from basic gear
-    if (game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Ethics Committee")) {
+    if (!underminerActive && game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Ethics Committee")) {
       game.basicGearAlienFree = true;
       // If Experimental Science was built, remove it from upgrades and re-lock its gear
       const expSciIdx = game.locationUpgradesBuilt["Armory"].findIndex((c) => c.Name === "Experimental Science");
@@ -672,22 +686,22 @@ export class GameEngine {
       }
     }
     // Experimental Science passive: add Experimental gear to deck when built
-    if (!game.experimentalGearUnlocked && game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Experimental Science")) {
+    if (!underminerActive && !game.experimentalGearUnlocked && game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Experimental Science")) {
       game.gearDeck.push(...game.experimentalGearDeckLocked);
       game.experimentalGearDeckLocked = [];
       game.experimentalGearUnlocked = true;
       this.log(`  [Experimental Science] Experimental gear added to gear deck`);
     }
     // Tag Team passive: reserve units deal damage alongside active each attack
-    if (game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Tag Team")) {
+    if (!underminerActive && game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Tag Team")) {
       game.tagTeamPassive = true;
     }
     // Mad Science passive: Experimental gear Organic+Tech costs = 0 while built
-    if (game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Mad Science")) {
+    if (!underminerActive && game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Mad Science")) {
       game.experimentalOrganicTechFree = true;
     }
     // Conscription passive: lowest rank unit from shop auto-placed into weakest player's reserve each round
-    if (game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Conscription") && game.shopUnits.length) {
+    if (!underminerActive && game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Conscription") && game.shopUnits.length) {
       const lowestRank = Math.min(...game.shopUnits.map((u) => RANK_NUM[u.Rank]));
       const cPool = game.shopUnits.filter((u) => RANK_NUM[u.Rank] === lowestRank);
       const cUnit = cPool[Math.floor(Math.random() * cPool.length)];
@@ -698,14 +712,14 @@ export class GameEngine {
       this.log(`  [Conscription passive] ${cUnit.Name} (Rank ${cUnit.Rank}) auto-deployed to ${cw.name}'s lane`);
     }
     // Unlock 4th unit shop slot when Additional Bedding is built
-    if (game.unitShopCap < 4 && game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Additional Bedding")) {
+    if (!underminerActive && game.unitShopCap < 4 && game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Additional Bedding")) {
       game.unitShopCap = 4;
       this.log(`  [Additional Bedding] Unit shop expanded to 4 slots`);
     }
     // Unlock Mech/Vehicle unit pools when the respective upgrade has been built
     if (!game.mechUnlocked) {
       const built = game.locationUpgradesBuilt["Barracks"].map((c) => c.Name);
-      if (built.includes("Mech Station") || built.includes("Combined Arms")) {
+      if (!underminerActive && (built.includes("Mech Station") || built.includes("Combined Arms"))) {
         game.unitDeck.push(...game.mechDeckLocked);
         game.mechDeckLocked = [];
         game.mechUnlocked = true;
@@ -714,7 +728,7 @@ export class GameEngine {
     }
     if (!game.vehicleUnlocked) {
       const built = game.locationUpgradesBuilt["Barracks"].map((c) => c.Name);
-      if (built.includes("Vehicle Bay") || built.includes("Combined Arms")) {
+      if (!underminerActive && (built.includes("Vehicle Bay") || built.includes("Combined Arms"))) {
         game.unitDeck.push(...game.vehicleDeckLocked);
         game.vehicleDeckLocked = [];
         game.vehicleUnlocked = true;
@@ -726,6 +740,7 @@ export class GameEngine {
 
     // Combat Stims passive: once per round the commander may trigger a contained enemy's Reveal effect.
     if (
+      !underminerActive &&
       game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Combat Stims") &&
       game.containedEnemyPool.length > 0 &&
       !game.combatStimsUsedThisRound
@@ -762,7 +777,7 @@ export class GameEngine {
     }
 
     // Countermeasures passive: roll D4 for lane, D4 for ability-prevention count in that lane.
-    if (game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Countermeasures")) {
+    if (!underminerActive && game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Countermeasures")) {
       const laneRoll = 1 + Math.floor(Math.random() * 4);
       const preventRoll = 1 + Math.floor(Math.random() * 4);
       const target = game.players[(laneRoll - 1) % game.players.length];
@@ -772,17 +787,18 @@ export class GameEngine {
     }
 
     // Forward Command passive: reserve units are immune to all damage while this upgrade is built.
-    if (game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Forward Command")) {
+    if (!underminerActive && game.locationUpgradesBuilt["Barracks"].some((c) => c.Name === "Forward Command")) {
       tempState.reserveImmuneThisRound = true;
     }
 
     // Bunkers passive: reserve units can only be damaged by the active enemy (same as Forward Command).
-    if (game.locationUpgradesBuilt["Battlefield"].some((c) => c.Name === "Bunkers")) {
+    if (!underminerActive && game.locationUpgradesBuilt["Battlefield"].some((c) => c.Name === "Bunkers")) {
       tempState.reserveImmuneThisRound = true;
     }
 
     // Eradicator Cannon passive: any player may pay current Alien cost to deal 5 damage to boss (ignores prevention/immunities).
     if (
+      !underminerActive &&
       game.bossActive &&
       game.locationUpgradesBuilt["Armory"].some((c) => c.Name === "Eradicator Cannon")
     ) {
@@ -2087,8 +2103,16 @@ export class GameEngine {
 
     await this.resolveBattlefieldCards(commander, tempState, diffRank);
 
+    // Oracle passive: if alive anywhere, clear all passive suppression so no enemy abilities are blocked.
+    if (game.players.some((tp) => tp.laneEnemyReserve.some((e) => e.Name === "Oracle"))) {
+      game.suppressedPassiveEnemyNames = new Set();
+    }
+
+    // Re-check Underminer presence (enemies just placed by deployment; same flag as runRound uses for pre-combat upgrades).
+    const underminerActive = game.players.some((p) => p.laneEnemyReserve.some((e) => e.Name === "Underminer" && !game.suppressedPassiveEnemyNames.has(e.Name)));
+
     // Barrier Systems passive: all player units gain 5 shields at combat start.
-    if ((game.locationUpgradesBuilt["Medical Bay"] ?? []).some((c) => c.Name === "Barrier Systems")) {
+    if (!underminerActive && (game.locationUpgradesBuilt["Medical Bay"] ?? []).some((c) => c.Name === "Barrier Systems")) {
       for (const p of game.players) {
         const units = [...(p.active ? [p.active] : []), ...p.reserve];
         for (const ui of units) tempState.tempBuff(ui, { Shields: 5 });
@@ -2098,7 +2122,7 @@ export class GameEngine {
 
     // Security Drones passive: lanes with no active unit at combat start receive drones equal to commander rank.
     // Drones bypass the lane unit limit by design.
-    if ((game.locationUpgradesBuilt["Armory"] ?? []).some((c) => c.Name === "Security Drones")) {
+    if (!underminerActive && (game.locationUpgradesBuilt["Armory"] ?? []).some((c) => c.Name === "Security Drones")) {
       const droneCount = commander.rank;
       for (const p of game.players) {
         if (p.active === null) {
@@ -2109,7 +2133,7 @@ export class GameEngine {
     }
 
     // Defense Turrets passive: enemies with HP ≤ 5 die on reveal across all lanes.
-    if ((game.locationUpgradesBuilt["Battlefield"] ?? []).some((c) => c.Name === "Defense Turrets")) {
+    if (!underminerActive && (game.locationUpgradesBuilt["Battlefield"] ?? []).some((c) => c.Name === "Defense Turrets")) {
       for (const p of game.players) {
         const before = p.laneEnemyReserve.length;
         p.laneEnemyReserve = p.laneEnemyReserve.filter((e) => toInt(e.HP) > 5);
@@ -2131,11 +2155,21 @@ export class GameEngine {
       p.graveyard.push(...dead);
     };
 
+    // Oracle passive: while alive, enemy reveals cannot be prevented and passives cannot be suppressed.
+    const oracleAlive = game.players.some((tp) => tp.laneEnemyReserve.some((e) => e.Name === "Oracle"));
     for (const p of game.players) {
       const front = p.laneEnemyReserve[0];
       if (!front) continue;
       const reveal: string = (front as any).Reveal ?? "";
       if (!reveal) continue;
+      // Reveal prevention: player effects can grant prevention charges. Unpreventable reveals
+      // (text contains "cannot be prevented") bypass this check. Oracle passive blocks all prevention.
+      const revealCanBePrevented = !oracleAlive && !/cannot be prevented/i.test(reveal);
+      if (revealCanBePrevented && game.revealPreventionCharges > 0) {
+        game.revealPreventionCharges--;
+        this.log(`  [${front.Name}] Reveal prevented (${game.revealPreventionCharges} charge(s) remaining)`);
+        continue;
+      }
       const frontDmg = toInt((front as any).Damage);
 
       // Wasp: "Stun enemies in adjacent lane"
@@ -2505,8 +2539,7 @@ export class GameEngine {
         this.log(`  [${front.Name}] Reveal: stun Infantry active player units`);
       }
 
-      // Tactician Reveal: "Reduce the Overrun Tracker by N" — handled in Tactician active block; skip here.
-      // Grand Saboteur, Equivilence, Tunnler, Hive Mind, Death Cloak "move to reserve, this cannot be
+      // Grand Saboteur, Equivilence, Tunnler, Hive Mind, Death Cloak, Tactician "move to reserve, this cannot be
       // prevented" → the generic move-to-reserve handler above already rotates the queue.
 
       // Lance Turret: "Swap this unit to the lane with the lowest Damage active unit"
@@ -2629,18 +2662,12 @@ export class GameEngine {
       if (/give all enemies \d+ shield and restore all hp/i.test(reveal)) {
         const shMatch2 = reveal.match(/give all enemies (\d+) shield/i);
         const sh2 = shMatch2 ? parseInt(shMatch2[1]) : 0;
-        for (const tp of game.players) {
-          if (sh2 > 0) {
+        if (sh2 > 0) {
+          for (const tp of game.players) {
             tempState.pendingEnemyActiveShields.set(tp.seatIndex, (tempState.pendingEnemyActiveShields.get(tp.seatIndex) ?? 0) + sh2);
           }
-          // Restore HP of all enemies in this lane.
-          for (const ec of tp.laneEnemyReserve) {
-            (ec as any).HP = (ec as any).HP; // HP stored in card; reset combatant after built via maxHp trick
-          }
         }
-        this.log(`  [${front.Name}] Reveal: +${sh2} shields to all enemies; HP restored`);
-        // HP restoration: since combatants haven't been built yet, we mark enemies as full-HP by resetting card HP to original.
-        // (The combatant builder reads card HP fresh.) No-op needed here — card HP was never mutated.
+        this.log(`  [${front.Name}] Reveal: +${sh2} shields to all enemies`);
       }
 
       // God Rod: "Deals 60 damage to highest rank unit. Excess damage splashes"
@@ -2810,9 +2837,112 @@ export class GameEngine {
         this.log(`  [${front.Name}] Reveal: +${absorb} absorb shields to all active enemies`);
       }
 
+      // Underminer: "Shuffle 1 upgrade back into deck" — pick a random built upgrade from any location, return to command deck.
+      if (/shuffle 1 upgrade back into deck/i.test(reveal)) {
+        const allBuilt: { loc: Location; idx: number }[] = [];
+        for (const loc of LOCATIONS) {
+          game.locationUpgradesBuilt[loc].forEach((_, i) => allBuilt.push({ loc, idx: i }));
+        }
+        if (allBuilt.length > 0) {
+          const pick = allBuilt[Math.floor(Math.random() * allBuilt.length)];
+          const [removed] = game.locationUpgradesBuilt[pick.loc].splice(pick.idx, 1);
+          game.commandDeck.push(removed);
+          this.log(`  [${front.Name}] Reveal: "${removed.Name}" removed from ${pick.loc} and shuffled back into command deck`);
+        } else {
+          this.log(`  [${front.Name}] Reveal: no built upgrades to shuffle back`);
+        }
+      }
+
+      // Reanimator: "Return enemies that died last round into this lane"
+      // Passive: "Loses health = rank of units revived this way capped at 1hp remaining"
+      if (/return enemies that died last round into this lane/i.test(reveal)) {
+        const RANK_HP_COST: Record<string, number> = { Grunt: 1, Conscript: 1, Advanced: 2, Elite: 3, Commander: 4 };
+        const toRevive = [...game.enemiesKilledLastRound];
+        game.enemiesKilledLastRound = []; // consume — each round's kill list is used once
+        let hpCost = 0;
+        for (const dead of toRevive) {
+          hpCost += RANK_HP_COST[dead.Rank ?? "Conscript"] ?? 1;
+          p.laneEnemyReserve.push(dead);
+        }
+        if (toRevive.length > 0) {
+          const currentHp = toInt((front as any).HP);
+          const newHp = Math.max(1, currentHp - hpCost);
+          (front as any).HP = String(newHp);
+          this.log(`  [${front.Name}] Reveal: revived ${toRevive.length} enemies into lane; -${hpCost} HP (now ${newHp})`);
+        } else {
+          this.log(`  [${front.Name}] Reveal: no enemies killed last round to revive`);
+        }
+      }
+
+      // Manipulator: "Place the strongest Infantry in shop onto this unit granting it stats and abilities"
+      if (/place the strongest infantry in shop onto this unit/i.test(reveal)) {
+        const infantryInShop = game.shopUnits.filter((u) => (u.Type ?? "").toLowerCase() === "infantry");
+        if (infantryInShop.length > 0) {
+          const strongest = infantryInShop.reduce((best, u) =>
+            toInt(u.Damage) + toInt(u.HP) > toInt(best.Damage) + toInt(best.HP) ? u : best
+          );
+          game.shopUnits.splice(game.shopUnits.indexOf(strongest), 1);
+          refillShopUnit(game);
+          const gainedDmg = toInt(strongest.Damage);
+          const gainedHp = toInt(strongest.HP);
+          (front as any).Damage = String(frontDmg + gainedDmg);
+          (front as any).HP = String(toInt((front as any).HP) + gainedHp);
+          this.log(`  [${front.Name}] Reveal: absorbed ${strongest.Name} (+${gainedDmg} Dmg, +${gainedHp} HP)`);
+        } else {
+          this.log(`  [${front.Name}] Reveal: no infantry in shop to absorb`);
+        }
+      }
+
+      // Necromancer: "Revive the top 4 infantry in graveyard to the lanes" — pull up to 4 infantry
+      // from player graveyards and add them as enemies distributed across lanes (round-robin).
+      if (/revive the top 4 infantry in graveyard/i.test(reveal)) {
+        const revivedUnits: UnitInstance[] = [];
+        outer: for (const tp of game.players) {
+          for (let gi = tp.graveyard.length - 1; gi >= 0; gi--) {
+            if (((tp.graveyard[gi].card as any).Type ?? "").toLowerCase() === "infantry") {
+              const [dead] = tp.graveyard.splice(gi, 1);
+              revivedUnits.push(dead);
+              if (revivedUnits.length >= 4) break outer;
+            }
+          }
+        }
+        revivedUnits.forEach((dead, idx) => {
+          const targetLane = game.players[idx % game.players.length];
+          const reanimated: EnemyCard = {
+            Name: `Reanimated ${dead.card.Name}`,
+            Description: "Revived by Necromancer",
+            Type: (dead.card as any).Type ?? "Infantry",
+            Rank: (dead.card as any).Rank ?? "Grunt",
+            Reveal: "",
+            Passive: "",
+            Damage: dead.card.Damage,
+            HP: String(dead.maxHp),
+            Armor: dead.card.Armor,
+            Shields: "0",
+          };
+          targetLane.laneEnemyReserve.push(reanimated);
+        });
+        this.log(`  [${front.Name}] Reveal: revived ${revivedUnits.length} infantry from graveyards as enemies`);
+      }
+
       // God Rod passive: "Kills Self to deal 40 damage to active unit" — handled in combat phase as pre-combat.
-      // TODO: Necromancer/Reanimator revival, Puppeteer friendly-fire, Black Rail AOE —
-      // all deferred pending additional engine infrastructure.
+      // Puppeteer reveal: "All Allies Splash friendlies once" — each alive player unit deals its raw damage to a random other alive unit.
+      if (/all allies splash friendlies once/i.test(reveal)) {
+        for (const tp of game.players) {
+          const alive: UnitInstance[] = [
+            ...(tp.active && tp.active.curHp > 0 ? [tp.active] : []),
+            ...tp.reserve.filter((u) => u.curHp > 0),
+          ];
+          for (const attacker of alive) {
+            const others = alive.filter((u) => u !== attacker);
+            if (!others.length) continue;
+            const target = others[Math.floor(Math.random() * others.length)];
+            target.curHp = Math.max(0, target.curHp - toInt(attacker.card.Damage));
+          }
+        }
+        this.log(`  [Puppeteer] Reveal: all allies splash a random friendly`);
+      }
+      // TODO: Black Rail AOE — deferred pending additional engine infrastructure.
     }
 
     // Airburst Rounds ("Attacks splash onto adjacent lanes"): a precombat pass against
@@ -2880,19 +3010,19 @@ export class GameEngine {
         this.log(`  [${frontEnemy.Name}] Passive: abilities blocked in ${p.name}'s lane this round`);
       }
     }
-    if (game.players.some((p) => p.laneEnemyReserve.some((e) => classifyEnemy(e as EnemyCard).has("blocks_abilities_globally")))) {
+    if (game.players.some((p) => p.laneEnemyReserve.some((e) => !game.suppressedPassiveEnemyNames.has(e.Name) && classifyEnemy(e as EnemyCard).has("blocks_abilities_globally")))) {
       for (const p of game.players) tempState.abilityBlockedSeats.add(p.seatIndex);
       this.log(`  [Plasma Flac] Passive: all abilities blocked globally this round`);
     }
 
     // Emmiter passive: Infantry DoT — check before combat loop so all lanes get the option.
     const emitterDoT = game.players.some((tp) =>
-      tp.laneEnemyReserve.some((e) => classifyEnemy(e as EnemyCard).has("emitter_infantry_dot"))
+      tp.laneEnemyReserve.some((e) => !game.suppressedPassiveEnemyNames.has(e.Name) && classifyEnemy(e as EnemyCard).has("emitter_infantry_dot"))
     ) ? 2 : 0;
     if (emitterDoT > 0) this.log(`  [Emmiter] Passive: Infantry units take ${emitterDoT} DoT per combat exchange`);
     // Totem of Decay passive: non-Mechanical DoT — similarly global.
     const totemDoT = game.players.some((tp) =>
-      tp.laneEnemyReserve.some((e) => classifyEnemy(e as EnemyCard).has("totem_nonmech_dot"))
+      tp.laneEnemyReserve.some((e) => !game.suppressedPassiveEnemyNames.has(e.Name) && classifyEnemy(e as EnemyCard).has("totem_nonmech_dot"))
     ) ? 5 : 0;
     if (totemDoT > 0) this.log(`  [Totem of Decay] Passive: non-Mechanical units take ${totemDoT} DoT per combat exchange`);
 
@@ -2925,7 +3055,7 @@ export class GameEngine {
       }
       const eCombatants = p.laneEnemyReserve.map((e) => {
         const c = new Combatant(e);
-        applyEnemyCombatMods(c, e);
+        applyEnemyCombatMods(c, e, game.suppressedPassiveEnemyNames.has(e.Name));
         applyBossBoardWideMods(game, c, true);
         applyEventCombatMods(game, c, true);
         // The Breaker: strip all shields and armor from every enemy this round.
@@ -2943,7 +3073,7 @@ export class GameEngine {
           c.deleteOnKill = true;
         }
         // Tranq Rounds passive: reduce enemy damage by 2 × enemy rank.
-        if ((game.locationUpgradesBuilt["Medical Bay"] ?? []).some((u) => u.Name === "Tranq rounds")) {
+        if (!underminerActive && (game.locationUpgradesBuilt["Medical Bay"] ?? []).some((u) => u.Name === "Tranq rounds")) {
           c.dmg = Math.max(0, c.dmg - 2 * (ENEMY_RANK_NUM[e.Rank] ?? 1));
         }
         // Tranq Rounds active: halve enemy damage this round (applied after passive).
@@ -2959,6 +3089,7 @@ export class GameEngine {
       // Global enemy passives: scan every enemy across all lanes.
       const allEnemyCards = game.players.flatMap((tp) => tp.laneEnemyReserve);
       for (const ec of allEnemyCards) {
+        if (game.suppressedPassiveEnemyNames.has(ec.Name)) continue;
         const tags = classifyEnemy(ec);
         // Cleric of Steel: "All enemies gain 4 armor" — applies to active enemy in every lane.
         if (tags.has("all_enemies_gain_armor") && eCombatants[0]) eCombatants[0].armor += 4;
@@ -2978,6 +3109,11 @@ export class GameEngine {
         if (tags.has("crown_splitter_infantry_dmg_boost") && eCombatants[0]) {
           eCombatants[0].bonusDmgVsType["infantry"] = (eCombatants[0].bonusDmgVsType["infantry"] ?? 0) + 15;
         }
+        // Mobile Temple: "Enemies Heal 10 on hit" — while alive anywhere, all active enemies heal 10 each time they deal damage.
+        if (tags.has("heal_self_on_hit") && eCombatants[0]) {
+          const flatMatch = ((ec as any).Passive ?? "").match(/heal(?:s)?\s+(?:enemies\s+)?(\d+)\s+on\s+hit/i);
+          if (flatMatch) eCombatants[0].healSelfFlatOnHit += parseInt(flatMatch[1]);
+        }
         // High General: "Give all enemies 20 damage, Shields and HP"
         if (tags.has("all_enemies_buff_20") && eCombatants[0]) {
           eCombatants[0].dmg += 20;
@@ -2992,7 +3128,7 @@ export class GameEngine {
         this.log(`  [Stun] Enemy active in ${p.name}'s lane starts combat stunned (cross-lane reveal).`);
       }
       // God Rod passive: "Kills Self to deal 40 damage to active unit" — fires before combat, removes itself.
-      if (eCombatants[0] && /kills self to deal 40 damage/i.test((p.laneEnemyReserve[0] as any)?.Passive ?? "")) {
+      if (eCombatants[0] && !game.suppressedPassiveEnemyNames.has((p.laneEnemyReserve[0] as any)?.Name ?? "") && /kills self to deal 40 damage/i.test((p.laneEnemyReserve[0] as any)?.Passive ?? "")) {
         if (pCombatants[0]) {
           pCombatants[0].curHp -= 40;
           this.log(`  [${p.laneEnemyReserve[0]?.Name}] Passive: suicide attack — 40 pre-combat damage to ${pCombatants[0].name}`);
@@ -3067,20 +3203,109 @@ export class GameEngine {
           }
         });
       }
+      if (p.laneEnemyReserve.some((e) => e.Name === "Storm Claw" && !game.suppressedPassiveEnemyNames.has(e.Name))) {
+        afterEnemyAttackEffects.push((attacker) => {
+          if (attacker.name !== "Storm Claw") return;
+          const numLanes = game.players.length;
+          for (let i = 0; i < 2; i++) {
+            const laneIdx = Math.floor(Math.random() * Math.min(4, numLanes));
+            const target = game.players[laneIdx];
+            if (!target || target.seatIndex === p.seatIndex || !target.active) continue;
+            dealPreCombatDamage(target.active, attacker.dmg);
+            applyRevealDeaths(target);
+            this.log(`  [Storm Claw] Passive D4=${laneIdx + 1}: ${attacker.dmg} to ${target.name}'s active unit`);
+          }
+        });
+      }
       const splashCb = afterEnemyAttackEffects.length > 0
         ? (attacker: Combatant, dmgDealt: number) => { for (const fn of afterEnemyAttackEffects) fn(attacker, dmgDealt); }
         : undefined;
+      const puppeteerActive = p.laneEnemyReserve.some((e) => e.Name === "Puppeteer" && !game.suppressedPassiveEnemyNames.has(e.Name));
+      let blackRailGroupAttack: ((attacker: Combatant, pq: Combatant[]) => void) | undefined;
+      if (p.laneEnemyReserve.some((e) => e.Name === "Black Rail" && !game.suppressedPassiveEnemyNames.has(e.Name))) {
+        const RANK_VALS_BR: Record<string, number> = { Conscript: 0, Advanced: 1, Elite: 2, Commander: 3 };
+        blackRailGroupAttack = (attacker: Combatant, pq: Combatant[]) => {
+          if (attacker.name !== "Black Rail") return;
+          // Find the globally highest-rank unit and whether it is in an active or reserve slot.
+          let topRank = -1;
+          let topIsActive = false;
+          for (const tp of game.players) {
+            if (tp.active && tp.active.curHp > 0) {
+              const r = RANK_VALS_BR[(tp.active.card as any).Rank ?? ""] ?? -1;
+              if (r > topRank) { topRank = r; topIsActive = true; }
+            }
+            for (const ui of tp.reserve) {
+              if (ui.curHp <= 0) continue;
+              const r = RANK_VALS_BR[(ui.card as any).Rank ?? ""] ?? -1;
+              if (r > topRank) { topRank = r; topIsActive = false; }
+            }
+          }
+          // Current lane: deal via computeDealt so combatant armor/shields apply.
+          if (topIsActive) {
+            if (pq[0]) pq[0].curHp -= computeDealt(attacker, pq[0]);
+          } else {
+            for (let i = 1; i < pq.length; i++) pq[i].curHp -= computeDealt(attacker, pq[i]);
+          }
+          // Other lanes: deal to unit instances (combatants not yet built for those lanes).
+          for (const tp of game.players) {
+            if (tp.seatIndex === p.seatIndex) continue;
+            if (topIsActive) {
+              if (tp.active && tp.active.curHp > 0) { dealPreCombatDamage(tp.active, attacker.dmg); applyRevealDeaths(tp); }
+            } else {
+              for (const ui of [...tp.reserve]) { if (ui.curHp > 0) dealPreCombatDamage(ui, attacker.dmg); }
+              applyRevealDeaths(tp);
+            }
+          }
+          this.log(`  [Black Rail] Passive: ${topIsActive ? "all active" : "all reserve"} targeted (highest rank tier=${topRank}); ${attacker.dmg} per unit`);
+        };
+      }
+      let nightmareAttackCb: ((attacker: Combatant) => void) | undefined;
+      if (p.laneEnemyReserve.some((e) => e.Name === "Nightmare" && !game.suppressedPassiveEnemyNames.has(e.Name))) {
+        const RANK_VALS_NM: Record<string, number> = { Conscript: 0, Advanced: 1, Elite: 2, Commander: 3 };
+        nightmareAttackCb = (attacker: Combatant) => {
+          if (attacker.name !== "Nightmare") {
+            // Follow-up enemy after Nightmare died — simplified normal attack to active player combatant.
+            if (pCombatants[0] && pCombatants[0].curHp > 0) pCombatants[0].curHp -= computeDealt(attacker, pCombatants[0]);
+            return;
+          }
+          // Nightmare: attack highest-rank unit in Medical Bay.
+          p.medBayUnits.sort((a, b) =>
+            (RANK_VALS_NM[(b.card as any).Rank ?? ""] ?? -1) - (RANK_VALS_NM[(a.card as any).Rank ?? ""] ?? -1)
+          );
+          const mbTarget = p.medBayUnits[0];
+          if (!mbTarget) return; // Medical Bay empty — Nightmare skips its attack.
+          dealPreCombatDamage(mbTarget, attacker.dmg);
+          this.log(`  [Nightmare] Passive: ${attacker.dmg} to ${mbTarget.card.Name} in Medical Bay (${Math.max(0, mbTarget.curHp)} HP left)`);
+          if (mbTarget.curHp <= 0) {
+            p.medBayUnits.splice(0, 1);
+            this.log(`  [Nightmare] ${mbTarget.card.Name} killed in Medical Bay`);
+          }
+        };
+      }
       const { overrun, playerSurvivors, enemySurvivors, totalShieldsAbsorbed } = resolveLaneCombat(pCombatants, eCombatants, {
         bonusPlayerDmgPerAttack: tagTeamBonus + combatStimsBonus,
         onFirstPlayerDeath: ynpCb,
         doubleFirstAttack: whitesDoubleFirst,
         onEnemyKill: punchCb,
-        onEnemyAttack: scoutAttackCb,
+        onEnemyAttack: nightmareAttackCb ?? scoutAttackCb,
         onAfterEnemyAttack: splashCb,
         perExchangeInfantryDoT: emitterDoT,
         perExchangeNonMechDoT: totemDoT,
+        splashAllyOnPlayerAttack: puppeteerActive,
+        enemyGroupAttack: blackRailGroupAttack,
+        deathCloakFloor: p.laneEnemyReserve.some((e) => e.Name === "Death Cloak" && !game.suppressedPassiveEnemyNames.has(e.Name)),
       });
       game.shieldsDestroyedThisRound += totalShieldsAbsorbed;
+      // Tunnler/Tactician passive: each player unit that dies in this lane reduces the overrun tracker by 1.
+      const playerDeaths = pCombatants.length - playerSurvivors.length;
+      if (playerDeaths > 0) {
+        for (const eName of ["Tunnler", "Tactician"]) {
+          if (p.laneEnemyReserve.some((e) => e.Name === eName && !game.suppressedPassiveEnemyNames.has(e.Name))) {
+            game.overrunTracker = Math.max(game.overrunTrackerMin, game.overrunTracker - playerDeaths);
+            this.log(`  [${eName}] Passive: ${playerDeaths} player death(s) → overrun tracker -${playerDeaths} (now ${game.overrunTracker})`);
+          }
+        }
+      }
       const kills = eCombatants.length - enemySurvivors.length;
       if (kills > 0) {
         lanesWithKill.push(p);
@@ -3091,10 +3316,14 @@ export class GameEngine {
           const lastKilledIdx = eCombatants.lastIndexOf(killedCombatants[killedCombatants.length - 1]);
           game.lastKilledEnemy = p.laneEnemyReserve[lastKilledIdx] ?? game.lastKilledEnemy;
           // Hunter SO: count kills on enemies that have a Reveal or Passive ability.
+          // Also record all killed enemy cards for Reanimator's reveal next round.
           for (const kc of killedCombatants) {
             const ekIdx = eCombatants.indexOf(kc);
             const ek = p.laneEnemyReserve[ekIdx];
-            if (ek && ((ek as any).Reveal || (ek as any).Passive)) p.stats.abilityEnemyKills += 1;
+            if (ek) {
+              if ((ek as any).Reveal || (ek as any).Passive) p.stats.abilityEnemyKills += 1;
+              game.enemiesKilledThisRound.push(ek as EnemyCard);
+            }
           }
         }
       }
@@ -3145,6 +3374,11 @@ export class GameEngine {
       const annihilationNoSaves =
         game.activeEvent?.["Event name"] === "Annihilation Clause" ||
         (game.annihilationAlliesDeletedByHigherRank && ENEMY_RANK_NUM[diffRank] > p.rank);
+      // Necromancer passive: alive if it survived this lane's combat or is present in another lane
+      // (other lanes use pre-combat laneEnemyReserve state since their combat hasn't resolved yet).
+      const necromancerAlive =
+        enemySurvivors.some((ec) => ec.name === "Necromancer" && !game.suppressedPassiveEnemyNames.has("Necromancer")) ||
+        game.players.some((tp) => tp !== p && tp.laneEnemyReserve.some((e) => e.Name === "Necromancer" && !game.suppressedPassiveEnemyNames.has(e.Name)));
       const newUnits: UnitInstance[] = [];
       pUnits.forEach((ui, i) => {
         const c = pCombatants[i];
@@ -3152,12 +3386,12 @@ export class GameEngine {
           ui.curHp = c.curHp;
           ui.curShields = c.curShields;
           newUnits.push(ui);
-        } else if (!annihilationNoSaves && tempState.cannotDie.has(ui.id)) {
+        } else if (!annihilationNoSaves && !c.deletedByEnemy && tempState.cannotDie.has(ui.id)) {
           ui.curHp = 1;
           newUnits.push(ui);
         } else if (
-          !annihilationNoSaves &&
-          game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Necromancy") &&
+          !annihilationNoSaves && !c.deletedByEnemy &&
+          !underminerActive && game.locationUpgradesBuilt["Containment Block"].some((c) => c.Name === "Necromancy") &&
           !game.necromancyDeathPrevented.has(p.seatIndex)
         ) {
           game.necromancyDeathPrevented.add(p.seatIndex);
@@ -3165,21 +3399,21 @@ export class GameEngine {
           newUnits.push(ui);
           this.log(`  [Necromancy passive] First death in ${p.name}'s lane prevented`);
         } else if (
-          !annihilationNoSaves &&
-          game.locationUpgradesBuilt["Medical Bay"].some((c) => c.Name === "Battle Medics") &&
+          !annihilationNoSaves && !c.deletedByEnemy &&
+          !underminerActive && game.locationUpgradesBuilt["Medical Bay"].some((c) => c.Name === "Battle Medics") &&
           !game.battleMedicsPassiveUsed
         ) {
           game.battleMedicsPassiveUsed = true;
           ui.curHp = ui.maxHp;
           newUnits.push(ui);
           this.log(`  [Battle Medics passive] ${ui.card.Name} restored to full HP`);
-        } else if (!annihilationNoSaves && game.battleMedicsActiveUnits.has(ui.id)) {
+        } else if (!annihilationNoSaves && !c.deletedByEnemy && game.battleMedicsActiveUnits.has(ui.id)) {
           game.battleMedicsActiveUnits.delete(ui.id);
           ui.curHp = ui.maxHp;
           newUnits.push(ui);
           this.log(`  [Battle Medics active] ${ui.card.Name} restored to full HP`);
         } else if (
-          !annihilationNoSaves &&
+          !annihilationNoSaves && !c.deletedByEnemy &&
           game.weCanRebuildActive &&
           !game.rebuiltThisRound.has(ui.id) &&
           p.res.Tech >= toInt(ui.card["Tech Cost"])
@@ -3189,12 +3423,40 @@ export class GameEngine {
           ui.curHp = Math.max(1, Math.floor(ui.maxHp / 2));
           newUnits.push(ui);
           this.log(`  [We Can Rebuild Them] ${ui.card.Name} rebuilt at ${ui.curHp} HP (paid ${toInt(ui.card["Tech Cost"])} Tech)`);
-        } else if (!annihilationNoSaves && tryChronostasisSave(game, p, ui, (t) => this.log(t))) {
+        } else if (!annihilationNoSaves && !c.deletedByEnemy && tryChronostasisSave(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
-        } else if (!annihilationNoSaves && tryReviveOnce(game, p, ui, (t) => this.log(t))) {
+        } else if (!annihilationNoSaves && !c.deletedByEnemy && tryReviveOnce(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
-        } else if (!annihilationNoSaves && tryDoctorSave(game, p, ui, (t) => this.log(t))) {
+        } else if (!annihilationNoSaves && !c.deletedByEnemy && tryDoctorSave(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
+        } else if (
+          !annihilationNoSaves && !c.deletedByEnemy && necromancerAlive &&
+          ((ui.card as any).Type ?? "").toLowerCase() === "infantry"
+        ) {
+          // Necromancer passive: infantry that die while Necromancer is alive are reanimated as enemies.
+          applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
+          p.stats.deaths += 1;
+          game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
+          const reanimated: EnemyCard = {
+            Name: `Reanimated ${ui.card.Name}`,
+            Description: "Revived by Necromancer",
+            Type: (ui.card as any).Type ?? "Infantry",
+            Rank: (ui.card as any).Rank ?? "Grunt",
+            Reveal: "",
+            Passive: "",
+            Damage: ui.card.Damage,
+            HP: String(ui.maxHp),
+            Armor: ui.card.Armor,
+            Shields: "0",
+          };
+          p.laneEnemyReserve.unshift(reanimated);
+          this.log(`  [Necromancer] Passive: ${ui.card.Name} reanimated as enemy in ${p.name}'s lane`);
+        } else if (c.deletedByEnemy) {
+          // deleteOnKill: unit is permanently erased — no graveyard, no medical bay, no gear drop.
+          applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
+          p.stats.deaths += 1;
+          game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
+          this.log(`  [Delete on Kill] ${ui.card.Name} permanently deleted`);
         } else {
           applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
           const realGear = ui.equipped.filter((g) => "Name" in (g as any));
