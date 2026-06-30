@@ -120,6 +120,8 @@ export class Combatant {
   shieldsOnKill = 0;
   /** Player unit: instantly kill the active enemy when its curHp < hp × this fraction before attacks (execute_low_hp tag). */
   executeEnemyBelowFraction = 0;
+  /** Player unit: gain shields equal to (damage dealt × this fraction) each attack (Slayer Suit passive). */
+  shieldsOnDmgFraction = 0;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
@@ -337,6 +339,7 @@ export function resolveLaneCombat(
     }
     e.curHp -= pDmg + bonusPlayerDmgPerAttack;
     totalShieldsAbsorbed += eBefore - e.curShields;
+    if (p.shieldsOnDmgFraction > 0 && pDmg > 0) p.curShields += Math.floor(pDmg * p.shieldsOnDmgFraction);
     if (p.stunOnHitCharges > 0 && pDmg > 0) { e.stunned = true; if (isFinite(p.stunOnHitCharges)) p.stunOnHitCharges--; }
     if (splashAllyOnPlayerAttack && pq.length > 1) {
       const allyIdx = 1 + Math.floor(Math.random() * (pq.length - 1));

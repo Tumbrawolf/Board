@@ -210,6 +210,12 @@ export function equipGearOntoActiveMutation(game: GameState, p: GamePlayer, g: a
     return false;
   }
   const gType = g.Type as string | undefined;
+  // Slayer Suit: "Cannot Equip Utility" -- block all Utility items on this unit
+  if (gType === "Utility" && p.active.equipped.some((eq) => (eq as any).Name === "Slayer Suit")) {
+    p.gearHand.push(g);
+    log(`  ${p.name} cannot equip ${g.Name} (Slayer Suit restriction: Cannot Equip Utility) -- held in hand`);
+    return false;
+  }
   if (gType && SLOT_LIMITED_TYPES.has(gType)) {
     const sameTypeCount = p.active.equipped.filter((eq) => (eq as any).Type === gType).length;
     const cap = equipSlotCap(p.active, gType);

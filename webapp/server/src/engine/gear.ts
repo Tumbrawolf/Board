@@ -11,11 +11,11 @@ import type { GamePlayer, GameState, UnitInstance } from "./types.js";
 const GEAR_IGNORE_ARMOR = new Set(["Ion Weapons", "Nanite Tech", "Magnetized Barrels", "Toxin Rounds"]);
 const GEAR_DOUBLE_VS_SHIELDS = new Set(["Plasma Weapons"]);
 const GEAR_SHRED_ARMOR: Record<string, number> = { "Explosive Rounds": 999, "Chem Strike": 5 };
-const GEAR_FIRST_HIT_FREE = new Set(["Basic Camo", "Smoke Pack", "Shadow Tech", "Exosuit"]);
+const GEAR_FIRST_HIT_FREE = new Set(["Basic Camo", "Shadow Tech", "Exosuit"]);
 const GEAR_DELETE_ON_KILL = new Set(["Apocalypse Rounds", "Black Iron"]);
 
 const GEAR_RESERVE_HEAL: Record<string, number> = { "Basic Medkit": 2, Medkit: 3, "Field Medkit": 4, "Triage Pack": 5 };
-const GEAR_PRECOMBAT_HEAL: Record<string, number> = { "Regen Plates": 4 };
+const GEAR_PRECOMBAT_HEAL: Record<string, number> = { "Regen Plates": 4, "Repair Kit": 3 };
 const GEAR_PRECOMBAT_SHIELD: Record<string, number> = { "Shield Generator": 5 };
 
 function roll1to6(): number {
@@ -44,6 +44,8 @@ export function applyGearCombatMods(c: Combatant, ui: UnitInstance, commanderRan
     if (names.has(n)) c.shredArmor = Math.max(c.shredArmor, amt);
   }
   if ([...names].some((n) => GEAR_FIRST_HIT_FREE.has(n))) c.firstHitPrevented = true;
+  if (names.has("Smoke Pack") && ui.curHp < Math.floor(ui.maxHp / 2)) c.firstHitPrevented = true;
+  if (names.has("Slayer Suit")) c.shieldsOnDmgFraction = 0.25;
   if ([...names].some((n) => GEAR_DELETE_ON_KILL.has(n))) c.deleteOnKill = true;
   if ((ui.charges["Holographic Decoys"] ?? 0) > 0) {
     ui.charges["Holographic Decoys"] -= 1;
@@ -116,6 +118,7 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
       }
       if (name === "Quantum Plates") {
         const roll = roll1to6();
+        ui.charges["Quantum Plates Roll"] = roll;
         if (roll === 2 || roll === 3) tempState.tempBuff(ui, { Armor: -4 });
         else if (roll === 4 || roll === 5) tempState.tempBuff(ui, { Armor: 6 });
         else if (roll === 6) ui.curHp = 0;
@@ -141,15 +144,34 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
         log(`  [Reanimator] ${p.name} returns ${game.lastKilledEnemy.Name} to combat under their control`);
         game.lastKilledEnemy = null;
       }
+      // Grenade Launcher Passive: "Deal 1/2 attack damage before combat" -- fires once on the
+      // active unit only (reserve units don't attack). Uses unit's printed Damage, no armor reduction.
+      if (name === "Grenade Launcher" && ui === p.active && p.laneEnemyReserve.length) {
+        const halfDmg = Math.floor(toInt(ui.card.Damage) / 2);
+        if (halfDmg > 0) {
+          const t = p.laneEnemyReserve[0];
+          const remaining = toInt(t.HP) - halfDmg;
+          if (remaining <= 0) {
+            p.laneEnemyReserve.shift();
+            log(`  [Grenade Launcher] ${p.name}'s precombat shot kills ${t.Name}`);
+          } else {
+            p.laneEnemyReserve[0] = { ...t, HP: String(remaining) };
+            log(`  [Grenade Launcher] ${p.name}'s precombat shot deals ${halfDmg} to ${t.Name} (${remaining} HP left)`);
+          }
+        }
+      }
     }
   }
 
   const PRECOMBAT_ONLY_ACTIVE = new Set(["XVL3", "XVL33", "Holographic Decoys"]);
+  // Slayer Suit active fires mid-combat (game.ts Phase 2) after an enemy drops below 1/4 HP,
+  // so it must NOT auto-activate in the pre-combat pass.
+  const MIDCOMBAT_ONLY_ACTIVE = new Set(["Slayer Suit"]);
   for (const ui of allUnits) {
     for (const g of [...ui.equipped]) {
       const card = g as any;
       const name = card.Name as string | undefined;
-      if (!name || !card.Active?.trim() || PRECOMBAT_ONLY_ACTIVE.has(name)) continue;
+      if (!name || !card.Active?.trim() || PRECOMBAT_ONLY_ACTIVE.has(name) || MIDCOMBAT_ONLY_ACTIVE.has(name)) continue;
       if (name === "Emergency Extractor" && ui.curHp >= Math.floor(ui.maxHp / 2)) continue;
       const isConsumable = card.Type === "Consumable";
       // Activation cost = Tech equal to the gear's rank value (separate from the equip purchase
@@ -225,8 +247,7 @@ function applyGearActive(
     }
     case "Basic Medkit":
     case "Medkit":
-    case "Field Medkit":
-    case "Triage Pack": {
+    case "Field Medkit": {
       const targets = unitsOf(w).filter((u) => u.curHp < u.maxHp).sort((a, b) => (a.curHp - a.maxHp) - (b.curHp - b.maxHp));
       const healCount = isEngineer ? 2 : 1;
       for (const t of targets.slice(0, healCount)) {
@@ -234,10 +255,17 @@ function applyGearActive(
       }
       break;
     }
+    case "Triage Pack": {
+      const targets = unitsOf(w).filter((u) => u.curHp < u.maxHp).sort((a, b) => (a.curHp - a.maxHp) - (b.curHp - b.maxHp));
+      const healCount = isEngineer ? 2 : 1;
+      for (const t of targets.slice(0, healCount)) {
+        if (healUnit(t, undefined, game)) w.stats.healsGiven += 1;
+      }
+      break;
+    }
     case "Landmines":
     case "Artillery Strike":
     case "Bomber Drone":
-    case "Slayer Suit":
     case "Chem Strike":
     case "Reactive Plating":
       w.laneEnemyReserve = w.laneEnemyReserve.filter((e) => toInt(e.HP) > (name === "Reactive Plating" ? 15 : 10));
@@ -330,11 +358,24 @@ function applyGearActive(
         other.active = tmp;
       }
       break;
-    case "Quantum Plates":
-      tempState.tempBuff(ui, { Damage: 1 });
+    case "Quantum Plates": {
+      // Undo the passive roll that fired earlier this same precombat phase, then apply a fresh one.
+      const prev = ui.charges["Quantum Plates Roll"] ?? 0;
+      if (prev === 2 || prev === 3) tempState.tempBuff(ui, { Armor: 4 });
+      else if (prev === 4 || prev === 5) tempState.tempBuff(ui, { Armor: -6 });
+      else if (prev === 6) ui.curHp = ui.maxHp;
+      const roll = roll1to6();
+      ui.charges["Quantum Plates Roll"] = roll;
+      if (roll === 2 || roll === 3) tempState.tempBuff(ui, { Armor: -4 });
+      else if (roll === 4 || roll === 5) tempState.tempBuff(ui, { Armor: 6 });
+      else if (roll === 6) ui.curHp = 0;
       break;
+    }
     case "Shadow Tech":
-      if (w.laneEnemyReserve.length) w.laneEnemyReserve = w.laneEnemyReserve.slice(1);
+      if (w.laneEnemyReserve.length) {
+        const [banished, ...rest] = w.laneEnemyReserve;
+        w.laneEnemyReserve = [...rest, banished];
+      }
       break;
     case "Expanded Backpack": {
       // "Reset the cooldown of another equipped item" -- refunds 1 use to one of THIS unit's

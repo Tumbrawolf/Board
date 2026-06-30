@@ -55,6 +55,7 @@ import { ensureLowestRankGear, ensureLowestRankUnit, refillShopGear, refillShopU
 import {
   RoundTempState,
   adjacentSeats,
+  canActivateAbility,
   canUseEffect,
   dealPreCombatDamage,
   grantShields,
@@ -62,6 +63,7 @@ import {
   instancePower,
   makeTempCard,
   makeUnitInstance,
+  recordAbilityActivation,
   recordEffectUse,
   scoutValue,
   weakestPlayer,
@@ -3637,6 +3639,62 @@ export class GameEngine {
               enemyMaxHp:     x?.enemyMaxHp     ?? preEMax,
               combatComplete: lane.eq.length === 0 || lane.pq.length === 0,
             });
+          }
+        }
+        // Slayer Suit active: "Execute target enemy under 1/4 HP and is under rank 6, move this
+        // unit to that lane". Fires once per exchange round after all lanes have resolved, so any
+        // lane whose active enemy dropped below threshold this exchange can be targeted cross-lane.
+        for (const targetLane of laneRuns) {
+          if (!targetLane.eq.length) continue;
+          const activeEnemy = targetLane.eq[0];
+          if (activeEnemy.curHp <= 0 || activeEnemy.curHp >= Math.floor(activeEnemy.hp * 0.25)) continue;
+          // Rank check via source card (eCombatants built 1:1 from laneEnemyReserve).
+          const enemyIdx = targetLane.eCombatants.indexOf(activeEnemy);
+          const enemyCard = enemyIdx >= 0 ? targetLane.p.laneEnemyReserve[enemyIdx] : null;
+          if (!enemyCard || (ENEMY_RANK_NUM[enemyCard.Rank] ?? 0) >= 6) continue;
+          // Find any player whose active unit has Slayer Suit and can activate this round.
+          for (const slayerP of game.players) {
+            if (!slayerP.active) continue;
+            const suitGear = slayerP.active.equipped.find((g) => (g as any).Name === "Slayer Suit");
+            if (!suitGear) continue;
+            const slayerUi = slayerP.active;
+            if (!canActivateAbility(game, slayerUi.id, "Slayer Suit")) continue;
+            const rankCost = RANK_NUM["Specialist"] ?? 7;
+            const freeKey = `${slayerUi.id}-Slayer Suit`;
+            const isFree = game.freeAbilityNextUse.has(freeKey);
+            const isFreeType = game.gearActiveFreeType === "Armor" || game.gearActiveFreeType === "any";
+            const isDoubled = game.gearActiveCostDoubledType === "Armor" || game.gearActiveCostDoubledType === "any";
+            const techCost = (isFree || isFreeType) ? 0 : isDoubled ? rankCost * 2 : rankCost;
+            if (!isFree && !isFreeType && slayerP.res.Tech < techCost) continue;
+            if (!isFree && !isFreeType && techCost > 0) slayerP.res.Tech -= techCost;
+            if (isFree) game.freeAbilityNextUse.delete(freeKey);
+            recordAbilityActivation(game, slayerP.seatIndex, slayerUi.id, "Slayer Suit");
+            game.activationsThisRound.set(slayerP.seatIndex, (game.activationsThisRound.get(slayerP.seatIndex) ?? 0) + 1);
+            this.log(`  [Slayer Suit] ${slayerP.name} executes ${activeEnemy.name} (${activeEnemy.curHp}/${activeEnemy.hp} HP) in ${targetLane.p.name}'s lane`);
+            targetLane.eq.shift();
+            // Move the Slayer Suit unit to the target lane if it's in a different lane.
+            if (slayerP !== targetLane.p) {
+              // Pull the unit out of its current lane's combat queue.
+              const srcLane = laneRuns.find((l) => l.p === slayerP);
+              if (srcLane) {
+                const srcCIdx = srcLane.pCombatants.findIndex((c) => c.name === slayerUi.card.Name);
+                if (srcCIdx >= 0) srcLane.pq.splice(srcLane.pq.indexOf(srcLane.pCombatants[srcCIdx]), 1);
+              }
+              // Remove from its current player slot.
+              slayerP.active = slayerP.reserve.length ? slayerP.reserve.shift()! : null;
+              // Add to the target lane's player reserve (persistent state).
+              targetLane.p.reserve.push(slayerUi);
+              // Build a fresh combatant and inject it into the target lane's live combat queue.
+              const newC = combatantFromUnit(slayerUi);
+              applyGearCombatMods(newC, slayerUi, game.players[game.commanderIdx].rank, slayerP, game.playerProgress);
+              applyUnitCombatMods(newC, slayerUi);
+              applyEventCombatMods(game, newC, false, slayerUi);
+              applyBossBoardWideMods(game, newC, false);
+              targetLane.pq.push(newC);
+              targetLane.pCombatants.push(newC);
+              targetLane.pUnits.push(slayerUi);
+            }
+            break; // one execute per exchange round
           }
         }
         // Emit this round's exchange data to all clients and wait for ack (or skip/pause resolution).
