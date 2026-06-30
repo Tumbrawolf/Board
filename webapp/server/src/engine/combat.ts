@@ -22,6 +22,8 @@ export class Combatant {
   /** Set to true when a deleteOnKill enemy kills this combatant — bypasses all revival effects. */
   deletedByEnemy = false;
   attacksFirst = false;
+  /** The Chessmaster active: player units deal double damage to this enemy. */
+  takesDoubleDamage = false;
   reflectFraction = 0;
   lifestealFraction = 0;
   /** Unit skips its next attack (clears after the skipped turn). */
@@ -307,7 +309,7 @@ export function resolveLaneCombat(
   const playerAttacks = (p: Combatant, e: Combatant, mult: number) => {
     if (p.stunned) { p.stunned = false; return; }
     const eBefore = e.curShields;
-    let pDmg = computeDealt(p, e) * mult;
+    let pDmg = computeDealt(p, e) * mult * (e.takesDoubleDamage ? 2 : 1);
     // Manipulator passive: redirect half of dealt damage to the first reserve enemy.
     if (e.halvesToReserveOnHit && eq.length > 1) {
       const redirected = Math.floor(pDmg / 2);

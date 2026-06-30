@@ -3179,10 +3179,8 @@ export class GameEngine {
           c.curShields = 0;
           c.armor = 0;
         }
-        // The Chessmaster: swapped enemies take double damage (halve starting HP so the same
-        // damage math yields double the kill rate without a separate damage multiplier path).
         if (game.chessmasterDoubledEnemies.has(e)) {
-          c.curHp = Math.max(1, Math.floor(c.curHp / 2));
+          c.takesDoubleDamage = true;
         }
         // Annihilation Clause reward: enemies in a lane where player rank > enemy tier are deleted on kill.
         if (game.annihilationEnemiesDeletedByHigherRank && p.rank > ENEMY_RANK_NUM[diffRank]) {

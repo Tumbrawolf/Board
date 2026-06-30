@@ -292,8 +292,8 @@ export interface GameState {
   /** Shadow Sower passive: blocks scout pool effects and scout-targeting enemy mods while alive. */
   shadowSowerActive: boolean;
   /** The Chessmaster Tactician's Active -- cloned EnemyCard references that were swapped this
-   * round. Any enemy whose reference is in this Set has its Combatant curHp halved at
-   * construction (equivalent to taking double damage). Reset each round. */
+   * round. Any enemy whose reference is in this Set gets Combatant.takesDoubleDamage = true,
+   * so player attacks deal 2× damage to it. Reset each round. */
   chessmasterDoubledEnemies: Set<EnemyCard>;
   /** Contained enemy pool -- moved from GameEngine's private field so Tactician actives (The
    * Jailer), Events, and future mechanics can read/modify it without extra parameters. Fed by
