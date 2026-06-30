@@ -237,8 +237,9 @@ function unequipAllOfType(p: GamePlayer, type: string | null, severity: number, 
  * once per round: commander restores the cheapest-Tech card from the recycle pile to hand. */
 export function applyGarbageDayRestore(game: GameState, log: (t: string) => void) {
   const commander = game.players[game.commanderIdx];
-  if (game.recyclePile.length) {
-    const cheapest = game.recyclePile.reduce((a, b) => (toInt((b as any).Tech) < toInt((a as any).Tech) ? b : a));
+  const commandsInRecycle = game.recyclePile.filter((g) => "Active Effect" in (g as any)) as import("./data.js").CommandCard[];
+  if (commandsInRecycle.length) {
+    const cheapest = commandsInRecycle.reduce((a, b) => (toInt((b as any).Tech) < toInt((a as any).Tech) ? b : a));
     const cost = toInt((cheapest as any).Tech);
     if (commander.res.Tech >= cost) {
       commander.res.Tech -= cost;

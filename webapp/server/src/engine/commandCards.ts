@@ -119,9 +119,6 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
     case "Gene Modding":
       game.techCanUseOrganic = true;
       break;
-    case "Ammo Stockpiles":
-      commander.res.Tech += 5;
-      break;
     case "Flash Sale":
       game.shopCostMultiplier = 0.5;
       game.shopCostMultiplierNextRound = 2;
