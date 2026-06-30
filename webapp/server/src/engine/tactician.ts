@@ -62,14 +62,25 @@ export function tacticianContainmentBuildDiscount(p: GamePlayer, loc: Location, 
   return { ...card, Alien: "0" };
 }
 
-/** The Breaker ("Units in your lane Shred on hit = your rank") and The Bastion ("Units in your
- * lane Shred 2 when entering combat") both set the same Combatant.shredArmor field every Unit
- * combat mod already uses -- just sourced from the player's Tactician/Rank instead of a
- * per-card keyword. */
-export function applyTacticianCombatMods(c: import("./combat.js").Combatant, p: GamePlayer) {
+/** The Breaker ("Units in your lane Shred on hit = your rank"), The Bastion ("Units in your
+ * lane Shred 2 when entering combat"), and The Drillmaster ("Units under Rank 5 gain
+ * Attack/HP = double your rank − their rank") all modify per-Combatant stats at construction.
+ * Pass the source UnitInstance so Drillmaster can read the unit's rank. */
+export function applyTacticianCombatMods(c: import("./combat.js").Combatant, p: GamePlayer, ui?: import("./types.js").UnitInstance) {
   const name = p.tactician?.Name;
   if (name === "The Breaker") c.shredArmor = Math.max(c.shredArmor, p.rank);
   else if (name === "The Bastion") c.shredArmor = Math.max(c.shredArmor, 2);
+  else if (name === "The Drillmaster" && ui) {
+    const unitRank = RANK_NUM[(ui.card as any).Rank ?? ""] ?? 0;
+    if (unitRank > 0 && unitRank < 5) {
+      const bonus = 2 * p.rank - unitRank;
+      if (bonus > 0) {
+        c.dmg  += bonus;
+        c.hp   += bonus;
+        c.curHp = Math.min(c.curHp + bonus, c.hp);
+      }
+    }
+  }
 }
 
 /** The Bastion: "...they also start with Shield = your rank" -- applied once before combat,

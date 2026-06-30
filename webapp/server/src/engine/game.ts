@@ -3144,7 +3144,7 @@ export class GameEngine {
           applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
         }
         applyUnitCombatMods(c, ui);
-        applyTacticianCombatMods(c, p);
+        applyTacticianCombatMods(c, p, ui);
         applyBossBoardWideMods(game, c, false);
         applyEventCombatMods(game, c, false, ui);
         return c;
@@ -3779,7 +3779,7 @@ export class GameEngine {
         const c = combatantFromUnit(ui);
         applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
         applyUnitCombatMods(c, ui);
-        applyTacticianCombatMods(c, p);
+        applyTacticianCombatMods(c, p, ui);
         applyBossBoardWideMods(game, c, false);
         applyEventCombatMods(game, c, false, ui);
         return c;
