@@ -192,6 +192,13 @@ export class GameEngine {
       hasLastStandBeacon: false,
       workerDoubleLocations: new Set(),
       sharedShieldPool: 0,
+      freeEquipsPerRound: 0,
+      nextGearFreeCount: 0,
+      nextUnitFreeCount: 0,
+      nextRankFreeUnit: 0,
+      mechHalfPrice: false,
+      vehicleHalfPrice: false,
+      rankOneFree: false,
       revealedSecretObjective: null,
       stats: {
         kills: 0,
@@ -226,6 +233,9 @@ export class GameEngine {
         ownSpendTotal: 0,
         maxAbilitiesDeniedInRound: 0,
         roundsWithoutUnitLoss: 0,
+        maxArmorShieldStrippedInRound: 0,
+        roundsArmorAbsorbedAll: 0,
+        trampleKillsTotal: 0,
       },
     }));
 
@@ -302,6 +312,7 @@ export class GameEngine {
       reclaimerPassiveFiredThisRound: new Set(),
       unitsOrGearAddedSeats: new Set(),
       quartermasterRolledShopGear: new Set(),
+      quartermasterRolledShopUnits: new Set(),
       gunsmithFreeWeaponUsedSeats: new Set(),
       bulwarkFreeArmorUsedSeats: new Set(),
       recycledThisRound: new Set(),
@@ -406,6 +417,7 @@ export class GameEngine {
       hoardReductionNextCombat: 0,
       abilityDenialDamage: 0,
       sunderedLaneSeat: -1,
+      ironGripSeats: new Set(),
     };
 
     refillShopUnit(this.game);
@@ -522,6 +534,7 @@ export class GameEngine {
     game.reclaimerPassiveFiredThisRound = new Set();
     game.unitsOrGearAddedSeats = new Set();
     game.quartermasterRolledShopGear = new Set();
+    game.quartermasterRolledShopUnits = new Set();
     game.gunsmithFreeWeaponUsedSeats = new Set();
     game.bulwarkFreeArmorUsedSeats = new Set();
     game.returnedToSupplyThisRound = { Organic: 0, Tech: 0, Alien: 0 };
@@ -558,6 +571,8 @@ export class GameEngine {
     for (const p of game.players) {
       p.combatStimsRevealBonus = 0;
       p.incomeThisRound = { Organic: 0, Tech: 0, Alien: 0 };
+      // Reload per-round free gear-equip credits from persistent rate.
+      p.nextGearFreeCount += p.freeEquipsPerRound;
     }
     game.laneAbilityPreventions = new Map();
     game.laneAbilitiesFullySuppressed = new Set();
@@ -834,14 +849,30 @@ export class GameEngine {
         const reveal: string = (chosen as any).Reveal ?? "";
         game.combatStimsUsedThisRound = true;
         const dmgMatch = reveal.match(/Deal (\d+)/i);
+        const atkMatch = reveal.match(/Gains?\s+(\d+)\s+(?:attack|damage)/i);
+        const shieldMatch = reveal.match(/Gain\s+(\d+)\s+Shield/i);
+        const armorMatch = reveal.match(/Gain\s+(\d+)\s+Armor/i);
+        const healMatch = reveal.match(/(?:Heal|Regain)\s+(\d+)/i);
         if (dmgMatch) {
           const dmg = parseInt(dmgMatch[1]);
           commander.combatStimsRevealBonus += dmg;
           this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → +${dmg} bonus combat damage`);
-        } else if (/Gain (\d+) Shield/i.test(reveal) && commander.active) {
-          const shields = parseInt(reveal.match(/Gain (\d+) Shield/i)![1]);
+        } else if (atkMatch) {
+          const atk = parseInt(atkMatch[1]);
+          commander.combatStimsRevealBonus += atk;
+          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → +${atk} bonus combat damage`);
+        } else if (shieldMatch && commander.active) {
+          const shields = parseInt(shieldMatch[1]);
           tempState.tempBuff(commander.active, { Shields: shields });
           this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → +${shields} shields on ${commander.active.card.Name}`);
+        } else if (armorMatch && commander.active) {
+          const armor = parseInt(armorMatch[1]);
+          tempState.tempBuff(commander.active, { Armor: armor });
+          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → +${armor} armor on ${commander.active.card.Name}`);
+        } else if (healMatch && commander.active) {
+          const hp = parseInt(healMatch[1]);
+          healUnit(commander.active, hp, game);
+          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → healed ${hp} HP on ${commander.active.card.Name}`);
         } else if (reveal) {
           this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" — effect not implemented`);
         } else {
@@ -1228,6 +1259,12 @@ export class GameEngine {
       game.steadyHandSeats.delete(currentCommanderSeat);
       game.commanderLocked = true;
       this.log(`  [Steady Hand] ${game.players[game.commanderIdx].name} keeps commander role`);
+    }
+    // Iron Grip: commander may not rotate involuntarily — blocks normal round-robin and
+    // First-worker-at-Command handoffs. Leadership Crisis (forceCommanderChange) overrides it.
+    if (!game.commanderLocked && !game.forceCommanderChange && game.ironGripSeats.has(currentCommanderSeat)) {
+      game.commanderLocked = true;
+      this.log(`  [Iron Grip] ${game.players[game.commanderIdx].name} retains commander role (Iron Grip)`);
     }
 
     const prevCommanderRank = game.players[game.commanderIdx].rank;
@@ -3233,32 +3270,11 @@ export class GameEngine {
       }
     }
 
-    // Airburst Rounds ("Attacks splash onto adjacent lanes"): a precombat pass against
-    // neighboring lanes' enemy pools (adjacency = game.players array index +/-1, circular),
-    // before any lane's own combat starts, since this engine resolves lanes one at a time, not
-    // simultaneously -- splash is approximated as a once-per-round flat-damage filter on the
-    // neighbor's whole enemy pool, the same idiom already used by every other "deal damage to
-    // the enemy pool" Gear effect here (e.g. Grenades), since individual enemies aren't
-    // HP-tracked outside an active combat resolution.
-    for (let i = 0; i < game.players.length; i++) {
-      const p = game.players[i];
-      const active = p.active;
-      if (!active?.equipped.some((g) => (g as any).Name === "Airburst Rounds")) continue;
-      const splashDmg = Math.max(1, Math.floor((toInt(active.card.Damage) + equippedBonus(active, "Damage")) / 2));
-      for (const offset of [-1, 1]) {
-        const neighbor = game.players[(i + offset + game.players.length) % game.players.length];
-        if (neighbor === p || !neighbor.laneEnemyReserve.length) continue;
-        const before = neighbor.laneEnemyReserve.length;
-        neighbor.laneEnemyReserve = neighbor.laneEnemyReserve.filter((e) => toInt(e.HP) > splashDmg);
-        if (neighbor.laneEnemyReserve.length < before) {
-          this.log(`  [Airburst Rounds] ${p.name}'s splash thins ${neighbor.name}'s adjacent lane (${before - neighbor.laneEnemyReserve.length} enemy(s) cleared)`);
-        }
-      }
-    }
+    // Airburst Rounds ("Attacks splash onto adjacent lanes"): applied per exchange during Phase 2
+    // to the active front enemy in each adjacent lane's Combatant queue (see Phase 2 below).
 
     // Lane control swap: move each controller's assigned lane's units and enemies into their own
-    // player slot for the duration of combat. Airburst splash (above) uses physical adjacency and
-    // runs before the swap intentionally. After all combat and post-combat steps, swap-back
+    // player slot for the duration of combat. After all combat and post-combat steps, swap-back
     // restores units to their physical lane (units stay with the lane, stats stay with the controller).
     const hasNonIdentityAssignment = game.players.some((p) => p.controlledLaneSeat !== p.seatIndex);
     const preCombatActive = new Map(game.players.map((p) => [p.seatIndex, p.active]));
@@ -3341,6 +3357,7 @@ export class GameEngine {
       eq: Combatant[];
       opts: LaneCombatOptions;
       totalShieldsAbsorbed: number;
+      pActiveStartHp: number;
     }> = [];
 
     // Phase 1: pre-combat setup per lane (build combatants and options, push to laneRuns).
@@ -3361,6 +3378,8 @@ export class GameEngine {
       const activeCount = p.active ? 1 : 0;
       const pCombatants = pUnits.map((ui, i) => {
         const c = combatantFromUnit(ui);
+        c.combatantRankNum = RANK_NUM[(ui.card as any).Rank ?? ""] ?? 0;
+        if (ui.passiveSuppressedForCombat) c.suppressPassives = true;
         if (!game.reserveAbilitiesDisabled || i < activeCount) {
           applyGearCombatMods(c, ui, this.effectiveCommanderRank(), p, game.playerProgress);
         }
@@ -3406,12 +3425,13 @@ export class GameEngine {
         this.persistedEnemyCombatants.delete(p.seatIndex);
         p.laneEnemyReserve = []; // clear so global passive scan doesn't pick up the new (undealt) slot
         const _tagTeamBonus = game.tagTeamPassive ? pCombatants.slice(1).reduce((s, c) => s + c.dmg, 0) : 0;
-        laneRuns.push({ p, pUnits, pCombatants, eCombatants: _persisted, pq: [...pCombatants], eq: [..._persisted], opts: { bonusPlayerDmgPerAttack: _tagTeamBonus }, totalShieldsAbsorbed: 0 });
+        laneRuns.push({ p, pUnits, pCombatants, eCombatants: _persisted, pq: [...pCombatants], eq: [..._persisted], opts: { bonusPlayerDmgPerAttack: _tagTeamBonus }, totalShieldsAbsorbed: 0, pActiveStartHp: pCombatants[0]?.curHp ?? 0 });
         this.log(`  ${p.name}'s lane: ${_persisted.length} overrun enemy/enemies (${_persisted.map(c => c.name).join(", ")}) carry forward from last round`);
         continue;
       }
       const eCombatants = p.laneEnemyReserve.map((e) => {
         const c = new Combatant(e);
+        c.combatantRankNum = ENEMY_RANK_NUM[(e as any).Rank ?? ""] ?? 0;
         applyEnemyCombatMods(c, e, game.suppressedPassiveEnemyNames.has(e.Name));
         applyBossBoardWideMods(game, c, true);
         applyEventCombatMods(game, c, true);
@@ -3705,6 +3725,7 @@ export class GameEngine {
           }
         };
       }
+      const sharedShieldPool = p.sharedShieldPool > 0 ? { remaining: p.sharedShieldPool } : undefined;
       laneRuns.push({ p, pUnits, pCombatants, eCombatants, pq: pCombatants, eq: eCombatants, opts: {
         bonusPlayerDmgPerAttack: tagTeamBonus + combatStimsBonus,
         onFirstPlayerDeath: ynpCb,
@@ -3718,7 +3739,8 @@ export class GameEngine {
         enemyGroupAttack: blackRailGroupAttack,
         deathCloakFloor: p.laneEnemyReserve.some((e) => e.Name === "Death Cloak" && !game.suppressedPassiveEnemyNames.has(e.Name)),
         stackAttacksOnSameTarget: p.laneEnemyReserve.some((e) => e.Name === "Alpha Storm Claw" && !game.suppressedPassiveEnemyNames.has(e.Name)),
-      }, totalShieldsAbsorbed: 0 });
+        sharedShieldPool,
+      }, totalShieldsAbsorbed: 0, pActiveStartHp: pCombatants[0]?.curHp ?? 0 });
     }
 
     // Track units Doctor-saved mid-combat; Phase 3 skips them to avoid double-processing.
@@ -3787,6 +3809,29 @@ export class GameEngine {
                 }
               }
             }
+            // Airburst Rounds: each time this lane's active unit attacks, splash half its
+            // attack damage onto the front enemy in each adjacent lane's combatant queue.
+            const airburstUnit = lane.pUnits[0];
+            if (airburstUnit?.equipped.some((g) => (g as any).Name === "Airburst Rounds")) {
+              const playerAttacked = result.lastExchange && result.lastExchange.enemyHpAfter !== null &&
+                result.lastExchange.enemyHpBefore > (result.lastExchange.enemyHpAfter ?? result.lastExchange.enemyHpBefore);
+              if (playerAttacked) {
+                const splashDmg = Math.max(1, Math.floor((toInt(airburstUnit.card.Damage) + equippedBonus(airburstUnit, "Damage")) / 2));
+                for (const adjSeat of adjacentSeats(game, lane.p.seatIndex)) {
+                  const adjLane = laneRuns.find((lr) => lr.p.seatIndex === adjSeat);
+                  if (adjLane?.eq.length) {
+                    const target = adjLane.eq[0];
+                    target.curHp -= splashDmg;
+                    if (target.curHp <= 0) {
+                      adjLane.eq.shift();
+                      this.log(`  [Airburst Rounds] ${lane.p.name}'s splash kills ${target.name} in ${adjLane.p.name}'s lane`);
+                    } else {
+                      this.log(`  [Airburst Rounds] ${lane.p.name}'s splash: ${splashDmg} to ${target.name} in ${adjLane.p.name}'s lane (${target.curHp} HP left)`);
+                    }
+                  }
+                }
+              }
+            }
             // Build per-lane exchange snapshot for this iteration.
             const x = result.lastExchange;
             laneSnapshots.push({
@@ -3802,6 +3847,28 @@ export class GameEngine {
               enemyMaxHp:     x?.enemyMaxHp     ?? preEMax,
               combatComplete: lane.eq.length === 0 || lane.pq.length === 0,
             });
+          }
+        }
+        // Long Range: when a lane has no enemies left but still has a living long_range active unit,
+        // redirect that unit's attack to the front enemy in the highest-HP lane this exchange.
+        for (const lane of laneRuns) {
+          const pActive = lane.pq[0];
+          if (!pActive || !pActive.longRange || pActive.curHp <= 0 || lane.eq.length > 0) continue;
+          // Own lane is clear — find the live lane with the highest front-enemy HP.
+          const targetLane = laneRuns
+            .filter((lr) => lr !== lane && lr.eq.length > 0)
+            .reduce<typeof laneRuns[0] | null>((best, lr) => {
+              return (best === null || lr.eq[0].curHp > best.eq[0].curHp) ? lr : best;
+            }, null);
+          if (!targetLane) continue;
+          const target = targetLane.eq[0];
+          const dmg = computeDealt(pActive, target);
+          target.curHp -= dmg;
+          if (target.curHp <= 0) {
+            targetLane.eq.shift();
+            this.log(`  [Long Range] ${lane.p.name}'s ${pActive.name} kills ${target.name} in ${targetLane.p.name}'s lane`);
+          } else {
+            this.log(`  [Long Range] ${lane.p.name}'s ${pActive.name} deals ${dmg} to ${target.name} in ${targetLane.p.name}'s lane (${target.curHp} HP left)`);
           }
         }
         // Slayer Suit active: "Execute target enemy under 1/4 HP and is under rank 6, move this
@@ -3872,6 +3939,11 @@ export class GameEngine {
       }
     }
 
+    // Clear per-combat unit flags before Phase 3 processes deaths.
+    for (const lane of laneRuns) {
+      for (const ui of lane.pUnits) ui.passiveSuppressedForCombat = false;
+    }
+
     // Phase 3: post-combat resolution per lane.
     for (const lane of laneRuns) {
       const { p, pUnits, pCombatants, eCombatants } = lane;
@@ -3879,12 +3951,24 @@ export class GameEngine {
       const enemySurvivors = lane.eq;
       const totalShieldsAbsorbed = lane.totalShieldsAbsorbed;
       game.shieldsDestroyedThisRound += totalShieldsAbsorbed;
+      // Sundering Blow mission stat: max armor+shields stripped in a single round.
+      const totalStripped = pCombatants.reduce((sum, c) => sum + c.enemyArmorShieldStripped, 0);
+      if (totalStripped > p.stats.maxArmorShieldStrippedInRound) p.stats.maxArmorShieldStrippedInRound = totalStripped;
+
+      // Impenetrable mission stat: round where enemies attacked but player active took 0 HP damage.
+      const activeAfterHp = lane.pq[0]?.curHp ?? 0;
+      if (eCombatants.length > 0 && lane.pActiveStartHp > 0 && activeAfterHp >= lane.pActiveStartHp) {
+        p.stats.roundsArmorAbsorbedAll++;
+      }
+
+      // Crushing Advance mission stat: total trample kills.
+      p.stats.trampleKillsTotal += pCombatants.reduce((sum, c) => sum + c.trampleKills, 0);
+
       // Breaker resource: grant shield equal to total enemy armor+shields stripped by player combatants.
       if (p.tactician?.Name === "The Breaker" && p.active) {
-        const stripped = pCombatants.reduce((sum, c) => sum + c.enemyArmorShieldStripped, 0);
-        if (stripped > 0) {
-          grantShields(p.active, stripped, p);
-          this.log(`  [Breaker] ${p.name} gains ${stripped} shield from enemy armor/shields stripped`);
+        if (totalStripped > 0) {
+          grantShields(p.active, totalStripped, p);
+          this.log(`  [Breaker] ${p.name} gains ${totalStripped} shield from enemy armor/shields stripped`);
         }
       }
       // Tunnler/Tactician passive: each player unit that dies in this lane reduces the overrun tracker by 1.

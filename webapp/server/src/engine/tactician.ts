@@ -19,7 +19,7 @@ import type { GamePlayer, GameState } from "./types.js";
  * these 9) are a separate, consistent gap project-wide -- sim.py never dispatches them either,
  * and building a real trigger for them is a bigger, separate piece of work (a new once-per-round
  * decision point), not something this pass adds. */
-export function tacticianDiscountedCost<T extends UnitCard | GearCard>(p: GamePlayer, card: T, kind: "unit" | "gear"): T {
+export function tacticianDiscountedCost<T extends UnitCard | GearCard>(p: GamePlayer, card: T, kind: "unit" | "gear", game?: GameState): T {
   const t = p.tactician;
   if (!t) return card;
   const name = t.Name;
@@ -44,10 +44,15 @@ export function tacticianDiscountedCost<T extends UnitCard | GearCard>(p: GamePl
       c["Tech Cost"] = Math.floor(toInt(c["Tech Cost"]) / 2);
     }
   }
-  // The Quartermaster: "Direct-fill slots cost 1 less of your choice" -- this engine's shop
-  // refill doesn't tag which slots came from Direct vs. Roll fill, so this approximates as a
-  // flat -1 Tech (the most universal resource) on every unit/gear purchase instead.
-  if (name === "The Quartermaster") c["Tech Cost"] = Math.max(0, toInt(c["Tech Cost"]) - 1);
+  // The Quartermaster: "Direct-fill slots cost 1 less of your choice."
+  // Direct-fill slots are tracked in quartermasterRolledShop{Gear,Units} — items NOT in those sets
+  // are direct-filled and receive the -1 cost. When game is not provided the discount is skipped.
+  if (name === "The Quartermaster" && game) {
+    const isRollFilled = kind === "gear"
+      ? game.quartermasterRolledShopGear.has(card as GearCard)
+      : game.quartermasterRolledShopUnits.has(card as UnitCard);
+    if (!isRollFilled) c["Tech Cost"] = Math.max(0, toInt(c["Tech Cost"]) - 1);
+  }
   return c as T;
 }
 

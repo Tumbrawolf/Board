@@ -30,6 +30,9 @@ export interface UnitInstance {
   /** Set by The Chessmaster's Reassign action; cleared at round start. Grants half-damage
    * protection on the unit's first combat hit this round. */
   reassignedThisRound?: boolean;
+  /** Set by Regen Plates active; cleared after combat. Suppresses all keyword-driven passive
+   * combat mods (reflect, trample, shields_on_kill, etc.) for this unit this round. */
+  passiveSuppressedForCombat?: boolean;
 }
 
 export interface GamePlayer {
@@ -64,6 +67,23 @@ export interface GamePlayer {
   /** Worker Detail instants: location names where this player's first worker placement counts as 2.
    * Set by Barracks Detail / Armory Detail / etc. mission instants. Persistent. */
   workerDoubleLocations: Set<string>;
+  /** Mission instants: permanent per-round free gear-equip credit rate. Added to nextGearFreeCount
+   * each round. "1 Free equip per turn" → 1, "2 Free equips per turn" → 2, etc. */
+  freeEquipsPerRound: number;
+  /** Free equip credits available this round (one-shot mission grants + per-round reloads from
+   * freeEquipsPerRound). Decremented on each free equip use. Reset to freeEquipsPerRound each round. */
+  nextGearFreeCount: number;
+  /** One-shot free unit credits. "Your next unit is free" → 1, "next 2 units are free" → 2. */
+  nextUnitFreeCount: number;
+  /** Highest rank that the next free-unit credit covers. 0 = none. "Your next Rank 3 unit is free"
+   * sets this to 3; consumed on the next unit purchase of that rank or lower. */
+  nextRankFreeUnit: number;
+  /** Permanent half-price discount on Mech units. Set by Steel Supremacy instant. */
+  mechHalfPrice: boolean;
+  /** Permanent half-price discount on Vehicle units. Set by Armored Column instant. */
+  vehicleHalfPrice: boolean;
+  /** Rank 1 units are always free for this player. Set by Conscription instant. */
+  rankOneFree: boolean;
   /** Shield Projector passive: lane-wide shared shield pool (HP) that absorbs incoming enemy damage
    * before it reaches individual unit combatants. Replenished to 60 each round by precombat gear.
    * Tracks live value during combat so the pool can be depleted across multiple exchanges. */
@@ -119,6 +139,12 @@ export interface GamePlayer {
     maxAbilitiesDeniedInRound: number;
     /** Mission requirement: rounds completed without losing any unit (Win a round without losing units). */
     roundsWithoutUnitLoss: number;
+    /** Sundering Blow: max armor+shields stripped from enemies in a single round. */
+    maxArmorShieldStrippedInRound: number;
+    /** Impenetrable: rounds where enemies attacked but the active unit took 0 HP damage (armor absorbed all). */
+    roundsArmorAbsorbedAll: number;
+    /** Crushing Advance: total trample kills this game. */
+    trampleKillsTotal: number;
   };
 }
 
@@ -267,6 +293,9 @@ export interface GameState {
   /** Quartermaster active: GearCards currently in shopGear that arrived via a rank roll-fill (not direct-fill).
    * Used to offer the once-per-round reroll. Reset each round. */
   quartermasterRolledShopGear: Set<GearCard>;
+  /** Quartermaster active: UnitCards currently in shopUnits that arrived via a rank roll-fill (not direct-fill).
+   * Parallel to quartermasterRolledShopGear. Reset each round. */
+  quartermasterRolledShopUnits: Set<UnitCard>;
   /** The Gunsmith resource: 1st weapon purchase per round is free. Tracks which seats have used it. Reset each round. */
   gunsmithFreeWeaponUsedSeats: Set<number>;
   /** The Bulwark resource: 1st armor purchase per round is free. Tracks which seats have used it. Reset each round. */
@@ -548,4 +577,7 @@ export interface GameState {
   /** Sundering Blow carry: seatIndex whose next front enemy has armor + shields zeroed at combat
    * start. -1 when inactive. */
   sunderedLaneSeat: number;
+  /** Iron Grip instant: seat indices where the commander may not rotate away without a player vote.
+   * Persistent. When the current commander is in this set, rotation is blocked unless overridden. */
+  ironGripSeats: Set<number>;
 }

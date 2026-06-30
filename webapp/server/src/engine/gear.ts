@@ -46,8 +46,8 @@ export function applyGearCombatMods(c: Combatant, ui: UnitInstance, commanderRan
   if ([...names].some((n) => GEAR_FIRST_HIT_FREE.has(n))) c.firstHitPrevented = true;
   // Smoke Pack: "When under Half HP cannot be targeted by abilities" — ability immunity checked
   // at reveal dispatch in game.ts; no combat-stat change here.
-  // Laser Designator: "Other units can target your lane when attacking" — no-op in the single-lane
-  // model (long_range player attacks are not implemented; see units.ts UNIT_KEYWORD_RULES).
+  // Laser Designator: "Other units can target your lane when attacking" — no-op; Long Range already
+  // handles cross-lane targeting for units with the long_range tag; this gear has no additional hook.
   if (names.has("Slayer Suit")) c.shieldsOnDmgFraction = 0.25;
   if ([...names].some((n) => GEAR_DELETE_ON_KILL.has(n))) c.deleteOnKill = true;
   if ((ui.charges["Holographic Decoys"] ?? 0) > 0) {
@@ -127,11 +127,8 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
         else if (roll === 6) ui.curHp = 0;
       }
       if (name === "Shield Projector") {
-        // Distribute shared 60-shield pool evenly across all units in the lane.
-        const laneUnits = [...(p.active ? [p.active] : []), ...p.reserve];
+        // Shared pool drawn collectively by all units in the lane during combat — not distributed.
         const pool = p.tactician?.Name === "The Bastion" ? 120 : 60;
-        const each = Math.floor(pool / Math.max(1, laneUnits.length));
-        for (const u of laneUnits) grantShields(u, each, p);
         p.sharedShieldPool = pool;
       }
       if (name === "Slayer Suit") grantShields(ui, 5, p);
@@ -325,6 +322,8 @@ function applyGearActive(
     }
     case "Regen Plates":
       healUnit(ui, undefined, game);
+      ui.passiveSuppressedForCombat = true;
+      log(`  [Regen Plates] ${ui.card.Name} restored to full HP — passive suppressed this combat`);
       break;
     case "Repair Kit": {
       const candidates = unitsOf(w)

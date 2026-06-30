@@ -44,18 +44,22 @@ export function ensureLowestRankGear(game: GameState) {
 export function refillShopUnit(game: GameState) {
   while (game.shopUnits.length < (game.unitShopCap ?? 4)) {
     let pool: UnitCard[];
+    let isRollFill = false;
     if (Math.random() < 0.5) {
       pool = game.unitDeck.filter((u) => RANK_NUM[u.Rank] <= 3);
     } else {
+      isRollFill = true;
       const topRank = Math.max(...game.players.map((p) => p.rank), 1);
       const roll = shopRankRoll(game);
       const targetRank = Math.min(roll, topRank);
       pool = game.unitDeck.filter((u) => RANK_NUM[u.Rank] === targetRank);
-      if (!pool.length) pool = game.unitDeck.filter((u) => RANK_NUM[u.Rank] <= 3);
+      if (!pool.length) { isRollFill = false; pool = game.unitDeck.filter((u) => RANK_NUM[u.Rank] <= 3); }
     }
     if (!pool.length) pool = game.unitDeck;
     if (!pool.length) break;
-    game.shopUnits.push(pick(pool));
+    const filled = pick(pool);
+    game.shopUnits.push(filled);
+    if (isRollFill) game.quartermasterRolledShopUnits.add(filled);
   }
 }
 

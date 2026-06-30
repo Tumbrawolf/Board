@@ -46,6 +46,7 @@ export function classifyUnit(card: UnitCard): Set<string> {
 }
 
 export function applyUnitCombatMods(c: Combatant, ui: UnitInstance) {
+  if (c.suppressPassives) return;
   const tags = classifyUnit(ui.card);
   if (tags.has("ignore_armor")) c.ignoreArmor = true;
   if (tags.has("attacks_first")) c.attacksFirst = true;
@@ -56,7 +57,7 @@ export function applyUnitCombatMods(c: Combatant, ui: UnitInstance) {
   if (tags.has("shields_on_kill")) c.shieldsOnKill = 10;
   if (tags.has("trample") || tags.has("trample_unlimited")) c.trample = true;
   if (tags.has("trample_unlimited")) c.trampleUnlimited = true;
-  // long_range: multi-lane targeting — no hook in single-lane model (same as sim.py)
+  if (tags.has("long_range")) c.longRange = true;
   // delete_on_kill: handled in game.ts Phase 3 (skip containment for that lane)
 }
 

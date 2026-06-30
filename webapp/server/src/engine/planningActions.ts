@@ -145,11 +145,26 @@ function payIncludingCommand(game: GameState, p: GamePlayer, card: UnitCard | Ge
 }
 
 export function affordableUnits(game: GameState, p: GamePlayer): UnitCard[] {
-  return game.shopUnits.filter(
-    (u) =>
-      (RANK_NUM[u.Rank] <= tacticianRankCeiling(p, u) || tacticianBypassesRankCheck(p, u)) &&
-      canAffordIncludingCommand(game, p, tacticianDiscountedCost(p, u, "unit"), UNIT_COST_KEYS)
-  );
+  return game.shopUnits.filter((u) => {
+    if (RANK_NUM[u.Rank] > tacticianRankCeiling(p, u) && !tacticianBypassesRankCheck(p, u)) return false;
+    const uRank = RANK_NUM[u.Rank] ?? 0;
+    // Mission free-unit flags
+    if (p.rankOneFree && uRank === 1) return true;
+    if (p.nextRankFreeUnit > 0 && uRank <= p.nextRankFreeUnit) return true;
+    if (p.nextUnitFreeCount > 0) return true;
+    // Half-price unit types: always affordable if player has resources > 0
+    if (p.mechHalfPrice && u.Type.includes("Mech")) {
+      const halved: any = { ...tacticianDiscountedCost(p, u, "unit", game) };
+      for (const k of UNIT_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
+      return canAffordIncludingCommand(game, p, halved, UNIT_COST_KEYS);
+    }
+    if (p.vehicleHalfPrice && u.Type.includes("Vehicle")) {
+      const halved: any = { ...tacticianDiscountedCost(p, u, "unit", game) };
+      for (const k of UNIT_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
+      return canAffordIncludingCommand(game, p, halved, UNIT_COST_KEYS);
+    }
+    return canAffordIncludingCommand(game, p, tacticianDiscountedCost(p, u, "unit", game), UNIT_COST_KEYS);
+  });
 }
 
 export function affordableGear(game: GameState, p: GamePlayer): GearCard[] {
@@ -160,14 +175,43 @@ export function affordableGear(game: GameState, p: GamePlayer): GearCard[] {
     // Gunsmith/Bulwark resource: first purchase of the matching type is free
     if (p.tactician?.Name === "The Gunsmith" && gType === "Weapon" && !game.gunsmithFreeWeaponUsedSeats.has(p.seatIndex)) return true;
     if (p.tactician?.Name === "The Bulwark" && gType === "Armor" && !game.bulwarkFreeArmorUsedSeats.has(p.seatIndex)) return true;
-    return canAffordIncludingCommand(game, p, tacticianDiscountedCost(p, g as any, "gear"), GEAR_COST_KEYS);
+    // Mission free gear credits
+    if (p.nextGearFreeCount > 0) return true;
+    return canAffordIncludingCommand(game, p, tacticianDiscountedCost(p, g as any, "gear", game), GEAR_COST_KEYS);
   });
 }
 
 /** Pays for and takes delivery of a shop unit -- to the team scout pool if it's a Scout-type
  * upgrade over the pool's current best, else to the buyer's own active/reserve. */
 export function buyUnitMutation(game: GameState, p: GamePlayer, choice: UnitCard, log: (t: string) => void) {
-  payIncludingCommand(game, p, tacticianDiscountedCost(p, choice, "unit"), UNIT_COST_KEYS);
+  const uRank = RANK_NUM[choice.Rank] ?? 0;
+  const isFreeRankOne = p.rankOneFree && uRank === 1;
+  const isFreeRankCredit = !isFreeRankOne && p.nextRankFreeUnit > 0 && uRank <= p.nextRankFreeUnit;
+  const isFreeOneShot = !isFreeRankOne && !isFreeRankCredit && p.nextUnitFreeCount > 0;
+  if (isFreeRankOne) {
+    log(`  [Conscription] ${p.name}'s Rank 1 unit ${choice.Name} is free`);
+  } else if (isFreeRankCredit) {
+    p.nextRankFreeUnit = 0;
+    log(`  [Free Unit] ${p.name}'s ${choice.Name} (Rank ${uRank}) is free`);
+  } else if (isFreeOneShot) {
+    p.nextUnitFreeCount--;
+    log(`  [Free Unit] ${p.name}'s ${choice.Name} is free (${p.nextUnitFreeCount} credit(s) remaining)`);
+  } else {
+    const base = tacticianDiscountedCost(p, choice, "unit", game);
+    if (p.mechHalfPrice && choice.Type.includes("Mech")) {
+      const halved: any = { ...base };
+      for (const k of UNIT_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
+      payIncludingCommand(game, p, halved, UNIT_COST_KEYS);
+      log(`  [Steel Supremacy] ${p.name}'s Mech ${choice.Name} at half price`);
+    } else if (p.vehicleHalfPrice && choice.Type.includes("Vehicle")) {
+      const halved: any = { ...base };
+      for (const k of UNIT_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
+      payIncludingCommand(game, p, halved, UNIT_COST_KEYS);
+      log(`  [Armored Column] ${p.name}'s Vehicle ${choice.Name} at half price`);
+    } else {
+      payIncludingCommand(game, p, base, UNIT_COST_KEYS);
+    }
+  }
   game.unitsOrGearAddedSeats.add(p.seatIndex); // AFK SO tracking
   game.shopUnits.splice(game.shopUnits.indexOf(choice), 1);
   refillShopUnit(game);
@@ -282,14 +326,18 @@ export function buyGearMutation(game: GameState, p: GamePlayer, choice: GearCard
   const gType = (choice as any).Type as string;
   const isGunsmithFree = p.tactician?.Name === "The Gunsmith" && gType === "Weapon" && !game.gunsmithFreeWeaponUsedSeats.has(p.seatIndex);
   const isBulwarkFree = p.tactician?.Name === "The Bulwark" && gType === "Armor" && !game.bulwarkFreeArmorUsedSeats.has(p.seatIndex);
+  const isMissionFree = !isFreeType && !isGunsmithFree && !isBulwarkFree && p.nextGearFreeCount > 0;
   if (isGunsmithFree) {
     game.gunsmithFreeWeaponUsedSeats.add(p.seatIndex);
     log(`  [Gunsmith] ${p.name}'s 1st weapon purchase this round (${(choice as any).Name}) is free`);
   } else if (isBulwarkFree) {
     game.bulwarkFreeArmorUsedSeats.add(p.seatIndex);
     log(`  [Bulwark] ${p.name}'s 1st armor purchase this round (${(choice as any).Name}) is free`);
+  } else if (isMissionFree) {
+    p.nextGearFreeCount--;
+    log(`  [Free Equip] ${p.name}'s ${(choice as any).Name} is free (${p.nextGearFreeCount} credit(s) remaining)`);
   } else if (!isFreeType) {
-    payIncludingCommand(game, p, tacticianDiscountedCost(p, choice as any, "gear"), GEAR_COST_KEYS);
+    payIncludingCommand(game, p, tacticianDiscountedCost(p, choice as any, "gear", game), GEAR_COST_KEYS);
   }
   game.shopGear.splice(game.shopGear.indexOf(choice as any), 1);
   refillShopGear(game);
@@ -330,7 +378,7 @@ export function quartermasterRerollMutation(game: GameState, p: GamePlayer, choi
 
 /** Reclaimer resource: buy gear from recyclePile at half the normal cost. */
 export function buyGearFromRecycleMutation(game: GameState, p: GamePlayer, choice: GearCard, log: (t: string) => void) {
-  const base = tacticianDiscountedCost(p, choice as any, "gear");
+  const base = tacticianDiscountedCost(p, choice as any, "gear", game);
   const halved: any = { ...base };
   for (const k of GEAR_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
   payIncludingCommand(game, p, halved, GEAR_COST_KEYS);
@@ -344,7 +392,7 @@ export function affordableRecyclePileGear(game: GameState, p: GamePlayer): GearC
   if (p.tactician?.Name !== "The Reclaimer") return [];
   return (game.recyclePile as any[]).filter((g: any) => {
     if (!("Rank Name" in g)) return false; // skip Command Cards in recyclePile
-    const halved: any = { ...tacticianDiscountedCost(p, g, "gear") };
+    const halved: any = { ...tacticianDiscountedCost(p, g, "gear", game) };
     for (const k of GEAR_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
     return canAfford(p.res, halved, GEAR_COST_KEYS);
   }) as GearCard[];

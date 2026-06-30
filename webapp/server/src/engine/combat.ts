@@ -114,6 +114,8 @@ export class Combatant {
   healAllEnemiesOnAttack = 0;
   /** The Breaker resource: accumulates total enemy armor+shields stripped by this combatant. */
   enemyArmorShieldStripped = 0;
+  /** Crushing Advance mission: number of reserve enemies killed by trample damage from this combatant. */
+  trampleKills = 0;
   /** Player unit: heal this much HP each time this unit kills an enemy (heal_on_kill tag). */
   healOnKill = 0;
   /** Player unit: gain this many shields each time this unit kills an enemy (shields_on_kill tag). */
@@ -126,6 +128,15 @@ export class Combatant {
   trample = false;
   /** TMRG / Crushing Advance: trample damage chains through ALL reserve enemies, not just the next one. */
   trampleUnlimited = false;
+  /** Long Range / "can target any lane when attacking": when the player's own lane is cleared of
+   * enemies, this unit's attacks redirect to the front enemy in the highest-threat adjacent lane. */
+  longRange = false;
+  /** Regen Plates active: suppress all keyword-driven passive combat mods for this unit this round. */
+  suppressPassives = false;
+  /** The Culling boss: enemy deletes player units whose rank is strictly lower than this enemy's rank. */
+  deleteOnKillIfLowerRank = false;
+  /** Rank number for rank-comparison effects (RANK_NUM for player units, ENEMY_RANK_NUM for enemies). */
+  combatantRankNum = 0;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
@@ -256,6 +267,9 @@ export interface LaneCombatOptions {
   /** Mid-combat action system: stop after a single exchange (one round of attacks across all
    *  participants) so the engine can emit exchange data and await player actions before continuing. */
   exitAfterEachExchange?: boolean;
+  /** Shield Projector passive: shared shield pool drawn from before any unit loses HP to enemy attacks.
+   *  Pass as a mutable object so all hits in the same lane call drain from the same counter. */
+  sharedShieldPool?: { remaining: number };
 }
 
 /** Default: both sides attack simultaneously each exchange — deaths resolve after both attacks land.
@@ -311,6 +325,13 @@ export function resolveLaneCombat(
     const eDmg = computeDealt(e, p) * mult;
     p.curHp -= eDmg;
     totalShieldsAbsorbed += pBefore - p.curShields;
+    // Shield Projector shared pool: absorb from collective pool before HP damage takes effect.
+    if (options.sharedShieldPool && options.sharedShieldPool.remaining > 0 && eDmg > 0) {
+      const absorbed = Math.min(options.sharedShieldPool.remaining, eDmg);
+      options.sharedShieldPool.remaining -= absorbed;
+      p.curHp += absorbed;
+      totalShieldsAbsorbed += absorbed;
+    }
     // Type-targeted bonus damage (e.g. Burner: +5 vs Infantry). Applied after armor; bypasses armor.
     const typeBonus = Object.entries(e.bonusDmgVsType)
       .find(([t]) => p.unitType.toLowerCase() === t)?.[1] ?? 0;
@@ -386,6 +407,7 @@ export function resolveLaneCombat(
       eq[0].curHp -= carry;
       if (eq[0].curHp <= 0) {
         carry = -eq[0].curHp;
+        attacker.trampleKills++;
         fireKillCb(attacker); eq.shift();
         if (!attacker.trampleUnlimited) break;
       } else {
@@ -470,6 +492,7 @@ export function resolveLaneCombat(
         firstExchangeDone = true;
         if (e.gainShieldOnKillOverkill && eTarget.curHp < 0) e.curShields += Math.abs(eTarget.curHp);
         if (e.deleteOnKill) eTarget.deletedByEnemy = true;
+        if (e.deleteOnKillIfLowerRank && eTarget.combatantRankNum < e.combatantRankNum) eTarget.deletedByEnemy = true;
         fireDeathCb(eTarget); pq.splice(0, 1);
         if (e.splashToReserveOnKill && pq.length > 0) pq[0].curHp -= Math.floor(e.dmg / 2);
         if (e.stunAllOnKill) for (const pc of pq) pc.stunned = true;
@@ -498,6 +521,7 @@ export function resolveLaneCombat(
     if (eTarget.curHp <= 0) {
       if (e.gainShieldOnKillOverkill && eTarget.curHp < 0) e.curShields += Math.abs(eTarget.curHp);
       if (e.deleteOnKill) eTarget.deletedByEnemy = true;
+      if (e.deleteOnKillIfLowerRank && eTarget.combatantRankNum < e.combatantRankNum) eTarget.deletedByEnemy = true;
       fireDeathCb(eTarget); pq.splice(eTargetIdx, 1);
       if (eTargetIdx === 0 && e.splashToReserveOnKill && pq.length > 0) pq[0].curHp -= Math.floor(e.dmg / 2);
       if (e.stunAllOnKill) for (const pc of pq) pc.stunned = true;

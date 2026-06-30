@@ -20,17 +20,14 @@ export function applyBossPassive(boss: BossActive, target: GamePlayer) {
  * Boss combat itself targets -- so these are checked at Combatant-construction time instead of
  * inside applyBossPassive (which only ever sees the Boss's own single target lane).
  *
- * The Culling is approximated as "enemies delete every unit they kill" rather than truly
- * comparing each individual matchup's Rank -- a single Combatant has no per-opponent-pair state
- * to express "only delete THIS specific lower-rank target," and a lane can hold multiple
- * player units of different Ranks fighting the same enemy in sequence. Same kind of
- * approximate-the-intent simplification already used elsewhere here (e.g. Chemical Warfare
- * truncating to 1 enemy instead of true 1-HP-all). */
+ * The Culling sets deleteOnKillIfLowerRank on every enemy combatant. The combat engine compares
+ * combatantRankNum values (ENEMY_RANK_NUM for enemies, RANK_NUM for player units) at kill time
+ * and marks the unit deleted only when the enemy's rank exceeds the killed unit's rank. */
 export function applyBossBoardWideMods(game: GameState, c: Combatant, isEnemy: boolean) {
   const name = game.bossActive?.card.Name;
   if (!name) return;
   if (name === "Rust Elemental") c.armor = 0;
-  if (name === "The Culling" && isEnemy) c.deleteOnKill = true;
+  if (name === "The Culling" && isEnemy) c.deleteOnKillIfLowerRank = true;
 }
 
 /** T1-T5 escalation. Tier is a LIVE lookup (recalculated every round), but each tier's stat

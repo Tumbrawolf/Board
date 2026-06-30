@@ -191,6 +191,22 @@ export function missionRequirementMet(
     return p.stats.roundsWithoutUnitLoss >= 1;
   }
 
+  // Sundering Blow: "Shred 10 armor or shields in 1 turn"
+  if (req.includes("shred") && req.includes("armor or shields")) {
+    const match = /shred (\d+)/.exec(req);
+    return p.stats.maxArmorShieldStrippedInRound >= (match ? Number(match[1]) : 10);
+  }
+
+  // Impenetrable: "Prevent all damage with armor"
+  if (req.includes("prevent all damage with armor")) {
+    return p.stats.roundsArmorAbsorbedAll >= 1;
+  }
+
+  // Crushing Advance: "Trample Damage kills"
+  if (req.includes("trample damage kills")) {
+    return p.stats.trampleKillsTotal >= 1;
+  }
+
   // Return N [resource] to supply (resource-sacrifice missions: player must have the resources)
   if (req.includes("return") && req.includes("to supply")) {
     const eachMatch = /return (\d+) of each/.exec(req);
@@ -616,23 +632,44 @@ export function applyMissionReward(game: GameState, m: MissionCard, p: GamePlaye
     return;
   }
 
-  // Free unit/gear purchase (persistent per-round or next-purchase effects — approximated as
-  // a flat resource grant at completion time, same as sim.py).
-  if (
-    instant.includes("free unit") ||
-    instant.includes("next unit is free") ||
-    instant.includes("next 2 units are free") ||
-    instant.includes("free equip") ||
-    instant.includes("next equip") ||
-    instant.includes("next item is free") ||
-    instant.includes("next gear item is free") ||
-    instant.includes("rank 1 units are free") ||
-    instant.includes("mech half price") ||
-    instant.includes("vehicles half price") ||
-    (instant.includes("rank") && instant.includes("unit is free"))
-  ) {
-    p.res.Organic += 5;
-    p.res.Tech += 5;
-    p.res.Alien += 2;
+  // Rank-specific free unit (Basic Training = Rank 3, Advanced = 4, Elite Asset = 5, etc.)
+  if (instant.includes("rank") && instant.includes("unit is free")) {
+    const rankMatch = /rank (\d+) unit is free/i.exec(instant);
+    if (rankMatch) p.nextRankFreeUnit = Math.max(p.nextRankFreeUnit, parseInt(rankMatch[1]));
+    return;
+  }
+
+  // "Your next unit is free" / "Your next 2 units are free" (Barracks Online, Apex Commander)
+  if (instant.includes("next unit is free") || instant.includes("next 2 units are free")) {
+    const n = instant.includes("next 2") ? 2 : 1;
+    p.nextUnitFreeCount += n;
+    return;
+  }
+
+  // "Your next Gear item is free" / "Your next Equip is free" (Armory Complete, Armed and Ready)
+  if (instant.includes("next gear item is free") || instant.includes("next equip") || instant.includes("next item is free")) {
+    p.nextGearFreeCount += 1;
+    return;
+  }
+
+  // Per-round free equip grants (Fully Armed = 1, Double Loadout = 2, Budget on Display = 4)
+  if (instant.includes("free equip")) {
+    const n = instant.includes("4 free") ? 4 : instant.includes("2 free") ? 2 : 1;
+    p.freeEquipsPerRound += n;
+    p.nextGearFreeCount += n; // also load this round immediately
+    return;
+  }
+
+  // Mech / Vehicle half price (Steel Supremacy, Armored Column)
+  if (instant.includes("mech half price")) { p.mechHalfPrice = true; return; }
+  if (instant.includes("vehicles half price")) { p.vehicleHalfPrice = true; return; }
+
+  // Rank 1 units always free (Conscription)
+  if (instant.includes("rank 1 units are free")) { p.rankOneFree = true; return; }
+
+  // Iron Grip: "Losing Command role requires a vote to pass"
+  if (instant.includes("losing command role requires") || instant.includes("iron grip")) {
+    game.ironGripSeats.add(p.seatIndex);
+    return;
   }
 }
