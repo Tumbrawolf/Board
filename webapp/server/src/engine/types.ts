@@ -108,6 +108,10 @@ export interface GamePlayer {
     commandPoolSpendTotal: number;
     /** Kremlen SO: total resources this player spent from their own pool (card activations + Command Requisition buys). */
     ownSpendTotal: number;
+    /** Mission requirement: max enemy abilities denied in any single round (Prevent N abilities in 1 turn). */
+    maxAbilitiesDeniedInRound: number;
+    /** Mission requirement: rounds completed without losing any unit (Win a round without losing units). */
+    roundsWithoutUnitLoss: number;
   };
 }
 
@@ -481,4 +485,13 @@ export interface GameState {
   /** Per-round total shield points absorbed (destroyed) across all combatants in both combat passes.
    * Used by Ion Storm's Completion Condition ("40 shields destroyed this round"). Reset each round. */
   shieldsDestroyedThisRound: number;
+  /** Cumulative count of enemy reveal abilities that actually fired this game (not prevented).
+   * Used by "Enemies activate N abilities" mission requirements. Never reset. */
+  enemyAbilitiesActivated: number;
+  /** Current containment slot capacity (mirrors GameEngine.containmentSlots). Updated whenever
+   * containmentSlots changes so missions.ts can check it without private-field access. */
+  containmentSlotsCap: number;
+  /** Per-round count of reveal abilities denied per seatIndex. Reset each round.
+   * Used to update maxAbilitiesDeniedInRound after each round. */
+  abilitiesDeniedThisRound: Map<number, number>;
 }

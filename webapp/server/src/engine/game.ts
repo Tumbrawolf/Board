@@ -220,6 +220,8 @@ export class GameEngine {
         afkCleanRounds: 0,
         commandPoolSpendTotal: 0,
         ownSpendTotal: 0,
+        maxAbilitiesDeniedInRound: 0,
+        roundsWithoutUnitLoss: 0,
       },
     }));
 
@@ -378,6 +380,9 @@ export class GameEngine {
       eradicatorCannonCost: 2,
       eradicatorCannonKillArmed: false,
       eradicatorCannonLaneSeat: -1,
+      enemyAbilitiesActivated: 0,
+      containmentSlotsCap: 0,
+      abilitiesDeniedThisRound: new Map(),
     };
 
     refillShopUnit(this.game);
@@ -504,6 +509,7 @@ export class GameEngine {
     }
     game.containedThisRound = 0;
     game.shieldsDestroyedThisRound = 0;
+    game.abilitiesDeniedThisRound = new Map();
     game.activationsThisRound = new Map();
     game.abilityUsesThisRound = new Map();
     game.mechTechDiscount = 0;
@@ -982,6 +988,15 @@ export class GameEngine {
       }
     }
 
+    // Win a round without losing units / Prevent N abilities in 1 turn mission requirements.
+    if (!isPrepRound) {
+      for (const p of game.players) {
+        if ((game.deathsThisRound.get(p.seatIndex) ?? 0) === 0) p.stats.roundsWithoutUnitLoss += 1;
+        const denied = game.abilitiesDeniedThisRound.get(p.seatIndex) ?? 0;
+        if (denied > p.stats.maxAbilitiesDeniedInRound) p.stats.maxAbilitiesDeniedInRound = denied;
+      }
+    }
+
     // ---------------- CLEANUP ----------------
     // Reinforcements: surviving temp units and their gear return to their decks; dead units leave gear destroyed.
     if (game.reinforcementUnitIds.size > 0) {
@@ -1124,6 +1139,7 @@ export class GameEngine {
       // can't reach -- handled here instead, same pattern as onContainmentBuilt.
       if (!eventPassed && activeEvent?.["Event name"] === "Research drive" && this.containmentSlots > 0) {
         this.containmentSlots -= 1;
+        game.containmentSlotsCap = this.containmentSlots;
         this.log(`  [Research drive] A Containment Block slot is disabled (${this.containmentSlots} left)`);
       }
 
@@ -1634,6 +1650,7 @@ export class GameEngine {
       if (choice === "build") {
         buildCardMutation(game, buildCard, (t) => this.log(t), () => {
           this.containmentSlots = 2;
+          game.containmentSlotsCap = 2;
         });
       } else {
         // Orders from Above: draw 3, player picks 1 to keep; discard 2 and gain their costs.
@@ -2254,9 +2271,11 @@ export class GameEngine {
         const pathfinderPlayer = game.players.find((q) => q.tactician?.Name === "The Pathfinder");
         const creditPlayer = pathfinderPlayer ?? game.players.find((q) => q.controlledLaneSeat === p.seatIndex) ?? p;
         creditPlayer.stats.abilitiesDenied += 1;
+        game.abilitiesDeniedThisRound.set(creditPlayer.seatIndex, (game.abilitiesDeniedThisRound.get(creditPlayer.seatIndex) ?? 0) + 1);
         this.log(`  [${front.Name}] Reveal prevented (${game.revealPreventionCharges} charge(s) remaining)`);
         continue;
       }
+      game.enemyAbilitiesActivated += 1;
       const frontDmg = toInt((front as any).Damage);
 
       // Wasp: "Stun enemies in adjacent lane"
