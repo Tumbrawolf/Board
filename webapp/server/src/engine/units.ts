@@ -99,8 +99,7 @@ export function applyExplodeOnDeath(game: GameState, p: GamePlayer, ui: UnitInst
 }
 
 /** Unit-ability passives that resolve once before combat: lane-self-heals, no-reserve bonuses,
- * and building this round's consecutive-hit damage stack. resource_on_kill/boost_others_damage
- * are documented no-ops (need a multi-unit-active model this engine doesn't have, same as sim.py). */
+ * consecutive-hit damage stack, and Front Line Commander's ally damage boost. */
 export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, game?: GameState) {
   const allUnits = [...(p.active ? [p.active] : []), ...p.reserve];
   const noReserve = p.reserve.length === 0;
@@ -122,5 +121,10 @@ export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, gam
     } else {
       ui.charges["consecutive_hits"] = 0;
     }
+  }
+  // Front Line Commander: "Boosts Damage of other units by this unit's attack when Active"
+  if (p.active && classifyUnit(p.active.card).has("boost_others_damage")) {
+    const boost = toInt(p.active.card.Damage);
+    for (const u of p.reserve) tempState.tempBuff(u, { Damage: boost });
   }
 }

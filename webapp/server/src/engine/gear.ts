@@ -44,7 +44,10 @@ export function applyGearCombatMods(c: Combatant, ui: UnitInstance, commanderRan
     if (names.has(n)) c.shredArmor = Math.max(c.shredArmor, amt);
   }
   if ([...names].some((n) => GEAR_FIRST_HIT_FREE.has(n))) c.firstHitPrevented = true;
-  if (names.has("Smoke Pack") && ui.curHp < Math.floor(ui.maxHp / 2)) c.firstHitPrevented = true;
+  // Smoke Pack: "When under Half HP cannot be targeted by abilities" — ability immunity checked
+  // at reveal dispatch in game.ts; no combat-stat change here.
+  // Laser Designator: "Other units can target your lane when attacking" — no-op in the single-lane
+  // model (long_range player attacks are not implemented; see units.ts UNIT_KEYWORD_RULES).
   if (names.has("Slayer Suit")) c.shieldsOnDmgFraction = 0.25;
   if ([...names].some((n) => GEAR_DELETE_ON_KILL.has(n))) c.deleteOnKill = true;
   if ((ui.charges["Holographic Decoys"] ?? 0) > 0) {
@@ -123,14 +126,26 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
         else if (roll === 4 || roll === 5) tempState.tempBuff(ui, { Armor: 6 });
         else if (roll === 6) ui.curHp = 0;
       }
-      if (name === "Shield Projector") grantShields(ui, 60, p);
+      if (name === "Shield Projector") {
+        // Distribute shared 60-shield pool evenly across all units in the lane.
+        const laneUnits = [...(p.active ? [p.active] : []), ...p.reserve];
+        const pool = p.tactician?.Name === "The Bastion" ? 120 : 60;
+        const each = Math.floor(pool / Math.max(1, laneUnits.length));
+        for (const u of laneUnits) grantShields(u, each, p);
+        p.sharedShieldPool = pool;
+      }
       if (name === "Slayer Suit") grantShields(ui, 5, p);
       if (name === "Exosuit") tempState.tempBuff(ui, { Armor: 3 });
-      // Night Vision Passive: "Unit gets a free attack against Revealed enemies" -- there's no
-      // separate "Revealed" flag on enemy instances (they're plain stat-lines, no Reveal-trigger
-      // dispatch exists yet), so this approximates the free attack as a flat one-round damage
-      // bonus equal to the unit's own printed Damage, granted every round it's equipped.
-      if (name === "Night Vision") tempState.tempBuff(ui, { Damage: toInt(ui.card.Damage) });
+      // Night Vision Passive: "Unit gets a free attack against Revealed enemies" — fires a bonus
+      // attack (unit's Damage as a temp buff for this round) only if the front enemy in this lane
+      // is currently in revealedEnemyNames (scouted or triggered their reveal ability).
+      if (name === "Night Vision") {
+        const frontEnemy = p.laneEnemyReserve[0];
+        if (frontEnemy && game.revealedEnemyNames.has(frontEnemy.Name)) {
+          tempState.tempBuff(ui, { Damage: toInt(ui.card.Damage) });
+          log(`  [Night Vision] ${ui.card.Name} gets +${toInt(ui.card.Damage)} damage vs revealed ${frontEnemy.Name}`);
+        }
+      }
       // Reanimator Passive: "Can be played at any time, Return last killed enemy to combat
       // under your control with this item equipped" -- consumes game.lastKilledEnemy once,
       // adding it to this player's reserve as a controlled unit (same instancing as any other

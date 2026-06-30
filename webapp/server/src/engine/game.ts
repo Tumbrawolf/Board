@@ -190,6 +190,8 @@ export class GameEngine {
       tactician: tacticianDeck.pop() ?? null,
       hasReconSatellite: false,
       hasLastStandBeacon: false,
+      workerDoubleLocations: new Set(),
+      sharedShieldPool: 0,
       revealedSecretObjective: null,
       stats: {
         kills: 0,
@@ -385,6 +387,25 @@ export class GameEngine {
       enemyAbilitiesActivated: 0,
       containmentSlotsCap: 0,
       abilitiesDeniedThisRound: new Map(),
+      revealedEnemyNames: new Set(),
+      flawlessAssaultSeats: new Set(),
+      strategicRecallActive: false,
+      commandCentralSeats: new Set(),
+      battlefieldDominanceSeats: new Set(),
+      steadyHandSeats: new Set(),
+      armedAndReadySeats: new Set(),
+      assumeCommandBonusSeats: new Set(),
+      secureSpecimensSeats: new Set(),
+      honorableDischargeSeats: new Set(),
+      warHeroSeats: new Set(),
+      crushingAdvanceSeats: new Set(),
+      impenetrableSeats: new Set(),
+      missionEventFailurePrevented: false,
+      medBaySlotCapOverride: 0,
+      missionEnemyStunSeats: new Set(),
+      hoardReductionNextCombat: 0,
+      abilityDenialDamage: 0,
+      sunderedLaneSeat: -1,
     };
 
     refillShopUnit(this.game);
@@ -514,6 +535,11 @@ export class GameEngine {
     game.abilitiesDeniedThisRound = new Map();
     game.activationsThisRound = new Map();
     game.abilityUsesThisRound = new Map();
+    game.revealedEnemyNames = new Set();
+    game.flawlessAssaultSeats = new Set();
+    game.battlefieldDominanceSeats = new Set();
+    // strategicRecallActive carries from previous round into this round's combat, then is cleared.
+    // (cleared in runDeploymentAndCombat after consuming it)
     game.mechTechDiscount = 0;
     game.vehicleTechDiscount = 0;
     game.unitOrganicFree = false;
@@ -1341,6 +1367,7 @@ export class GameEngine {
       }
       workers.forEach((p, idx) => {
         const full = idx < 2;
+        const resSnap = idx === 0 && p.workerDoubleLocations.has(loc) ? { O: p.res.Organic, T: p.res.Tech, A: p.res.Alien, cO: game.commandPool.Organic, cT: game.commandPool.Tech, cA: game.commandPool.Alien } : null;
         // Forced Contribution Event: "Income +1 if another worker at location."
         if (eventName === "Forced Contribution" && workers.length > 1) p.res.Tech += 1;
         if (loc === "Barracks") {
@@ -1402,6 +1429,18 @@ export class GameEngine {
         } else if (loc === "Command") {
           grantIncome(p, "Alien", full ? p.rank : Math.floor(p.rank / 2));
         }
+        // Worker Detail: 1st worker at this loc counts as 2 — apply the same income delta again.
+        if (resSnap) {
+          const dO = p.res.Organic - resSnap.O;
+          const dT = p.res.Tech - resSnap.T;
+          const dA = p.res.Alien - resSnap.A;
+          const dCO = game.commandPool.Organic - resSnap.cO;
+          const dCT = game.commandPool.Tech - resSnap.cT;
+          const dCA = game.commandPool.Alien - resSnap.cA;
+          p.res.Organic += dO; p.res.Tech += dT; p.res.Alien += dA;
+          game.commandPool.Organic += dCO; game.commandPool.Tech += dCT; game.commandPool.Alien += dCA;
+          if (dO + dT + dA + dCO + dCT + dCA > 0) this.log(`  [Worker Detail] ${p.name}'s worker at ${loc} counts as 2`);
+        }
         // Forced Contribution reward/penalty: persistent ±1 Organic per additional co-located
         // worker, accumulated via locationSharingBonus (reward = +1, penalty = -1 per stack).
         if (game.locationSharingBonus !== 0 && workers.length > 1 && loc !== "Battlefield") {
@@ -1432,6 +1471,17 @@ export class GameEngine {
     if (game.locationAlienBonus > 0) {
       for (const p of game.players) {
         p.res.Alien += game.locationAlienBonus;
+      }
+    }
+
+    // Secure the Specimens instant: gain Alien per turn = sum of ENEMY_RANK_NUM for contained enemies.
+    if (game.secureSpecimensSeats.size && game.containedEnemyPool.length) {
+      const totalRank = game.containedEnemyPool.reduce((s, e) => s + (ENEMY_RANK_NUM[(e as any).Rank as EnemyRank] ?? 0), 0);
+      for (const p of game.players) {
+        if (game.secureSpecimensSeats.has(p.seatIndex)) {
+          p.res.Alien += totalRank;
+          this.log(`  [Secure the Specimens] ${p.name} gains ${totalRank} Alien (contained rank total)`);
+        }
       }
     }
 
@@ -1599,14 +1649,41 @@ export class GameEngine {
   /** Priority: Honorable Discharge retire → Med Bay (if space) → graveyard. */
   private retireOrGraveyard(p: GamePlayer, ui: UnitInstance) {
     const game = this.game;
+    // Flawless Assault instant: units lost next combat return to the unit shop deck instead of dying.
+    if (game.flawlessAssaultSeats.has(p.seatIndex)) {
+      game.unitDeck.push(ui.card);
+      this.log(`  [Flawless Assault] ${p.name}'s ${ui.card.Name} returned to unit deck`);
+      return;
+    }
+    // Strategic Recall instant: deaths this combat are retired (benched) instead of dying.
+    if (game.strategicRecallActive) {
+      p.benchedUnits.push(ui);
+      this.log(`  [Strategic Recall] ${p.name}'s ${ui.card.Name} retired instead of dying`);
+      return;
+    }
     if (game.activeEvent?.["Event name"] === "Honorable Discharge") {
       if (!game.retireGivesNoResource) {
         const refundKeys = ["Organic Cost", "Tech Cost", "Alien Cost"] as const;
         const biggest = refundKeys.reduce((a, b) => (toInt((ui.card as any)[b]) > toInt((ui.card as any)[a]) ? b : a));
         p.res[biggest.split(" ")[0] as keyof typeof p.res] += toInt((ui.card as any)[biggest]);
       }
-      game.unitDeck.push(ui.card);
-      this.returnOrRecycleGear(game, p, ui.equipped.filter((g) => "Rank Name" in (g as any)) as any[]);
+      // War Hero mission instant: retire returned to hand + fully heal all units (one-shot).
+      if (game.warHeroSeats.has(p.seatIndex)) {
+        game.warHeroSeats.delete(p.seatIndex);
+        p.benchedUnits.push(ui);
+        for (const q of game.players) {
+          for (const u of [...(q.active ? [q.active] : []), ...q.reserve]) u.curHp = u.maxHp;
+        }
+        this.log(`  [War Hero] ${ui.card.Name} returned to hand; all units fully healed`);
+      // Honorable Discharge mission instant: retire returned to hand (one-shot).
+      } else if (game.honorableDischargeSeats.has(p.seatIndex)) {
+        game.honorableDischargeSeats.delete(p.seatIndex);
+        p.benchedUnits.push(ui);
+        this.log(`  [Honorable Discharge instant] ${ui.card.Name} returned to hand`);
+      } else {
+        game.unitDeck.push(ui.card);
+        this.returnOrRecycleGear(game, p, ui.equipped.filter((g) => "Rank Name" in (g as any)) as any[]);
+      }
       p.stats.unitsRetired += 1;
       game.retiresThisRound.set(p.seatIndex, (game.retiresThisRound.get(p.seatIndex) ?? 0) + 1);
       this.log(`  [Honorable Discharge] ${ui.card.Name} retires instead of dying`);
@@ -2130,6 +2207,10 @@ export class GameEngine {
   ): Promise<number> {
     const game = this.game;
 
+    // Merge mission-timed enemy stuns (Total Suppression / Shock and Awe) into this round's stun set.
+    for (const s of game.missionEnemyStunSeats) tempState.pendingEnemyStunSeats.add(s);
+    game.missionEnemyStunSeats.clear();
+
     let revealCount = 2 + (game.nightVisionRevealBonus ?? 0) + game.permanentScoutRevealBonus;
     game.nightVisionRevealBonus = 0;
     if (game.teamScoutPool.length && !game.shadowSowerActive) {
@@ -2153,7 +2234,10 @@ export class GameEngine {
     }
 
     this.log(`  Enemy hoard this round: ${diffCount}x ${diffRank} per lane`);
-    const globalReduction = tempState.hoardReduction.get("__global__") ?? 0;
+    const missionGlobalReduction = game.hoardReductionNextCombat;
+    game.hoardReductionNextCombat = 0;
+    if (missionGlobalReduction > 0) this.log(`  [Mission] Deal ${missionGlobalReduction} fewer enemies this round`);
+    const globalReduction = (tempState.hoardReduction.get("__global__") ?? 0) + missionGlobalReduction;
     const enemyPool = this.enemyByRank[diffRank] ?? [];
     const fullPool: EnemyCard[] = [];
     const perPlayerCounts = new Map<number, number>();
@@ -2175,6 +2259,14 @@ export class GameEngine {
       const n = perPlayerCounts.get(p.seatIndex)!;
       p.laneEnemyReserve = shuffled.slice(idx, idx + n);
       idx += n;
+    }
+
+    // Populate revealedEnemyNames: front (and scouted) enemies are "revealed" for Night Vision
+    // and other reveal-conditional effects. Scouting reveals the first `revealCount` enemies.
+    for (const p of game.players) {
+      for (let i = 0; i < Math.min(revealCount, p.laneEnemyReserve.length); i++) {
+        game.revealedEnemyNames.add(p.laneEnemyReserve[i].Name);
+      }
     }
 
     // Perfect Information: commander can see and rearrange enemy stacks after hoard build.
@@ -2263,6 +2355,15 @@ export class GameEngine {
       if (!front) continue;
       const reveal: string = (front as any).Reveal ?? "";
       if (!reveal) continue;
+      // Smoke Pack: "When under half HP cannot be targeted by abilities" — blocks reveals.
+      if (
+        !oracleAlive &&
+        p.active?.equipped.some((g) => (g as any).Name === "Smoke Pack") &&
+        p.active.curHp < Math.floor(p.active.maxHp / 2)
+      ) {
+        this.log(`  [${front.Name}] Reveal blocked (${p.name}'s active unit has Smoke Pack and is under half HP)`);
+        continue;
+      }
       // Reveal prevention: player effects can grant prevention charges. Unpreventable reveals
       // (text contains "cannot be prevented") bypass this check. Oracle passive blocks all prevention.
       const revealCanBePrevented = !oracleAlive && !/cannot be prevented/i.test(reveal);
@@ -2275,8 +2376,14 @@ export class GameEngine {
         creditPlayer.stats.abilitiesDenied += 1;
         game.abilitiesDeniedThisRound.set(creditPlayer.seatIndex, (game.abilitiesDeniedThisRound.get(creditPlayer.seatIndex) ?? 0) + 1);
         this.log(`  [${front.Name}] Reveal prevented (${game.revealPreventionCharges} charge(s) remaining)`);
+        if (game.abilityDenialDamage > 0 && game.bossActive) {
+          game.bossActive.hpCur = Math.max(0, game.bossActive.hpCur - game.abilityDenialDamage);
+          this.log(`  [Ability Denial] ${game.abilityDenialDamage} damage dealt to boss (Total Shutdown / Absolute Lockdown)`);
+        }
         continue;
       }
+      // Enemy reveal fired — mark it as revealed for Night Vision and other reveal-conditional effects.
+      game.revealedEnemyNames.add(front.Name);
       game.enemyAbilitiesActivated += 1;
       const frontDmg = toInt((front as any).Damage);
 
@@ -2642,10 +2749,10 @@ export class GameEngine {
         this.log(`  [${front.Name}] Reveal: stun active player unit in every lane`);
       }
 
-      // Cryo Spitter: "Stun all reserve units" — approximated as stunning active in every lane.
+      // Cryo Spitter: "Stun all reserve units" — stuns every reserve unit in every lane.
       if (/stun all reserve units/i.test(reveal)) {
-        for (const tp of game.players) tempState.pendingPlayerStunSeats.add(tp.seatIndex);
-        this.log(`  [${front.Name}] Reveal: stun all players (reserve-targeted, applied to active)`);
+        for (const tp of game.players) tempState.pendingReserveStunSeats.add(tp.seatIndex);
+        this.log(`  [${front.Name}] Reveal: stun all reserve units in every lane`);
       }
 
       // Parasites / Zeus: "Stun all Mechanical units"
@@ -3091,7 +3198,21 @@ export class GameEngine {
         }
         this.log(`  [Puppeteer] Reveal: all allies splash a random friendly`);
       }
-      // TODO: Black Rail AOE — deferred pending additional engine infrastructure.
+      // Black Rail reveal: "Delete highest rank unit" — remove the globally highest-rank player unit.
+      if (/delete highest rank unit/i.test(reveal)) {
+        let topRank = -1, topUnit: UnitInstance | null = null, topP: GamePlayer | null = null;
+        for (const tp of game.players) {
+          for (const ui of [...(tp.active ? [tp.active] : []), ...tp.reserve]) {
+            const r = RANK_NUM[(ui.card as any).Rank ?? ""] ?? -1;
+            if (r > topRank) { topRank = r; topUnit = ui; topP = tp; }
+          }
+        }
+        if (topUnit && topP) {
+          if (topP.active === topUnit) topP.active = topP.reserve.shift() ?? null;
+          else topP.reserve = topP.reserve.filter((u) => u !== topUnit);
+          this.log(`  [${front.Name}] Reveal: deletes ${topP.name}'s ${topUnit.card.Name} (highest-rank unit, rank ${topRank})`);
+        }
+      }
     }
 
     // Airburst Rounds ("Attacks splash onto adjacent lanes"): a precombat pass against
@@ -3230,6 +3351,8 @@ export class GameEngine {
         applyBossBoardWideMods(game, c, false);
         applyEventCombatMods(game, c, false, ui);
         if (ui.reassignedThisRound) c.halfFirstHit = true;
+        // Impenetrable instant: active unit reflects damage equal to its armor stat.
+        if (i === 0 && game.impenetrableSeats.has(p.seatIndex)) c.reflectEqualToArmor = true;
         return c;
       });
       // delete_on_kill: kills in this lane skip containment capture.
@@ -3239,10 +3362,20 @@ export class GameEngine {
         pCombatants[0].stunned = true;
         this.log(`  [Stun] ${p.name}'s active unit starts combat stunned (cross-lane reveal).`);
       }
+      // Cryo Spitter reveal: stun all reserve combatants (indices 1+) in this lane.
+      if (tempState.pendingReserveStunSeats.has(p.seatIndex)) {
+        for (let i = 1; i < pCombatants.length; i++) pCombatants[i].stunned = true;
+        if (pCombatants.length > 1) this.log(`  [Stun] ${p.name}'s reserve units start combat stunned (Cryo Spitter).`);
+      }
       // Titan passive: stun active unit if this player activated any ability this round.
       if (tempState.titanStunnedSeats.has(p.seatIndex) && pCombatants[0]) {
         pCombatants[0].stunned = true;
         this.log(`  [Titan] Passive: ${p.name}'s active unit starts combat stunned (ability activated)`);
+      }
+      // Battlefield Dominance instant: all of this player's attacks hit 1st this round.
+      if (game.battlefieldDominanceSeats.has(p.seatIndex)) {
+        for (const c of pCombatants) c.attacksFirst = true;
+        this.log(`  [Battlefield Dominance] ${p.name}'s units all attack first this round`);
       }
       // Overrun carryover: surviving enemy from last round keeps its combat stats; skip fresh build.
       const _persisted = this.persistedEnemyCombatants.get(p.seatIndex);
@@ -3386,6 +3519,13 @@ export class GameEngine {
       if (tempState.pendingEnemyStunSeats.has(p.seatIndex) && eCombatants[0]) {
         eCombatants[0].stunned = true;
         this.log(`  [Stun] Enemy active in ${p.name}'s lane starts combat stunned (cross-lane reveal).`);
+      }
+      // Sundering Blow: strip armor and shields from front enemy in the targeted lane.
+      if (game.sunderedLaneSeat === p.seatIndex && eCombatants[0]) {
+        this.log(`  [Sundering Blow] ${eCombatants[0].name}: armor ${eCombatants[0].armor} → 0, shields ${eCombatants[0].curShields} → 0`);
+        eCombatants[0].armor = 0;
+        eCombatants[0].curShields = 0;
+        game.sunderedLaneSeat = -1;
       }
       // God Rod passive: "Kills Self to deal 40 damage to active unit" — fires before combat, removes itself.
       if (eCombatants[0] && !game.suppressedPassiveEnemyNames.has((p.laneEnemyReserve[0] as any)?.Name ?? "") && /kills self to deal 40 damage/i.test((p.laneEnemyReserve[0] as any)?.Passive ?? "")) {
@@ -3733,6 +3873,15 @@ export class GameEngine {
             this.log(`  [${eName}] Passive: ${playerDeaths} player death(s) → overrun tracker -${playerDeaths} (now ${game.overrunTracker})`);
           }
         }
+        // resource_on_kill tag (Researcher/Field Researcher): "Grants +1 Progress when killed"
+        const deadCombatants = pCombatants.filter((c) => !playerSurvivors.includes(c));
+        for (const dc of deadCombatants) {
+          const ui = pUnits[pCombatants.indexOf(dc)];
+          if (ui && classifyUnit(ui.card).has("resource_on_kill")) {
+            game.playerProgress = Math.min(10, game.playerProgress + 1);
+            this.log(`  [${ui.card.Name}] +1 Player Progress on death (resource_on_kill)`);
+          }
+        }
       }
       const kills = eCombatants.length - enemySurvivors.length;
       if (kills > 0) {
@@ -4042,6 +4191,9 @@ export class GameEngine {
     if (grandSaboteurSavedUpgrades && game.grandSaboteurDisabledLocation) {
       game.locationUpgradesBuilt[game.grandSaboteurDisabledLocation].push(...grandSaboteurSavedUpgrades);
     }
+
+    // Strategic Recall: consume after this combat — effect applies only for one round.
+    game.strategicRecallActive = false;
 
     return overrunLanes;
   }

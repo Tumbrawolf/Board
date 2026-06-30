@@ -147,6 +147,8 @@ export class RoundTempState {
   abilityBlockedSeats = new Set<number>();
   /** Player seat indices whose active unit starts combat stunned (set by cross-lane reveal effects). */
   pendingPlayerStunSeats = new Set<number>();
+  /** Player seat indices whose RESERVE units all start combat stunned (Cryo Spitter reveal). */
+  pendingReserveStunSeats = new Set<number>();
   /** Player seat indices whose active enemy starts combat stunned (set by cross-lane reveal effects). */
   pendingEnemyStunSeats = new Set<number>();
   /** Extra shields to add to the active enemy combatant in each lane when built. */
@@ -197,6 +199,7 @@ export class RoundTempState {
     this.tranqRoundsActiveThisRound = false;
     this.abilityBlockedSeats.clear();
     this.pendingPlayerStunSeats.clear();
+    this.pendingReserveStunSeats.clear();
     this.pendingEnemyStunSeats.clear();
     this.pendingEnemyActiveShields.clear();
   }

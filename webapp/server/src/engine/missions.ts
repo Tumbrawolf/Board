@@ -1,6 +1,7 @@
 import { toInt, type MissionCard } from "./data.js";
 import { LOCATIONS, RANK_NUM, UPGRADE_SLOT_CAP, type Location } from "./constants.js";
-import type { GamePlayer, GameState } from "./types.js";
+import type { GamePlayer, GameState, UnitInstance } from "./types.js";
+import { addTempUnitPerm, grantShields, makeUnitInstance, unitsOf } from "./state.js";
 
 /** Keyword-match the Requirement text against tracked stats/state. Falls back to True (any held
  * mission is completable) for requirement text not recognized here -- this only ever ADDS
@@ -190,12 +191,44 @@ export function missionRequirementMet(
     return p.stats.roundsWithoutUnitLoss >= 1;
   }
 
+  // Return N [resource] to supply (resource-sacrifice missions: player must have the resources)
+  if (req.includes("return") && req.includes("to supply")) {
+    const eachMatch = /return (\d+) of each/.exec(req);
+    if (eachMatch) {
+      const n = Number(eachMatch[1]);
+      return p.res.Organic >= n && p.res.Tech >= n && p.res.Alien >= n;
+    }
+    const match = /return (\d+)/.exec(req);
+    const n = match ? Number(match[1]) : 1;
+    if (req.includes("organic")) return p.res.Organic >= n;
+    if (req.includes("tech")) return p.res.Tech >= n;
+    if (req.includes("alien")) return p.res.Alien >= n;
+  }
+
   return true;
 }
 
 /** Resource field ("Gain +N All resources" / "+N Organic" etc.) plus dispatch for Instant effects.
  * Extended from sim.py's apply_mission_reward with additional stateless/low-complexity hooks. */
 export function applyMissionReward(game: GameState, m: MissionCard, p: GamePlayer) {
+  // Deduct "Return N X to supply" cost when the mission requirement is of that type.
+  const req = (m.Requirement ?? "").toLowerCase();
+  if (req.includes("return") && req.includes("to supply")) {
+    const eachMatch = /return (\d+) of each/.exec(req);
+    if (eachMatch) {
+      const n = Number(eachMatch[1]);
+      p.res.Organic = Math.max(0, p.res.Organic - n);
+      p.res.Tech = Math.max(0, p.res.Tech - n);
+      p.res.Alien = Math.max(0, p.res.Alien - n);
+    } else {
+      const match = /return (\d+)/.exec(req);
+      const n = match ? Number(match[1]) : 1;
+      if (req.includes("organic")) p.res.Organic = Math.max(0, p.res.Organic - n);
+      else if (req.includes("tech")) p.res.Tech = Math.max(0, p.res.Tech - n);
+      else if (req.includes("alien")) p.res.Alien = Math.max(0, p.res.Alien - n);
+    }
+  }
+
   const resText = m.Resource ?? "";
   const amtMatch = /\+(\d+)/.exec(resText);
   const amt = amtMatch ? Number(amtMatch[1]) : 1;
@@ -333,6 +366,253 @@ export function applyMissionReward(game: GameState, m: MissionCard, p: GamePlaye
     const match = /draw (\d+)/.exec(instant);
     const n = match ? Number(match[1]) : 1;
     for (let i = 0; i < n && game.commandDeck.length; i++) p.hand.push(game.commandDeck.pop()!);
+    return;
+  }
+
+  // Worker Detail: "Your 1st worker at X counts as 2 each round"
+  if (instant.includes("counts as 2 each round")) {
+    const locMatch = /your 1st worker at ([\w\s]+?) counts/i.exec(instant);
+    if (locMatch) {
+      const raw = locMatch[1].trim();
+      const loc = LOCATIONS.find((l) => l.toLowerCase() === raw.toLowerCase()) ?? raw;
+      p.workerDoubleLocations.add(loc);
+    }
+    return;
+  }
+
+  // Deal N less enemies next combat (Breach / Collapse / Total Breakdown)
+  if (instant.startsWith("deal") && instant.includes("less enemies")) {
+    const match = /deal (\d+) less/.exec(instant);
+    game.hoardReductionNextCombat += match ? Number(match[1]) : 2;
+    return;
+  }
+
+  // Combat Medic I–IV: "Target Unit gains Shields = [Missing|Max|2x Max|3x Max] Health"
+  if (instant.startsWith("target unit gains shields =")) {
+    const allUnits: UnitInstance[] = [];
+    for (const q of game.players) allUnits.push(...unitsOf(q));
+    if (!allUnits.length) return;
+    const target = allUnits.reduce((a, b) => (a.maxHp - a.curHp >= b.maxHp - b.curHp ? a : b));
+    const ownerP = game.players.find((q) => unitsOf(q).includes(target))!;
+    let shields = 0;
+    if (instant.includes("3x max health")) shields = target.maxHp * 3;
+    else if (instant.includes("2x max health")) shields = target.maxHp * 2;
+    else if (instant.includes("missing health")) shields = target.maxHp - target.curHp;
+    else if (instant.includes("max health")) shields = target.maxHp;
+    grantShields(target, shields, ownerP);
+    return;
+  }
+
+  // Shield Bearer: "Double Shield on unit"
+  if (instant.startsWith("double shield on unit")) {
+    const allUnits: UnitInstance[] = [];
+    for (const q of game.players) allUnits.push(...unitsOf(q));
+    const target = allUnits.reduce((a, b) => (b.curShields > a.curShields ? b : a));
+    const ownerP = game.players.find((q) => unitsOf(q).includes(target));
+    if (target && ownerP) grantShields(target, target.curShields, ownerP);
+    return;
+  }
+
+  // Combined Arms: "All units gain +1 armor"
+  if (instant.startsWith("all units gain +1 armor")) {
+    for (const q of game.players) {
+      for (const ui of unitsOf(q)) {
+        (ui.equipped as any[]).push({ Name: "__armor_bonus__", Damage: 0, HP: 0, Armor: 1, Shields: 0 });
+      }
+    }
+    return;
+  }
+
+  // Boots on the Ground: "Your Infantry have +1 Attack and +3 HP per rank"
+  if (instant.includes("infantry have +1 attack") && instant.includes("hp per rank")) {
+    for (const ui of unitsOf(p)) {
+      const type = ((ui.card as any).Type ?? "").toLowerCase();
+      if (!type.startsWith("infantry")) continue;
+      const rank = RANK_NUM[(ui.card as any).Rank ?? "Conscript"] ?? 1;
+      (ui.equipped as any[]).push({ Name: "__boots_bonus__", Damage: rank, HP: 0, Armor: 0, Shields: 0 });
+      ui.maxHp += rank * 3;
+      ui.curHp = Math.min(ui.curHp + rank * 3, ui.maxHp);
+    }
+    return;
+  }
+
+  // Steel Wall: "Your Mech have +3 Attack per rank"
+  if (instant.includes("mech have +3 attack per rank")) {
+    for (const ui of unitsOf(p)) {
+      const type = ((ui.card as any).Type ?? "").toLowerCase();
+      if (!type.startsWith("mech")) continue;
+      const rank = RANK_NUM[(ui.card as any).Rank ?? "Conscript"] ?? 1;
+      (ui.equipped as any[]).push({ Name: "__steel_wall_bonus__", Damage: rank * 3, HP: 0, Armor: 0, Shields: 0 });
+    }
+    return;
+  }
+
+  // Armored Convoy: "Your Vehicles have +1 armor per rank"
+  if (instant.includes("vehicles have +1 armor per rank")) {
+    for (const ui of unitsOf(p)) {
+      const type = ((ui.card as any).Type ?? "").toLowerCase();
+      if (!type.startsWith("vehicle")) continue;
+      const rank = RANK_NUM[(ui.card as any).Rank ?? "Conscript"] ?? 1;
+      (ui.equipped as any[]).push({ Name: "__convoy_bonus__", Damage: 0, HP: 0, Armor: rank, Shields: 0 });
+    }
+    return;
+  }
+
+  // Sundering Blow: "Remove all Armor and shields from target"
+  if (instant.startsWith("remove all armor and shields")) {
+    game.sunderedLaneSeat = p.seatIndex;
+    return;
+  }
+
+  // Total Suppression: "Stun all lanes" (enemy actives stunned next combat)
+  if (instant.startsWith("stun all lanes")) {
+    for (const q of game.players) game.missionEnemyStunSeats.add(q.seatIndex);
+    return;
+  }
+
+  // Shock and Awe: "Stun target enemy"
+  if (instant.startsWith("stun target enemy")) {
+    game.missionEnemyStunSeats.add(p.seatIndex);
+    return;
+  }
+
+  // Mission Success: "Prevent the Round Debuff of event this round"
+  if (instant.startsWith("prevent the round debuff")) {
+    game.missionEventFailurePrevented = true;
+    return;
+  }
+
+  // Mission Failure: "Prevent your next event failure"
+  if (instant.startsWith("prevent your next event failure")) {
+    game.missionEventFailurePrevented = true;
+    return;
+  }
+
+  // Steady Hand: "Prevent the next time you would lose commander role"
+  if (instant.startsWith("prevent the next time you would lose commander")) {
+    game.steadyHandSeats.add(p.seatIndex);
+    return;
+  }
+
+  // Command Central: "You can play command cards when not the commander"
+  if (instant.startsWith("you can play command cards when not the commander")) {
+    game.commandCentralSeats.add(p.seatIndex);
+    return;
+  }
+
+  // Assume Command: "You count as 1 Rank higher when commander"
+  if (instant.startsWith("you count as 1 rank higher")) {
+    game.assumeCommandBonusSeats.add(p.seatIndex);
+    return;
+  }
+
+  // Secure the Specimens: "Gain Alien per turn = Rank of contained units"
+  if (instant.startsWith("gain alien per turn")) {
+    game.secureSpecimensSeats.add(p.seatIndex);
+    return;
+  }
+
+  // Medical Emergency: "Units can now stack in med bay upto 3 per space"
+  if (instant.startsWith("units can now stack in med bay")) {
+    game.medBaySlotCapOverride = 3;
+    return;
+  }
+
+  // Armed and Ready: "Your next Equip during combat is free"
+  if (instant.startsWith("your next equip during combat is free")) {
+    game.armedAndReadySeats.add(p.seatIndex);
+    return;
+  }
+
+  // War Hero: "Your next Retire is returned to hand..., Fully heal all units when you do"
+  if (instant.startsWith("your next retire is returned to hand") && instant.includes("fully heal")) {
+    game.warHeroSeats.add(p.seatIndex);
+    return;
+  }
+
+  // Honorable Discharge: "Your next Retire is returned to hand, you can play this unit to any lane"
+  if (instant.startsWith("your next retire is returned to hand")) {
+    game.honorableDischargeSeats.add(p.seatIndex);
+    return;
+  }
+
+  // Crushing Advance: "Trample damage can chain multiple times"
+  if (instant.startsWith("trample damage can chain")) {
+    game.crushingAdvanceSeats.add(p.seatIndex);
+    return;
+  }
+
+  // Impenetrable: "Reflect Damage = Armor"
+  if (instant.startsWith("reflect damage = armor")) {
+    game.impenetrableSeats.add(p.seatIndex);
+    return;
+  }
+
+  // Flawless Assault: "Units lost this round are returned to the deck"
+  if (instant.startsWith("units lost this round are returned to the deck")) {
+    game.flawlessAssaultSeats.add(p.seatIndex);
+    return;
+  }
+
+  // Strategic Recall: "All deaths next round are retired"
+  if (instant.startsWith("all deaths next round are retired")) {
+    game.strategicRecallActive = true;
+    return;
+  }
+
+  // Total Shutdown / Absolute Lockdown: "Deal N damage when preventing an ability"
+  if (instant.startsWith("deal") && instant.includes("damage when preventing")) {
+    const match = /deal (\d+) damage/.exec(instant);
+    game.abilityDenialDamage += match ? Number(match[1]) : 4;
+    return;
+  }
+
+  // Battlefield Dominance: "all of Your attacks hit 1st this round"
+  if (instant.startsWith("all of your attacks hit 1st")) {
+    game.battlefieldDominanceSeats.add(p.seatIndex);
+    return;
+  }
+
+  // First Blood: "You may delete a rank 1 unit you own and take a Rank 2 unit from the shop"
+  if (instant.startsWith("you may delete a rank 1 unit")) {
+    const rank1 = unitsOf(p).find((ui) => (RANK_NUM[(ui.card as any).Rank ?? ""] ?? 0) === 1);
+    if (rank1) {
+      if (p.active === rank1) p.active = p.reserve.shift() ?? null;
+      else p.reserve = p.reserve.filter((u) => u !== rank1);
+      const rank2idx = game.shopUnits.findIndex((c) => (RANK_NUM[c.Rank ?? ""] ?? 0) === 2);
+      if (rank2idx !== -1) {
+        const card = game.shopUnits.splice(rank2idx, 1)[0];
+        addTempUnitPerm(p, makeUnitInstance(card));
+      }
+    }
+    return;
+  }
+
+  // Infantry Doctrine: "Recruit all infantry from the store upto 1 rank higher than your current"
+  if (instant.startsWith("recruit all infantry from the store")) {
+    const rankCap = p.rank + 1;
+    const infantry = game.shopUnits.filter((c) => {
+      const type = ((c as any).Type ?? "").toLowerCase();
+      return type.startsWith("infantry") && (RANK_NUM[c.Rank ?? ""] ?? 0) <= rankCap;
+    });
+    for (const card of infantry) {
+      game.shopUnits.splice(game.shopUnits.indexOf(card), 1);
+      addTempUnitPerm(p, makeUnitInstance(card));
+    }
+    return;
+  }
+
+  // Just a flesh wound: "Double Retired units stats, return it to the lane it was retired from"
+  if (instant.startsWith("double retired units stats") || instant.startsWith("double retired unit")) {
+    const target = p.benchedUnits[p.benchedUnits.length - 1];
+    if (target) {
+      p.benchedUnits.pop();
+      const dmg = toInt(target.card.Damage);
+      (target.equipped as any[]).push({ Name: "__flesh_wound_bonus__", Damage: dmg, HP: 0, Armor: 0, Shields: 0 });
+      target.maxHp *= 2;
+      target.curHp = target.maxHp;
+      addTempUnitPerm(p, target);
+    }
     return;
   }
 

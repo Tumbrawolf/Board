@@ -61,6 +61,13 @@ export interface GamePlayer {
   tactician: TacticianCard | null;
   hasReconSatellite: boolean;
   hasLastStandBeacon: boolean;
+  /** Worker Detail instants: location names where this player's first worker placement counts as 2.
+   * Set by Barracks Detail / Armory Detail / etc. mission instants. Persistent. */
+  workerDoubleLocations: Set<string>;
+  /** Shield Projector passive: lane-wide shared shield pool (HP) that absorbs incoming enemy damage
+   * before it reaches individual unit combatants. Replenished to 60 each round by precombat gear.
+   * Tracks live value during combat so the pool can be depleted across multiple exchanges. */
+  sharedShieldPool: number;
   /** Vote of No Confidence: set when one of this player's own Secret Objective cards has been
    * publicly revealed (read-only knowledge for everyone else) -- the card itself is unaffected,
    * still theirs, still counts toward their win condition. Not the same as losing a card. */
@@ -494,4 +501,51 @@ export interface GameState {
   /** Per-round count of reveal abilities denied per seatIndex. Reset each round.
    * Used to update maxAbilitiesDeniedInRound after each round. */
   abilitiesDeniedThisRound: Map<number, number>;
+
+  // ── Mission instant / gear / unit mechanic flags ──────────────────────────────────────────────
+
+  /** Night Vision reveal: names of enemies scouted/revealed this round.
+   * Night Vision's free attack only fires against these. Reset each round. */
+  revealedEnemyNames: Set<string>;
+  /** Flawless Assault instant: seat indices whose unit deaths this round return to game.shopUnits. Reset each round. */
+  flawlessAssaultSeats: Set<number>;
+  /** Strategic Recall instant: next round unit deaths → benchedUnits (retired) instead of destroyed. Consumed at next combat phase start. */
+  strategicRecallActive: boolean;
+  /** Command Central instant: seat indices that may play command cards even when not commander. Persistent. */
+  commandCentralSeats: Set<number>;
+  /** Battlefield Dominance instant: seat indices whose units all attack before enemies this round. Reset each round. */
+  battlefieldDominanceSeats: Set<number>;
+  /** Steady Hand instant: seat indices protected from the next involuntary commander role loss. Persistent until consumed. */
+  steadyHandSeats: Set<number>;
+  /** Armed and Ready instant: seat indices whose next gear equip during combat is free. Persistent until consumed. */
+  armedAndReadySeats: Set<number>;
+  /** Assume Command instant: seat indices that count as 1 rank higher while holding commander. Persistent. */
+  assumeCommandBonusSeats: Set<number>;
+  /** Secure the Specimens instant: seat indices that gain Alien = rank of most-contained enemy each round. Persistent. */
+  secureSpecimensSeats: Set<number>;
+  /** Honorable Discharge instant: seat indices whose next retire returns to hand instead of benchedUnits. Consumed one-shot. */
+  honorableDischargeSeats: Set<number>;
+  /** War Hero instant: seat indices whose next retire triggers (return to hand + full heal on redeploy). Consumed one-shot. */
+  warHeroSeats: Set<number>;
+  /** Crushing Advance instant: seat indices where trample damage can chain through multiple enemies. Persistent. */
+  crushingAdvanceSeats: Set<number>;
+  /** Impenetrable instant: seat indices whose active unit reflects damage equal to its armor stat. Persistent. */
+  impenetrableSeats: Set<number>;
+  /** Mission Failure instant: prevent the next event failure penalty. Consumed on next failure. */
+  missionEventFailurePrevented: boolean;
+  /** Medical Emergency instant: when > 0, overrides the default med-bay slot cap (default 2 → this value). */
+  medBaySlotCapOverride: number;
+  /** Mission enemy-stun carry: seat indices whose front enemy starts next combat stunned.
+   * Set by Total Suppression / Shock and Awe instants; merged into tempState.pendingEnemyStunSeats
+   * at the start of combat, then cleared. */
+  missionEnemyStunSeats: Set<number>;
+  /** Mission hoard-reduction carry: deal this many fewer enemies in the next combat.
+   * Set by Breach / Collapse / Total Breakdown instants; consumed at hoard generation, then zeroed. */
+  hoardReductionNextCombat: number;
+  /** Ability-denial damage bonus: deal this much damage to the enemy when any ability is prevented.
+   * Set by Total Shutdown (4) / Absolute Lockdown (10) instants; stacks. */
+  abilityDenialDamage: number;
+  /** Sundering Blow carry: seatIndex whose next front enemy has armor + shields zeroed at combat
+   * start. -1 when inactive. */
+  sunderedLaneSeat: number;
 }
