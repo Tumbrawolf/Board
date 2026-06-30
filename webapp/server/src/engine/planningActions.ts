@@ -11,7 +11,7 @@ import {
   pay,
   scoutValue,
 } from "./state.js";
-import { tacticianBypassesRankCheck, tacticianDiscountedCost } from "./tactician.js";
+import { tacticianBypassesRankCheck, tacticianDiscountedCost, tacticianRankCeiling } from "./tactician.js";
 import type { GamePlayer, GameState } from "./types.js";
 
 /** Single source of truth for the buy/equip/build/activate mutations used during a round's
@@ -147,7 +147,7 @@ function payIncludingCommand(game: GameState, p: GamePlayer, card: UnitCard | Ge
 export function affordableUnits(game: GameState, p: GamePlayer): UnitCard[] {
   return game.shopUnits.filter(
     (u) =>
-      (RANK_NUM[u.Rank] <= p.rank || tacticianBypassesRankCheck(p, u)) &&
+      (RANK_NUM[u.Rank] <= tacticianRankCeiling(p, u) || tacticianBypassesRankCheck(p, u)) &&
       canAffordIncludingCommand(game, p, tacticianDiscountedCost(p, u, "unit"), UNIT_COST_KEYS)
   );
 }

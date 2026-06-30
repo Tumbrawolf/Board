@@ -56,6 +56,27 @@ export function tacticianBypassesRankCheck(p: GamePlayer, card: UnitCard): boole
   return p.tactician?.Name === "The Pathfinder" && card.Type.includes("Scout");
 }
 
+/** Driver/Recruiter/Pilot passive: returns the effective rank ceiling for this player purchasing
+ * this unit. For the favoured type the ceiling is raised; for all others it is lowered by 1.
+ *   Driver:    Vehicle +3 / others -1
+ *   Recruiter: Infantry +2 / others -1
+ *   Pilot:     Mech +3 / others -1
+ * Returns p.rank unchanged for any other tactician. */
+export function tacticianRankCeiling(p: GamePlayer, card: UnitCard): number {
+  const name = p.tactician?.Name;
+  const ctype = card.Type ?? "";
+  if (name === "The Driver") {
+    return ctype.includes("Vehicle") ? p.rank + 3 : p.rank - 1;
+  }
+  if (name === "The Recruiter") {
+    return ctype.includes("Infantry") ? p.rank + 2 : p.rank - 1;
+  }
+  if (name === "The Pilot") {
+    return ctype.includes("Mech") ? p.rank + 3 : p.rank - 1;
+  }
+  return p.rank;
+}
+
 /** The Jailer: "Containment Block upgrades cost no Alien." */
 export function tacticianContainmentBuildDiscount(p: GamePlayer, loc: Location, card: CommandCard): CommandCard {
   if (p.tactician?.Name !== "The Jailer" || loc !== "Containment Block") return card;
