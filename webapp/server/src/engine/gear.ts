@@ -237,12 +237,14 @@ function applyGearActive(
       break;
     case "Basic Exo": {
       const owned = unitsOf(p);
-      if (owned.includes(ui)) {
-        if (p.active === ui) p.active = p.reserve.length ? p.reserve[0] : null;
-        else p.reserve = p.reserve.filter((u) => u !== ui);
-        if (p.active === null && p !== w) p.active = ui;
-        else w.reserve.push(ui);
-      }
+      if (!owned.includes(ui)) break;
+      const hasSuit = ui.equipped.some((g) => (g as any).Name === "Slayer Suit");
+      // Slayer Suit cannot enter reserve — only allow move if target lane's active slot is free
+      if (hasSuit && w.active !== null) break;
+      if (p.active === ui) p.active = p.reserve.length ? p.reserve[0] : null;
+      else p.reserve = p.reserve.filter((u) => u !== ui);
+      if (!w.active) w.active = ui;
+      else w.reserve.push(ui);
       break;
     }
     case "Basic Medkit":

@@ -92,8 +92,12 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       refillShopUnit(game);
       const ui = makeUnitInstance(u);
       if (w.active) {
-        w.benchedUnits.push(w.active);
-        w.active = ui;
+        if (w.active.equipped.some((g) => (g as any).Name === "Slayer Suit")) {
+          w.reserve.push(ui);
+        } else {
+          w.benchedUnits.push(w.active);
+          w.active = ui;
+        }
       } else {
         w.active = ui;
       }
@@ -145,6 +149,7 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
     case "Tag Team":
       for (const p of game.players) {
         if (p.reserve.length && p.active) {
+          if (p.active.equipped.some((g) => (g as any).Name === "Slayer Suit")) continue;
           const oldActive = p.active;
           p.active = p.reserve[0];
           p.reserve[0] = oldActive;

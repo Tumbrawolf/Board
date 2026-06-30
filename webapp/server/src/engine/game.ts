@@ -3682,8 +3682,11 @@ export class GameEngine {
               }
               // Remove from its current player slot.
               slayerP.active = slayerP.reserve.length ? slayerP.reserve.shift()! : null;
-              // Add to the target lane's player reserve (persistent state).
-              targetLane.p.reserve.push(slayerUi);
+              // Slayer Suit cannot enter reserve — displace target lane's active to reserve, then take active slot.
+              if (targetLane.p.active && targetLane.p.active !== slayerUi) {
+                targetLane.p.reserve.push(targetLane.p.active);
+              }
+              targetLane.p.active = slayerUi;
               // Build a fresh combatant and inject it into the target lane's live combat queue.
               const newC = combatantFromUnit(slayerUi);
               applyGearCombatMods(newC, slayerUi, game.players[game.commanderIdx].rank, slayerP, game.playerProgress);
