@@ -23,7 +23,6 @@ Emergency Triage,Unlock all med bay slots this round,All players place worker at
 Medical Focus,Medbay costs organics to heal,Empty/Full Hp med bay,Healing Generates organics,Healing costs organics with cap
 Honorable Discharge,Units Retire on death this round,Retire Between 5 and 10 units this turn,Retired units refund value duplicated to command,Retire costs no longer gives resource
 Research drive,"Containment Block cells are emptied and hold 2 units each, Roll dice on when unit falls below half HP odds capture even kill",Capture more than you kill,Containment Block keeps storage stack upgrade,Disable a Containment Block slot
-Garbage Day,"Can Restore cards from recycle for their tech cost, or recycle into deck for their organic cost",Recycle is half total from start of round.,Ongoing effect,Delete items on death
 Chain of Command,All unit HP and Damage = their rank total,Outrank enemies in each lane at start of combat,Promote Lowest rank player,Demote highest rank player
 Kill Contest,All units deal double damage,Single Unit gets 3 kills,Highest rank unit at start of combat gains double damage,Highest rank unit at start of combat Deals Half damage
 Assigned Posts,Roll Dice to select locations,Place worker at location rolled for each player,Roll Dice 3 times generate resources at those location for all players regardless of worker,Effect persists after event

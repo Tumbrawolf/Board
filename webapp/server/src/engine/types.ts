@@ -103,6 +103,9 @@ export interface GamePlayer {
     promotionsReceived: number;
     donationsMade: ResourcePool;
     healsGiven: number;
+    /** Total HP actually restored across all heal actions (exact, not approximated). Used by
+     * the Combat Medic mission requirement ("Heal N damage during combat") and the Medic SO. */
+    healedHp: number;
     gearEquipped: number;
     gearEquippedToAllies: number;
     gearDiscarded: number;
@@ -145,6 +148,18 @@ export interface GamePlayer {
     roundsArmorAbsorbedAll: number;
     /** Crushing Advance: total trample kills this game. */
     trampleKillsTotal: number;
+    /** Shock and Awe / Total Suppression req: total enemy stuns caused by this player. */
+    stunsMade: number;
+    /** Giant Slayer req: enemies killed whose rank is strictly above the killing player's rank at kill time. */
+    aboveRankKills: number;
+    /** Just a flesh wound req: units this player retired while at or below half their max HP. */
+    unitsRetiredUnderHalfHp: number;
+    /** War Hero req: units this player retired with exactly 1 HP remaining and rank > 4. */
+    unitsRetiredHighRankWith1Hp: number;
+    /** Strategic Recall req: units this player retired at full HP with rank > 4. */
+    unitsRetiredHighRankFullHp: number;
+    /** Flawless Assault req: max kills achieved in a single round where the player had 0 deaths. */
+    maxKillsInRoundWithNoDeaths: number;
   };
 }
 
@@ -244,11 +259,14 @@ export interface GameState {
   enemiesKilledLastRound: EnemyCard[];
   /** Number of pending reveal-prevention charges available to players this round. Each preventable
    * enemy reveal consumes one charge and is fully skipped. Reveals whose text contains
-   * "this cannot be prevented" bypass this check entirely. Set by scout/ability effects (not yet wired). */
+   * "this cannot be prevented" bypass this check entirely. Set by The Pathfinder active
+   * (tactician.ts) and the "Block the next N enemy abilities" mission instant (missions.ts). */
   revealPreventionCharges: number;
   /** Enemy card Names whose passive effects are suppressed this round. Covers both keyword-driven
    * passives (applyEnemyCombatMods) and all manual passive check sites. Reset each round.
-   * Set by player/scout effects (not yet wired). */
+   * No current player card populates this set — it is scaffolded for a future passive-suppression
+   * mechanic. The Oracle's own passive ("enemies cannot have their abilities prevented") blocks
+   * reveal prevention but does not interact with this set. */
   suppressedPassiveEnemyNames: Set<string>;
   /** Night Vision's "Roll D6, Reveal that many enemies" -- added to the round's base scout
    * reveal count, reset to 0 each round. */
@@ -281,9 +299,8 @@ export interface GameState {
    * Completion Condition ("combined rank of completed missions = rank total of players"). Reset
    * each round. */
   missionRankCompletedThisRound: number;
-  /** Garbage Day's "Recycle" pile -- Command Cards pushed here when activated (while this Event
-   * is active or garbageDayPermanent is set), so "restore from recycle to hand" has something
-   * real to draw from. Gear also goes here (from hand overflow, retire, shop evictions). */
+  /** Gear recycle pile: receives gear from hand overflow, unit death, and retire paths.
+   * The Reclaimer passive intercepts the first item recycled each round and returns it to hand. */
   recyclePile: (CommandCard | GearCard)[];
   /** Gear items returned to a player's hand from unit-death/retire this round, keyed by seatIndex.
    * Cap: 1 normally, 2 for The Reclaimer. Reset each round. */
@@ -303,12 +320,6 @@ export interface GameState {
   /** Tracks which players have already had their Reclaimer passive ("1st item to recycle → hand")
    * fire this round. Reset each round. */
   reclaimerPassiveFiredThisRound: Set<number>;
-  /** Per-round set of seatIndices that activated a Command Card this round (feeding recyclePile).
-   * Used by Garbage Day's Completion Condition ("each player Recycled a card this round"). */
-  recycledThisRound: Set<number>;
-  /** Set when Garbage Day's Completion Reward fires ("Round effect permanent") -- keeps the
-   * restore-from-recycle mechanic active every round even after the event card has expired. */
-  garbageDayPermanent: boolean;
   /** Forced Contribution reward/penalty accumulator: each point adds +1 Organic income per
    * additional co-located worker (reward stacks positive, penalty stacks negative). Starts at 0,
    * never resets -- reward/penalty are standing rule changes, same as retireGivesNoResource. */
@@ -462,6 +473,8 @@ export interface GameState {
   /** Medical Focus Completion Reward ("Healing Generates organics") -- permanently, Med Bay
    * retrievals always generate Organic even if a future Medical Focus round effect is active. */
   medBayAlwaysGeneratesOrganic: boolean;
+  /** Containment Block Sealed instant: when true, players may contain boss enemies. */
+  canContainBosses: boolean;
   /** Medical Focus Failure Penalty ("Healing costs organics with cap") -- permanently, Med Bay
    * retrievals cost 2 Organic per unit retrieved instead of granting Organic. */
   medBayCostOrganicPermanently: boolean;

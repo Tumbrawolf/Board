@@ -2,6 +2,7 @@ import { toInt, type MissionCard } from "./data.js";
 import { LOCATIONS, RANK_NUM, UPGRADE_SLOT_CAP, type Location } from "./constants.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
 import { addTempUnitPerm, grantShields, makeUnitInstance, unitsOf } from "./state.js";
+import type { DecisionProvider } from "./decisions.js";
 
 /** Keyword-match the Requirement text against tracked stats/state. Falls back to True (any held
  * mission is completable) for requirement text not recognized here -- this only ever ADDS
@@ -40,11 +41,11 @@ export function missionRequirementMet(
     return p.stats.kills >= (match ? Number(match[1]) : 1);
   }
 
-  // Heal N damage during combat (approximated using healsGiven * 10 HP per heal action)
+  // Heal N damage during combat (exact HP restored tracked in stats.healedHp)
   if (req.includes("heal") && req.includes("damage during combat")) {
     const match = /heal (\d+)/.exec(req);
     const n = match ? Number(match[1]) : 10;
-    return p.stats.healsGiven * 10 >= n;
+    return p.stats.healedHp >= n;
   }
 
   // Equip a unit / Fully Equip
@@ -112,7 +113,42 @@ export function missionRequirementMet(
   if (req.includes("complete event")) return p.stats.eventsPassed >= 1;
   if (req.includes("fail event")) return p.stats.eventsFailed >= 1;
 
-  // Retire requirements
+  // Stun an enemy / Stun N enemies
+  if (req.includes("stun") && req.includes("enem")) {
+    const match = /stun (\d+)/.exec(req);
+    return p.stats.stunsMade >= (match ? Number(match[1]) : 1);
+  }
+
+  // Kill N units above your rank (Giant Slayer)
+  if (req.startsWith("kill") && req.includes("above your rank")) {
+    const match = /kill (\d+)/.exec(req);
+    return p.stats.aboveRankKills >= (match ? Number(match[1]) : 1);
+  }
+
+  // Kill N enemies without losing a friendly unit (Flawless Assault)
+  if (req.startsWith("kill") && req.includes("without losing")) {
+    const match = /kill (\d+)/.exec(req);
+    const n = match ? Number(match[1]) : 4;
+    return p.stats.maxKillsInRoundWithNoDeaths >= n;
+  }
+
+  // Retire requirements — specific conditions before generic fallthrough
+  // Retire under half HP (Just a flesh wound)
+  if (req.includes("retire a unit under half hp") || (req.includes("retire a unit") && req.includes("half hp"))) {
+    return p.stats.unitsRetiredUnderHalfHp >= 1;
+  }
+
+  // Retire over Rank 4 with 1 HP remaining (War Hero)
+  if (req.includes("retire a unit") && req.includes("rank 4") && req.includes("1 hp")) {
+    return p.stats.unitsRetiredHighRankWith1Hp >= 1;
+  }
+
+  // Retire over Rank 4 with full HP (Strategic Recall)
+  if (req.includes("retire a unit") && req.includes("rank 4") && req.includes("full hp")) {
+    return p.stats.unitsRetiredHighRankFullHp >= 1;
+  }
+
+  // Generic retire requirement
   if (req.includes("retire a unit")) {
     // Specific retire conditions (tracked via auto-retire and Honorable Discharge paths)
     return p.stats.unitsRetired >= 1;
@@ -226,7 +262,7 @@ export function missionRequirementMet(
 
 /** Resource field ("Gain +N All resources" / "+N Organic" etc.) plus dispatch for Instant effects.
  * Extended from sim.py's apply_mission_reward with additional stateless/low-complexity hooks. */
-export function applyMissionReward(game: GameState, m: MissionCard, p: GamePlayer) {
+export async function applyMissionReward(game: GameState, m: MissionCard, p: GamePlayer, decisions: DecisionProvider) {
   // Deduct "Return N X to supply" cost when the mission requirement is of that type.
   const req = (m.Requirement ?? "").toLowerCase();
   if (req.includes("return") && req.includes("to supply")) {
@@ -341,33 +377,33 @@ export function applyMissionReward(game: GameState, m: MissionCard, p: GamePlaye
     return;
   }
 
-  // Target player gains N resource (approximated: completing player gains it since no mid-flow UI)
+  // Target player gains N resource — completing player picks the recipient.
   if (instant.startsWith("target player gains")) {
     const match = /gains (\d+) (\w+)/.exec(instant);
     if (match) {
       const n = Number(match[1]);
       const word = match[2];
       const res = word.startsWith("organ") ? "Organic" : word.startsWith("tech") ? "Tech" : "Alien";
-      p.res[res as "Organic" | "Tech" | "Alien"] += n;
+      const target = await decisions.chooseMissionTargetPlayer(p, game, res, n);
+      target.res[res] += n;
     }
     return;
   }
 
-  // Gain N resources, split any way you choose (approximated: distribute as evenly as possible)
+  // Gain N resources, split any way you choose — player decides the allocation.
   if (instant.includes("gain") && instant.includes("resources") && instant.includes("split")) {
     const match = /gain (\d+) resources/.exec(instant);
     const n = match ? Number(match[1]) : 5;
-    const each = Math.floor(n / 3);
-    const rem = n - 3 * each;
-    p.res.Organic += each + rem;
-    p.res.Tech += each;
-    p.res.Alien += each;
+    const split = await decisions.chooseMissionResourceSplit(p, game, n);
+    p.res.Organic += split.Organic;
+    p.res.Tech += split.Tech;
+    p.res.Alien += split.Alien;
     return;
   }
 
-  // Refresh ability cooldowns this round (clears abilityUsesThisRound so all abilities can
-  // be reused). "Refresh target/up to N" is approximated as a full clear since targeting UI
-  // isn't available at mission-reward time.
+  // Refresh all ability cooldowns this round. Cards that say "refresh up to N" or "refresh target"
+  // are intentionally resolved as a full clear — a full refresh is always at least as good as
+  // the card offers, and no ability tracking exists to support partial-refresh targeting.
   if (
     instant.startsWith("refresh") ||
     (instant.startsWith("reset") && instant.includes("cooldown"))
@@ -671,5 +707,12 @@ export function applyMissionReward(game: GameState, m: MissionCard, p: GamePlaye
   if (instant.includes("losing command role requires") || instant.includes("iron grip")) {
     game.ironGripSeats.add(p.seatIndex);
     return;
+  }
+
+  // Containment Block Sealed: "You can contain bosses"
+  if (instant.startsWith("you can contain bosses")) {
+    game.canContainBosses = true;
+    return;
+    // TODO: gate boss containment logic on game.canContainBosses when the boss-containment UI path is added.
   }
 }

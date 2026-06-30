@@ -134,10 +134,6 @@ export function eventConditionMet(
         const assigned = game.assignedPostLocations.get(p.seatIndex);
         return Boolean(assigned) && (placementsThisRound[p.seatIndex] ?? []).includes(assigned!);
       });
-    case "Garbage Day":
-      // "Each player Recycled a card this round" -- recycledThisRound is a real per-round set of
-      // seatIndices that activated a Command Card (fed by recycleIfGarbageDay in planningActions.ts).
-      return game.players.every((p) => game.recycledThisRound.has(p.seatIndex));
     case "Saboteur investigation":
       return game.disabledLocation ? workersAt(game.disabledLocation) === 0 : false;
     case "Capacity Threshold":
@@ -232,24 +228,6 @@ function unequipAllOfType(p: GamePlayer, type: string | null, severity: number, 
   }
 }
 
-/** Garbage Day's restore mechanic -- shared between the active-event round effect and the
- * permanent effect (once the Completion Reward fires, "Round effect permanent"). Auto-applies
- * once per round: commander restores the cheapest-Tech card from the recycle pile to hand. */
-export function applyGarbageDayRestore(game: GameState, log: (t: string) => void) {
-  const commander = game.players[game.commanderIdx];
-  const commandsInRecycle = game.recyclePile.filter((g) => "Active Effect" in (g as any)) as import("./data.js").CommandCard[];
-  if (commandsInRecycle.length) {
-    const cheapest = commandsInRecycle.reduce((a, b) => (toInt((b as any).Tech) < toInt((a as any).Tech) ? b : a));
-    const cost = toInt((cheapest as any).Tech);
-    if (commander.res.Tech >= cost) {
-      commander.res.Tech -= cost;
-      game.recyclePile.splice(game.recyclePile.indexOf(cheapest), 1);
-      commander.hand.push(cheapest);
-      log(`  [Garbage Day] ${commander.name} restores ${(cheapest as any).Name} from Recycle to hand (Tech -${cost})`);
-    }
-  }
-}
-
 /** Round Effect column -- ongoing for the round while this Event is active. Command Requisition
  * (income redirect + command-pool spending), Lead by example (extra mission draw), Chain of
  * Command (HP/Dmg = rank), and Honorable Discharge (retire instead of dying) are all real too,
@@ -319,8 +297,6 @@ export function applyEventRoundEffect(game: GameState, event: EventCard, log: (t
     // the Condition this Event actually cares about (containedThisRound vs killsThisRound, see
     // eventConditionMet) is real either way.
     game.containmentCapacityDoubled = true;
-  } else if (name === "Garbage Day") {
-    applyGarbageDayRestore(game, log);
   } else if (name === "Assigned Posts") {
     game.assignedPostLocations = new Map(game.players.map((p) => [p.seatIndex, LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)]]));
     log(
@@ -393,7 +369,7 @@ export function applyEventCombatMods(game: GameState, c: Combatant, isEnemy: boo
  * retire instead of dying, double Containment capacity) rather than disruptive harm -- Fix 1's
  * blanket "skip Penalty, the Round Effect already hurt enough" rule doesn't apply to these, since
  * there's no harm to double up on. They keep a real Penalty on failure same as the original 8. */
-const BENEFICIAL_ROUND_EFFECT_EVENTS = new Set(["Garbage Day", "Honorable Discharge", "Research drive", "Silence in no mans land", "Emergency Triage", "Kill Contest"]);
+const BENEFICIAL_ROUND_EFFECT_EVENTS = new Set(["Honorable Discharge", "Research drive", "Silence in no mans land", "Emergency Triage", "Kill Contest"]);
 
 /** Completion Reward / Failure Penalty -- the pass/fail roll itself is now a real Completion
  * Condition check (eventConditionMet), not a coin flip. */
@@ -458,8 +434,6 @@ export function applyEventResolution(game: GameState, event: EventCard, passed: 
       // units actually retired this round (retiresThisRound), not a flat nudge.
       const retired = [...game.retiresThisRound.values()].reduce((s, n) => s + n, 0);
       game.commandPool.Organic += retired * 3;
-    } else if (name === "Garbage Day") {
-      game.garbageDayPermanent = true;
     } else if (name === "Forced Contribution") {
       game.locationSharingBonus += 1;
     } else if (name === "Tax Fault") {
@@ -599,8 +573,6 @@ export function applyEventResolution(game: GameState, event: EventCard, passed: 
     if (name === "Tax Fault") game.shopCostBonus.Alien += 2;
     if (name === "Cheap Knockoffs") game.shopCostBonus.Tech += 2;
     if (name === "Food Shortage") game.shopCostBonus.Organic += 2;
-    // Garbage Day's Penalty ("Delete items on death") describes THIS round's deaths, but
-    // resolution runs after combat has already finished for the round -- structural no-op.
     // Research drive's ("Disable a Containment Block slot") is applied at its own call site
     // in game.ts -- touches GameEngine's private containmentSlots, which this free function can't reach.
   }

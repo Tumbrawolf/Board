@@ -97,7 +97,7 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
       const amt = GEAR_RESERVE_HEAL[(g as any).Name];
       if (amt && activeUnit) {
         const healed = healUnit(activeUnit, amt, game);
-        if (healed) p.stats.healsGiven += 1;
+        if (healed) { p.stats.healsGiven += 1; p.stats.healedHp += healed; }
       }
     }
   }
@@ -265,7 +265,8 @@ function applyGearActive(
       const targets = unitsOf(w).filter((u) => u.curHp < u.maxHp).sort((a, b) => (a.curHp - a.maxHp) - (b.curHp - b.maxHp));
       const healCount = isEngineer ? 2 : 1;
       for (const t of targets.slice(0, healCount)) {
-        if (healUnit(t, Math.floor(t.maxHp / 2) + 1, game)) w.stats.healsGiven += 1;
+        const medkitHealed = healUnit(t, Math.floor(t.maxHp / 2) + 1, game);
+        if (medkitHealed) { w.stats.healsGiven += 1; w.stats.healedHp += medkitHealed; }
       }
       break;
     }
@@ -273,7 +274,8 @@ function applyGearActive(
       const targets = unitsOf(w).filter((u) => u.curHp < u.maxHp).sort((a, b) => (a.curHp - a.maxHp) - (b.curHp - b.maxHp));
       const healCount = isEngineer ? 2 : 1;
       for (const t of targets.slice(0, healCount)) {
-        if (healUnit(t, undefined, game)) w.stats.healsGiven += 1;
+        const triageHealed = healUnit(t, undefined, game);
+        if (triageHealed) { w.stats.healsGiven += 1; w.stats.healedHp += triageHealed; }
       }
       break;
     }
@@ -331,7 +333,8 @@ function applyGearActive(
         .sort((a, b) => (a.curHp - a.maxHp) - (b.curHp - b.maxHp));
       const repairCount = isEngineer ? 2 : 1;
       for (const t of candidates.slice(0, repairCount)) {
-        if (healUnit(t, Math.floor(t.maxHp / 2), game)) w.stats.healsGiven += 1;
+        const repairHealed = healUnit(t, Math.floor(t.maxHp / 2), game);
+        if (repairHealed) { w.stats.healsGiven += 1; w.stats.healedHp += repairHealed; }
       }
       break;
     }

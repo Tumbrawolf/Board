@@ -42,7 +42,7 @@ export function secretObjectiveMet(game: GameState, so: SecretObjectiveCard, p: 
     case "The Wall":
       return p.stats.overrunsSuffered === 0;
     case "Medic":
-      return p.stats.healsGiven * 10 > 30; // approximating 10HP/heal-action, same as sim.py
+      return p.stats.healedHp > 30;
     case "Stubborn":
       return overrunStart - game.overrunTrackerMin <= 5;
     case "Conductor":

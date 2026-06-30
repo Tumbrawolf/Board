@@ -32,7 +32,7 @@ import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, classifyU
 import { applyEnemyCombatMods, classifyEnemy } from "./enemies.js";
 import { applyGearCombatMods, applyPrecombatGear, tryChronostasisSave } from "./gear.js";
 import { applyBossBoardWideMods, applyBossTier, resolveBossExchange } from "./bosses.js";
-import { applyEventCombatMods, applyEventResolution, applyEventRoundEffect, applyGarbageDayRestore, eventConditionMet, eventSeverity } from "./events.js";
+import { applyEventCombatMods, applyEventResolution, applyEventRoundEffect, eventConditionMet, eventSeverity } from "./events.js";
 import { applyMissionReward, missionRequirementMet } from "./missions.js";
 import { checkSecretObjectives } from "./secretObjectives.js";
 import { payEscrow, resolveAccusation } from "./accusations.js";
@@ -207,6 +207,7 @@ export class GameEngine {
         promotionsReceived: 0,
         donationsMade: { Organic: 0, Tech: 0, Alien: 0 },
         healsGiven: 0,
+        healedHp: 0,
         gearEquipped: 0,
         gearEquippedToAllies: 0,
         gearDiscarded: 0,
@@ -236,6 +237,12 @@ export class GameEngine {
         maxArmorShieldStrippedInRound: 0,
         roundsArmorAbsorbedAll: 0,
         trampleKillsTotal: 0,
+        stunsMade: 0,
+        aboveRankKills: 0,
+        unitsRetiredUnderHalfHp: 0,
+        unitsRetiredHighRankWith1Hp: 0,
+        unitsRetiredHighRankFullHp: 0,
+        maxKillsInRoundWithNoDeaths: 0,
       },
     }));
 
@@ -315,8 +322,6 @@ export class GameEngine {
       quartermasterRolledShopUnits: new Set(),
       gunsmithFreeWeaponUsedSeats: new Set(),
       bulwarkFreeArmorUsedSeats: new Set(),
-      recycledThisRound: new Set(),
-      garbageDayPermanent: false,
       locationSharingBonus: 0,
       returnedToSupplyThisRound: { Organic: 0, Tech: 0, Alien: 0 },
       locationAlienBonus: 0,
@@ -344,6 +349,7 @@ export class GameEngine {
       shopGearFreeTypeNextRound: null,
       healingPerWorkerBonus: 0,
       medBayAlwaysGeneratesOrganic: false,
+      canContainBosses: false,
       medBayCostOrganicPermanently: false,
       killContestHighRankDoubled: false,
       killContestHighRankHalved: false,
@@ -529,7 +535,6 @@ export class GameEngine {
     game.suppressedPassiveEnemyNames = new Set();
     game.retiresThisRound = new Map();
     game.missionRankCompletedThisRound = 0;
-    game.recycledThisRound = new Set();
     game.gearHandReturnedThisRound = new Map();
     game.reclaimerPassiveFiredThisRound = new Set();
     game.unitsOrGearAddedSeats = new Set();
@@ -663,12 +668,6 @@ export class GameEngine {
       }
     }
     game.activeEvent = activeEvent;
-    // Garbage Day permanent effect: once earned, the restore-from-recycle mechanic applies every
-    // round even when some other event is active (Garbage Day itself already handles it above).
-    if (game.garbageDayPermanent && game.activeEvent?.["Event name"] !== "Garbage Day") {
-      applyGarbageDayRestore(game, (t) => this.log(t));
-    }
-
     // Commander lane assignment: commander may reassign which player controls which physical lane
     // this round. Returns a Map<controllerSeatIndex, laneOwnerSeatIndex>. Bot always returns
     // identity (no change). Human commander gets a socket prompt with current lane states.
@@ -848,33 +847,132 @@ export class GameEngine {
         const chosen = game.containedEnemyPool[resp.optionIdx];
         const reveal: string = (chosen as any).Reveal ?? "";
         game.combatStimsUsedThisRound = true;
-        const dmgMatch = reveal.match(/Deal (\d+)/i);
-        const atkMatch = reveal.match(/Gains?\s+(\d+)\s+(?:attack|damage)/i);
-        const shieldMatch = reveal.match(/Gain\s+(\d+)\s+Shield/i);
-        const armorMatch = reveal.match(/Gain\s+(\d+)\s+Armor/i);
-        const healMatch = reveal.match(/(?:Heal|Regain)\s+(\d+)/i);
-        if (dmgMatch) {
-          const dmg = parseInt(dmgMatch[1]);
+        const csLog = (msg: string) => this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → ${msg}`);
+
+        // ── 2× damage (specific before flat-number match) ──────────────────
+        if (/Deal 2x attack damage/i.test(reveal)) {
+          if (commander.active) {
+            tempState.tempBuff(commander.active, { Damage: toInt(commander.active.card.Damage) });
+            csLog(`active unit deals 2× damage this round`);
+          }
+        // ── flat damage bonus ("Deal N" or "Deals N") ──────────────────────
+        } else if (/Deals?\s+(\d+)/i.test(reveal)) {
+          const m = reveal.match(/Deals?\s+(\d+)/i)!;
+          const dmg = parseInt(m[1]);
           commander.combatStimsRevealBonus += dmg;
-          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → +${dmg} bonus combat damage`);
-        } else if (atkMatch) {
-          const atk = parseInt(atkMatch[1]);
-          commander.combatStimsRevealBonus += atk;
-          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → +${atk} bonus combat damage`);
-        } else if (shieldMatch && commander.active) {
-          const shields = parseInt(shieldMatch[1]);
-          tempState.tempBuff(commander.active, { Shields: shields });
-          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → +${shields} shields on ${commander.active.card.Name}`);
-        } else if (armorMatch && commander.active) {
-          const armor = parseInt(armorMatch[1]);
-          tempState.tempBuff(commander.active, { Armor: armor });
-          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → +${armor} armor on ${commander.active.card.Name}`);
-        } else if (healMatch && commander.active) {
-          const hp = parseInt(healMatch[1]);
-          healUnit(commander.active, hp, game);
-          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" → healed ${hp} HP on ${commander.active.card.Name}`);
+          csLog(`+${dmg} bonus combat damage`);
+        // ── gains N attack/damage ───────────────────────────────────────────
+        } else if (/Gains?\s+(\d+)\s+(?:attack|damage)/i.test(reveal)) {
+          const m = reveal.match(/Gains?\s+(\d+)\s+(?:attack|damage)/i)!;
+          commander.combatStimsRevealBonus += parseInt(m[1]);
+          csLog(`+${m[1]} bonus combat damage`);
+        // ── shield active units by N / grant N shield to active units ───────
+        } else if (/Shield active units by (\d+)/i.test(reveal) || /Grant (\d+) shields? to active units/i.test(reveal)) {
+          const m = reveal.match(/(?:Shield active units by|Grant)\s+(\d+)/i)!;
+          const n = parseInt(m[1]);
+          if (commander.active) { tempState.tempBuff(commander.active, { Shields: n }); csLog(`+${n} shields on ${commander.active.card.Name}`); }
+        // ── gain N shield(s) ────────────────────────────────────────────────
+        } else if (/Gain\s+(\d+)\s+Shields?/i.test(reveal)) {
+          const m = reveal.match(/Gain\s+(\d+)\s+Shields?/i)!;
+          const n = parseInt(m[1]);
+          if (commander.active) { tempState.tempBuff(commander.active, { Shields: n }); csLog(`+${n} shields on ${commander.active.card.Name}`); }
+        // ── gain N armor ────────────────────────────────────────────────────
+        } else if (/Gain\s+(\d+)\s+Armor/i.test(reveal)) {
+          const m = reveal.match(/Gain\s+(\d+)\s+Armor/i)!;
+          const armor = parseInt(m[1]);
+          if (commander.active) { tempState.tempBuff(commander.active, { Armor: armor }); csLog(`+${armor} armor on ${commander.active.card.Name}`); }
+        // ── heal / regain ───────────────────────────────────────────────────
+        } else if (/(?:Heal|Regain)\s+(\d+)/i.test(reveal)) {
+          const m = reveal.match(/(?:Heal|Regain)\s+(\d+)/i)!;
+          const hp = parseInt(m[1]);
+          if (commander.active) { healUnit(commander.active, hp, game); csLog(`healed ${hp} HP on ${commander.active.card.Name}`); }
+        // ── multistrike / hit N times ───────────────────────────────────────
+        } else if (/Gain\s+(\d+)\s+Multistrike/i.test(reveal) || /Hit all units\s+(\d+)\s+times/i.test(reveal)) {
+          const m = reveal.match(/(\d+)/);
+          const n = m ? parseInt(m[1]) : 2;
+          if (commander.active && n > 1) {
+            tempState.tempBuff(commander.active, { Damage: (n - 1) * toInt(commander.active.card.Damage) });
+            csLog(`active unit attacks ${n}× this round (×${n} base damage)`);
+          }
+        // ── attack every lane once ──────────────────────────────────────────
+        } else if (/Attack every lane once/i.test(reveal)) {
+          if (commander.active) {
+            const atk = toInt(commander.active.card.Damage);
+            for (const tp of game.players) {
+              if (tp.laneEnemyReserve.length) {
+                const front = tp.laneEnemyReserve[0] as any;
+                const newHp = Math.max(0, toInt(front.HP) - atk);
+                front.HP = String(newHp);
+                if (newHp <= 0) tp.laneEnemyReserve.shift();
+              }
+            }
+            csLog(`active unit deals ${atk} damage to each lane's front enemy`);
+          }
+        // ── stun front enemy ────────────────────────────────────────────────
+        } else if (/Stun/i.test(reveal)) {
+          tempState.pendingEnemyStunSeats.add(commander.seatIndex);
+          commander.stats.stunsMade += 1;
+          csLog(`front enemy in ${commander.name}'s lane stunned`);
+        // ── kill lowest HP enemy ────────────────────────────────────────────
+        } else if (/Kill Lowest HP unit/i.test(reveal)) {
+          let lowestHp = Infinity, lowestLane: GamePlayer | null = null, lowestIdx = -1;
+          for (const tp of game.players) tp.laneEnemyReserve.forEach((e, i) => { const hp = toInt((e as any).HP); if (hp < lowestHp) { lowestHp = hp; lowestLane = tp; lowestIdx = i; } });
+          if (lowestLane && lowestIdx >= 0) { const killed = (lowestLane as GamePlayer).laneEnemyReserve.splice(lowestIdx, 1)[0]; csLog(`executed ${killed.Name} (${lowestHp} HP, lowest)`); }
+        // ── kill highest rank enemy ─────────────────────────────────────────
+        } else if (/Kill highest rank/i.test(reveal)) {
+          let highestRank = -1, highestLane: GamePlayer | null = null, highestIdx = -1;
+          for (const tp of game.players) tp.laneEnemyReserve.forEach((e, i) => { const r = ENEMY_RANK_NUM[(e as any).Rank as EnemyRank] ?? 0; if (r > highestRank) { highestRank = r; highestLane = tp; highestIdx = i; } });
+          if (highestLane && highestIdx >= 0) { const killed = (highestLane as GamePlayer).laneEnemyReserve.splice(highestIdx, 1)[0]; csLog(`executed ${killed.Name} (highest rank)`); }
+        // ── execute under 1/4 health ────────────────────────────────────────
+        } else if (/Execute units under 1\/4 health/i.test(reveal)) {
+          let count = 0;
+          for (const tp of game.players) tp.laneEnemyReserve = tp.laneEnemyReserve.filter(e => { if (toInt((e as any).HP) <= 10) { count++; return false; } return true; });
+          csLog(count > 0 ? `executed ${count} enemy/enemies (HP ≤ 10)` : `no enemies below threshold`);
+        // ── halve HP of all enemies ─────────────────────────────────────────
+        } else if (/Half the HP of all units/i.test(reveal)) {
+          for (const tp of game.players) for (const e of tp.laneEnemyReserve) (e as any).HP = String(Math.max(1, Math.floor(toInt((e as any).HP) / 2)));
+          csLog(`halved HP of all enemies`);
+        // ── halve HP of infantry enemies ────────────────────────────────────
+        } else if (/Half HP of all infantry/i.test(reveal)) {
+          for (const tp of game.players) for (const e of tp.laneEnemyReserve) if (((e as any).Type ?? "").toLowerCase().includes("infantry")) (e as any).HP = String(Math.max(1, Math.floor(toInt((e as any).HP) / 2)));
+          csLog(`halved HP of all infantry enemies`);
+        // ── shields = current HP ────────────────────────────────────────────
+        } else if (/Gain Shields? = Health/i.test(reveal)) {
+          if (commander.active) { tempState.tempBuff(commander.active, { Shields: commander.active.curHp }); csLog(`+${commander.active.curHp} shields on ${commander.active.card.Name} (= current HP)`); }
+        // ── damage = missing HP ─────────────────────────────────────────────
+        } else if (/Deal damage to units = missing hp/i.test(reveal)) {
+          if (commander.active) {
+            const missing = commander.active.maxHp - commander.active.curHp;
+            commander.combatStimsRevealBonus += missing;
+            csLog(`+${missing} bonus damage (= active unit's missing HP)`);
+          }
+        // ── strip enemy armor+shields, bonus damage = amount stripped ───────
+        } else if (/Remove armor and shields from units.*deal damage = amount removed/i.test(reveal)) {
+          let stripped = 0;
+          for (const tp of game.players) for (const e of tp.laneEnemyReserve as any[]) { stripped += toInt(e.Armor ?? 0) + toInt(e.Shields ?? 0); e.Armor = "0"; e.Shields = "0"; }
+          commander.combatStimsRevealBonus += stripped;
+          csLog(`stripped all enemy armor/shields → +${stripped} bonus damage`);
+        // ── no-ops: harmful or structurally meaningless for a contained unit ─
+        } else if (reveal && (
+          /Move this unit to reserve/i.test(reveal) ||
+          /Shuffle.*upgrade.*into deck/i.test(reveal) ||
+          /Roll D\d.*(?:move|swap).*lane/i.test(reveal) ||
+          /Grant all enemies/i.test(reveal) ||
+          /Give all enemies/i.test(reveal) ||
+          /Prevent the next.*damage delt to enemies/i.test(reveal) ||
+          /disable the upgrades/i.test(reveal) ||
+          /Return enemies that died last round/i.test(reveal) ||
+          /Revive the top.*infantry.*graveyard/i.test(reveal) ||
+          /Place the strongest Infantry in shop/i.test(reveal) ||
+          /Kill active scout/i.test(reveal) ||
+          /All Allies Splash friendlies/i.test(reveal) ||
+          /Delete highest rank unit/i.test(reveal) ||
+          /Gain Shields = excess damage on kill/i.test(reveal) ||
+          /Gain the stats of top/i.test(reveal)
+        )) {
+          csLog(`no beneficial effect for contained unit — skipped`);
         } else if (reveal) {
-          this.log(`  [Combat Stims passive] ${chosen.Name} Reveal "${reveal}" — effect not implemented`);
+          csLog(`effect not matched`);
         } else {
           this.log(`  [Combat Stims passive] ${chosen.Name} has no Reveal effect`);
         }
@@ -1228,7 +1326,7 @@ export class GameEngine {
         const gain = RANK_NUM[m["Player Rank"]] - p.rank >= 3 ? 2 : 1;
         p.rank = Math.min(RANK_ORDER.length, p.rank + gain);
         p.stats.promotionsReceived += 1;
-        applyMissionReward(game, m, p);
+        await applyMissionReward(game, m, p, this.decisions);
         game.missionRankCompletedThisRound += RANK_NUM[m["Player Rank"]] ?? 1;
         this.log(`  Mission complete: ${p.name} finishes '${m.Name}' (+${gain} Rank) -> Rank ${RANK_ORDER[p.rank - 1]}`);
         p.stats.missionsCompleted += 1;
@@ -1443,9 +1541,10 @@ export class GameEngine {
             } else {
               grantIncome(p, "Organic", 2 + (isDoctor ? p.rank : 0));
             }
-            healUnit(ui, undefined, game);
+            const medHealed = healUnit(ui, undefined, game);
             p.reserve.push(ui);
             p.stats.healsGiven += 1;
+            p.stats.healedHp += medHealed;
             this.log(`  ${p.name} retrieves ${ui.card.Name} from Medical Bay`);
           }
           // We Can Rebuild Them passive: retrieve all remaining Med Bay units by paying each unit's Tech Cost.
@@ -1456,9 +1555,10 @@ export class GameEngine {
               if (p.res.Tech < techCost) break;
               p.medBayUnits.shift();
               p.res.Tech -= techCost;
-              healUnit(ui, undefined, game);
+              const rebuildHealed = healUnit(ui, undefined, game);
               p.reserve.push(ui);
               p.stats.healsGiven += 1;
+              p.stats.healedHp += rebuildHealed;
               this.log(`  [We Can Rebuild Them] ${p.name} rebuilds ${ui.card.Name} (paid ${techCost} Tech)`);
             }
           }
@@ -1646,6 +1746,10 @@ export class GameEngine {
         }
         game.unitDeck.push(u.card);
         this.returnOrRecycleGear(game, p, u.equipped.filter((g) => "Rank Name" in (g as any)) as any[]);
+        // Retire qualifier stats.
+        if (u.curHp <= u.maxHp / 2) p.stats.unitsRetiredUnderHalfHp += 1;
+        if (RANK_NUM[(u.card as any).Rank] > 4 && u.curHp === 1) p.stats.unitsRetiredHighRankWith1Hp += 1;
+        if (RANK_NUM[(u.card as any).Rank] > 4 && u.curHp >= u.maxHp) p.stats.unitsRetiredHighRankFullHp += 1;
         p.stats.unitsRetired += 1;
         game.retiresThisRound.set(p.seatIndex, (game.retiresThisRound.get(p.seatIndex) ?? 0) + 1);
         this.log(`  ${p.name} retires ${u.card.Name} (Rank ${u.card.Rank})${game.retireGivesNoResource ? "" : " for a partial refund"}`);
@@ -3871,6 +3975,40 @@ export class GameEngine {
             this.log(`  [Long Range] ${lane.p.name}'s ${pActive.name} deals ${dmg} to ${target.name} in ${targetLane.p.name}'s lane (${target.curHp} HP left)`);
           }
         }
+        // Laser Designator: when any player's units have Laser Designator equipped, ALL other players
+        // whose lanes are clear (no remaining enemies) — regardless of whether they have long_range —
+        // can fire at the designated lane(s). This is additional to Long Range (which already ran above).
+        {
+          const designatedLanes = laneRuns.filter((lr) =>
+            (lr.p.active?.equipped.some((g) => (g as any).Name === "Laser Designator") ?? false) ||
+            lr.p.reserve.some((u) => u.equipped.some((g) => (g as any).Name === "Laser Designator"))
+          );
+          if (designatedLanes.length > 0) {
+            for (const lane of laneRuns) {
+              const pActive = lane.pq[0];
+              // Skip: no unit, dead, already has longRange (handled by Long Range), or own lane still has enemies.
+              if (!pActive || pActive.curHp <= 0 || pActive.longRange || lane.eq.length > 0) continue;
+              // Skip if this lane itself is designated (don't attack yourself).
+              if (designatedLanes.includes(lane)) continue;
+              // Find the designated lane with the most remaining enemies that still has enemies.
+              const targetLane = designatedLanes
+                .filter((dl) => dl !== lane && dl.eq.length > 0)
+                .reduce<typeof laneRuns[0] | null>((best, dl) => {
+                  return (best === null || dl.eq.length > best.eq.length) ? dl : best;
+                }, null);
+              if (!targetLane) continue;
+              const target = targetLane.eq[0];
+              const dmg = computeDealt(pActive, target);
+              target.curHp -= dmg;
+              if (target.curHp <= 0) {
+                targetLane.eq.shift();
+                this.log(`  [Laser Designator] ${lane.p.name}'s ${pActive.name} kills ${target.name} in ${targetLane.p.name}'s lane`);
+              } else {
+                this.log(`  [Laser Designator] ${lane.p.name}'s ${pActive.name} deals ${dmg} to ${target.name} in ${targetLane.p.name}'s lane (${target.curHp} HP left)`);
+              }
+            }
+          }
+        }
         // Slayer Suit active: "Execute target enemy under 1/4 HP and is under rank 6, move this
         // unit to that lane". Fires once per exchange round after all lanes have resolved, so any
         // lane whose active enemy dropped below threshold this exchange can be targeted cross-lane.
@@ -4007,6 +4145,10 @@ export class GameEngine {
             if (ek) {
               if ((ek as any).Reveal || (ek as any).Passive) p.stats.abilityEnemyKills += 1;
               game.enemiesKilledThisRound.push(ek as EnemyCard);
+              // Giant Slayer: count kills on enemies whose rank is strictly above the player's rank.
+              if ((ENEMY_RANK_NUM[(ek as any).Rank as EnemyRank] ?? 0) > p.rank) {
+                p.stats.aboveRankKills += 1;
+              }
             }
           }
         }
@@ -4143,15 +4285,10 @@ export class GameEngine {
           this.log(`  [Delete on Kill] ${ui.card.Name} permanently deleted`);
         } else {
           applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
-          const realGear = ui.equipped.filter((g) => "Name" in (g as any));
+          const realGear = ui.equipped.filter((g) => "Rank Name" in (g as any)) as import("./data.js").GearCard[];
           if (realGear.length) {
-            const kept = realGear.reduce((a, b) =>
-              toInt((b as any).Damage) + toInt((b as any).HP) + toInt((b as any).Armor) + toInt((b as any).Shields) >
-              toInt((a as any).Damage) + toInt((a as any).HP) + toInt((a as any).Armor) + toInt((a as any).Shields)
-                ? b
-                : a
-            );
-            p.gearHand.push(kept as any);
+            ui.equipped = ui.equipped.filter((g) => !("Rank Name" in (g as any)));
+            this.returnOrRecycleGear(game, p, realGear);
           }
           this.retireOrGraveyard(p, ui);
         }
@@ -4245,6 +4382,17 @@ export class GameEngine {
         p.stats.misdirectorLaneClean = !ownOverran;
       } else if (ownOverran) {
         p.stats.misdirectorLaneClean = false;
+      }
+    }
+
+    // Flawless Assault mission stat: max kills in a single round where the player had 0 deaths.
+    for (const p of game.players) {
+      const deathsThisRound = game.deathsThisRound.get(p.seatIndex) ?? 0;
+      if (deathsThisRound === 0) {
+        const killsThisRound = game.killsThisRound.get(p.seatIndex) ?? 0;
+        if (killsThisRound > p.stats.maxKillsInRoundWithNoDeaths) {
+          p.stats.maxKillsInRoundWithNoDeaths = killsThisRound;
+        }
       }
     }
 

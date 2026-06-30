@@ -273,6 +273,40 @@ export function resolveChessmasterConsent(socketId: string, requestId: string, a
   req.resolve(Boolean(accepted));
 }
 
+// ── Mission Target Player ─────────────────────────────────────────────────────
+
+const MISSION_TARGET_PLAYER_TIMEOUT_MS = 30000;
+
+interface PendingMissionTargetPlayer {
+  socketId: string;
+  resolve: (targetSeatIndex: number | null) => void;
+}
+const pendingMissionTargetPlayer = new Map<string, PendingMissionTargetPlayer>();
+
+export function resolveMissionTargetPlayer(socketId: string, requestId: string, targetSeatIndex: number) {
+  const req = pendingMissionTargetPlayer.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingMissionTargetPlayer.delete(requestId);
+  req.resolve(typeof targetSeatIndex === "number" ? targetSeatIndex : null);
+}
+
+// ── Mission Resource Split ────────────────────────────────────────────────────
+
+const MISSION_RESOURCE_SPLIT_TIMEOUT_MS = 30000;
+
+interface PendingMissionResourceSplit {
+  socketId: string;
+  resolve: (split: { Organic: number; Tech: number; Alien: number } | null) => void;
+}
+const pendingMissionResourceSplit = new Map<string, PendingMissionResourceSplit>();
+
+export function resolveMissionResourceSplit(socketId: string, requestId: string, split: { Organic: number; Tech: number; Alien: number }) {
+  const req = pendingMissionResourceSplit.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingMissionResourceSplit.delete(requestId);
+  req.resolve(split && typeof split === "object" ? split : null);
+}
+
 // ── Cross-Lane Gear Offer ─────────────────────────────────────────────────────
 
 const GEAR_OFFER_TIMEOUT_MS = 20000;
@@ -1101,5 +1135,63 @@ export class MixedDecisionProvider implements DecisionProvider {
       if (consentGiven) accepted.push(move);
     }
     return accepted;
+  }
+
+  async chooseMissionTargetPlayer(
+    completingPlayer: import("./engine/types.js").GamePlayer,
+    game: import("./engine/types.js").GameState,
+    resource: "Organic" | "Tech" | "Alien",
+    amount: number
+  ): Promise<import("./engine/types.js").GamePlayer> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === completingPlayer.seatIndex);
+    if (!seat || seat.isBot) return this.bot.chooseMissionTargetPlayer(completingPlayer, game, resource, amount);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.chooseMissionTargetPlayer(completingPlayer, game, resource, amount);
+
+    const requestId = randomUUID();
+    const chosen = await new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => { pendingMissionTargetPlayer.delete(requestId); resolve(null); }, MISSION_TARGET_PLAYER_TIMEOUT_MS);
+      pendingMissionTargetPlayer.set(requestId, { socketId: socket.id, resolve: (idx) => { clearTimeout(timer); resolve(idx); } });
+      socket.emit("mission:targetPlayer:prompt", {
+        requestId,
+        timeoutMs: MISSION_TARGET_PLAYER_TIMEOUT_MS,
+        resource,
+        amount,
+        players: game.players.map((q) => ({ seatIndex: q.seatIndex, name: q.name, rank: q.rank })),
+      });
+    });
+
+    if (chosen === null) return this.bot.chooseMissionTargetPlayer(completingPlayer, game, resource, amount);
+    const target = game.players.find((p) => p.seatIndex === chosen);
+    if (!target) return this.bot.chooseMissionTargetPlayer(completingPlayer, game, resource, amount);
+    return target;
+  }
+
+  async chooseMissionResourceSplit(
+    player: import("./engine/types.js").GamePlayer,
+    game: import("./engine/types.js").GameState,
+    total: number
+  ): Promise<{ Organic: number; Tech: number; Alien: number }> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === player.seatIndex);
+    if (!seat || seat.isBot) return this.bot.chooseMissionResourceSplit(player, game, total);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.chooseMissionResourceSplit(player, game, total);
+
+    const requestId = randomUUID();
+    const chosen = await new Promise<{ Organic: number; Tech: number; Alien: number } | null>((resolve) => {
+      const timer = setTimeout(() => { pendingMissionResourceSplit.delete(requestId); resolve(null); }, MISSION_RESOURCE_SPLIT_TIMEOUT_MS);
+      pendingMissionResourceSplit.set(requestId, { socketId: socket.id, resolve: (s) => { clearTimeout(timer); resolve(s); } });
+      socket.emit("mission:resourceSplit:prompt", { requestId, timeoutMs: MISSION_RESOURCE_SPLIT_TIMEOUT_MS, total });
+    });
+
+    if (
+      chosen === null ||
+      typeof chosen.Organic !== "number" || typeof chosen.Tech !== "number" || typeof chosen.Alien !== "number" ||
+      chosen.Organic < 0 || chosen.Tech < 0 || chosen.Alien < 0 ||
+      chosen.Organic + chosen.Tech + chosen.Alien !== total
+    ) {
+      return this.bot.chooseMissionResourceSplit(player, game, total);
+    }
+    return chosen;
   }
 }

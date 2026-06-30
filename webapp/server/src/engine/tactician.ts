@@ -7,18 +7,11 @@ import type { GamePlayer, GameState } from "./types.js";
 
 /** Returns a cost-adjusted copy of card for affordability/payment purposes -- covers the
  * clearest, most mechanically tractable Tactician Resource effects (shop cost reductions).
- * Ported 1:1 from tactician_discounted_cost for the first 9 roles; the other 9 (The Tactician,
- * Kingmaker, Jailer, Reclaimer, Pathfinder, Breaker, Bastion, Chessmaster, Quartermaster) were
- * sim.py-side no-ops too -- now given real hooks below where one exists (see
- * tacticianBypassesRankCheck, tacticianContainmentBuildDiscount, applyTacticianCombatMods,
- * applyTacticianPrecombat). The Reclaimer (needs a "Recycling" shared discard pile that doesn't
- * exist) and The Chessmaster (needs a distinct "Reassign" action separate from normal
- * reserve/active management, and gear text never actually says "mobility skills") still have no
- * clean hook -- documented no-ops, consistent with how this engine treats every other card
- * needing infrastructure that doesn't exist. Tactician ACTIVE effects (all 18 roles, not just
- * these 9) are a separate, consistent gap project-wide -- sim.py never dispatches them either,
- * and building a real trigger for them is a bigger, separate piece of work (a new once-per-round
- * decision point), not something this pass adds. */
+ * Ported 1:1 from tactician_discounted_cost for the first 9 roles; the other 8 (The Tactician,
+ * Jailer, Reclaimer, Pathfinder, Breaker, Bastion, Chessmaster, Quartermaster) were sim.py-side
+ * no-ops too -- now given real hooks below where one exists (see tacticianBypassesRankCheck,
+ * tacticianContainmentBuildDiscount, applyTacticianCombatMods, applyTacticianPrecombat). All 17
+ * Tactician ACTIVE effects are handled in applyTacticianActive below. */
 export function tacticianDiscountedCost<T extends UnitCard | GearCard>(p: GamePlayer, card: T, kind: "unit" | "gear", game?: GameState): T {
   const t = p.tactician;
   if (!t) return card;

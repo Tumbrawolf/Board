@@ -16,6 +16,8 @@ import {
   resolveGearDiscardChoice,
   resolveGearOfferConsent,
   resolveLaneAssignmentChoice,
+  resolveMissionTargetPlayer,
+  resolveMissionResourceSplit,
   resolvePerfectInfoLayout,
   resolvePlacementChoice,
   resolveTacticianActiveChoice,
@@ -156,6 +158,12 @@ io.on("connection", (socket) => {
   });
   socket.on("planning:gearOfferResponse", ({ requestId, accepted }: { requestId: string; accepted: boolean }) => {
     resolveGearOfferConsent(socket.id, requestId, accepted);
+  });
+  socket.on("mission:targetPlayer:response", ({ requestId, targetSeatIndex }: { requestId: string; targetSeatIndex: number }) => {
+    resolveMissionTargetPlayer(socket.id, requestId, targetSeatIndex);
+  });
+  socket.on("mission:resourceSplit:response", ({ requestId, Organic, Tech, Alien }: { requestId: string; Organic: number; Tech: number; Alien: number }) => {
+    resolveMissionResourceSplit(socket.id, requestId, { Organic, Tech, Alien });
   });
 
   socket.on("combat:ack", ({ requestId }: { requestId: string }) => {

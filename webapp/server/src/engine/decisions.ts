@@ -45,7 +45,7 @@ export interface TacticianGearOption {
 export type TacticianActiveKind =
   | "enemy_pick"           // Gunsmith: pick 1 enemy from any lane
   | "gear_pick"            // Bulwark (Armor) / Engineer (Utility): pick 1 gear from own units
-  | "player_pick"          // Kingmaker: pick 1 player to become commander
+  | "player_pick"          // reserved: prompt type for a "pick 1 player" active (no current card uses it)
   | "card_action"          // Tactician: choose how to use the drawn card
   | "shop_pick"            // Drillmaster/Specialist: pick among tied-rank units
   | "recycle_pick"         // Reclaimer: pick gear from recycle pile
@@ -259,6 +259,23 @@ export interface DecisionProvider {
     p: GamePlayer,
     game: GameState
   ): Promise<{ unitId: string; destSeatIndex: number }[]>;
+
+  /** Mission reward: "Target player gains N resource" — the completing player picks who receives it.
+   * Returns the chosen GamePlayer (may be the completing player themselves). */
+  chooseMissionTargetPlayer(
+    completingPlayer: GamePlayer,
+    game: GameState,
+    resource: "Organic" | "Tech" | "Alien",
+    amount: number
+  ): Promise<GamePlayer>;
+
+  /** Mission reward: "Gain N resources, split any way you choose" — player distributes N points
+   * across the three resource types. The three values must sum to total. */
+  chooseMissionResourceSplit(
+    player: GamePlayer,
+    game: GameState,
+    total: number
+  ): Promise<{ Organic: number; Tech: number; Alien: number }>;
 }
 
 /** Per-lane result from one exchange, sent to clients for combat animation. */
@@ -495,7 +512,7 @@ export class BotDecisionProvider implements DecisionProvider {
         // Bulwark: first Armor gear. Engineer: first Utility that was used (presented in order).
         return prompt.gearOptions?.length ? { gearOptIdx: 0 } : {};
       case "player_pick": {
-        // Kingmaker: next player in seat order that isn't The Kingmaker themselves
+        // pick any other player (not the activating player) in seat order
         const opts = (prompt.playerOptions ?? []).filter(o => o.seatIndex !== player.seatIndex);
         return opts.length ? { targetSeat: opts[0].seatIndex } : {};
       }
@@ -598,5 +615,27 @@ export class BotDecisionProvider implements DecisionProvider {
 
   async chooseChessmasterReassign(_p: GamePlayer, _game: GameState): Promise<{ unitId: string; destSeatIndex: number }[]> {
     return [];
+  }
+
+  async chooseMissionTargetPlayer(
+    completingPlayer: GamePlayer,
+    game: GameState,
+    resource: "Organic" | "Tech" | "Alien",
+    _amount: number
+  ): Promise<GamePlayer> {
+    // Pick the player with the least of the given resource (most in need); break ties by seat order.
+    return game.players.reduce((a, b) =>
+      b.res[resource] < a.res[resource] ? b : a
+    );
+  }
+
+  async chooseMissionResourceSplit(
+    _player: GamePlayer,
+    _game: GameState,
+    total: number
+  ): Promise<{ Organic: number; Tech: number; Alien: number }> {
+    const each = Math.floor(total / 3);
+    const rem = total - 3 * each;
+    return { Organic: each + rem, Tech: each, Alien: each };
   }
 }

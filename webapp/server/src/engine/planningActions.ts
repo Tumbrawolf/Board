@@ -464,17 +464,6 @@ export function canActivateAsNonCommander(game: GameState, actor: GamePlayer, ca
   return (["Organic", "Tech", "Alien"] as const).every((res) => actor.res[res] + game.commandPool[res] >= Math.ceil(toInt((card as any)[res]) * mult));
 }
 
-/** Garbage Day: Command Cards pushed to the recycle pile when activated, so "restore from
- * recycle to hand" has real cards to draw from. Active while the event is drawn OR after the
- * Completion Reward fires (garbageDayPermanent). Tracks which players recycled this round for
- * the Completion Condition ("each player Recycled a card this round"). */
-function recycleIfGarbageDay(game: GameState, card: CommandCard, playerSeatIndex: number) {
-  if (game.activeEvent?.["Event name"] === "Garbage Day" || game.garbageDayPermanent) {
-    game.recyclePile.push(card);
-    game.recycledThisRound.add(playerSeatIndex);
-  }
-}
-
 /** A commander's own hand activates for free -- no resource cost at all, matching sim.py. */
 export function commanderActivateCardMutation(
   game: GameState,
@@ -486,7 +475,6 @@ export function commanderActivateCardMutation(
   const loc = card.Building as Location;
   log(`  [Active Effect] ${loc}: ${commander.name} activates ${card.Name} for free (commander) -> ${card["Active Effect"]}`);
   dispatch(card, loc);
-  recycleIfGarbageDay(game, card, commander.seatIndex);
 }
 
 export function nonCommanderActivateCardMutation(
@@ -509,5 +497,4 @@ export function nonCommanderActivateCardMutation(
   }
   log(`  [Active Effect] ${loc}: ${actor.name} (non-commander) activates ${card.Name} -> ${card["Active Effect"]}`);
   dispatch(card, loc);
-  recycleIfGarbageDay(game, card, actor.seatIndex);
 }
