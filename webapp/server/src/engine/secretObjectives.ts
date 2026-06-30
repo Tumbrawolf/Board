@@ -56,7 +56,7 @@ export function secretObjectiveMet(game: GameState, so: SecretObjectiveCard, p: 
     case "Decorated":
       return p.rank >= 5;
     case "Interdictor":
-      return false; // DEFERRED: needs an enemy ability denial mechanic
+      return p.stats.abilitiesDenied >= 5;
     case "Hoarder":
       return p.res.Organic >= 40;
     case "Nerd":
@@ -92,9 +92,9 @@ export function secretObjectiveMet(game: GameState, so: SecretObjectiveCard, p: 
     case "Leroy":
       return p.stats.roundsWithSingleUnit >= 1;
     case "AFK":
-      return false; // DEFERRED: needs per-round "nothing added to lane" detection
+      return p.stats.afkCleanRounds >= 3;
     case "Kremlen":
-      return false; // DEFERRED: needs per-player command-spend vs. own-spend tracking
+      return p.stats.commandPoolSpendTotal > p.stats.ownSpendTotal && p.stats.commandPoolSpendTotal > 0;
     default:
       return false;
   }

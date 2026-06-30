@@ -4,16 +4,21 @@ import type { EnemyCard } from "./data.js";
 import { isMildEvent } from "./events.js";
 import {
   affordableGear,
+  affordableRecyclePileGear,
   affordableUnits,
+  buyGearFromRecycleMutation,
   buyGearMutation,
   buyUnitMutation,
   canActivateAsNonCommander,
   canBuildCard,
   cardEligibleForBattlefield,
   buildCardMutation,
+  chessmasterReassignMutation,
   commanderActivateCardMutation,
   nonCommanderActivateCardMutation,
   equipGearOntoActiveMutation,
+  rerollableGear,
+  quartermasterRerollMutation,
 } from "./planningActions.js";
 import { lanePower, reorderActive } from "./state.js";
 import type { GamePlayer, GameState } from "./types.js";
@@ -247,6 +252,13 @@ export interface DecisionProvider {
    * emit the snapshot to clients and wait until all non-skipping human players have acknowledged
    * (or taken an action and then acknowledged). Bots resolve immediately. */
   waitForCombatAck(game: GameState, snapshot: CombatRoundSnapshot): Promise<void>;
+
+  /** Chessmaster Reassign: up to 2 units may be moved between lanes during planning.
+   * Returns an ordered list of moves to execute (source unitId → dest seatIndex). Bot returns []. */
+  chooseChessmasterReassign(
+    p: GamePlayer,
+    game: GameState
+  ): Promise<{ unitId: string; destSeatIndex: number }[]>;
 }
 
 /** Per-lane result from one exchange, sent to clients for combat animation. */
@@ -369,6 +381,29 @@ export class BotDecisionProvider implements DecisionProvider {
       buyGearMutation(game, player, choice as any, ctx.log);
       gearBought += 1;
     }
+    // Reclaimer resource: also offer recyclePile gear at half cost (up to 1 additional buy)
+    if (player.active && player.tactician?.Name === "The Reclaimer") {
+      const recycleChoice = await this.chooseNextGearPurchase(player, game, affordableRecyclePileGear(game, player));
+      if (recycleChoice) buyGearFromRecycleMutation(game, player, recycleChoice as any, ctx.log);
+    }
+    // Quartermaster active: reroll one roll-filled shop slot if below player rank
+    if (player.tactician?.Name === "The Quartermaster") {
+      const rerollable = rerollableGear(game, player);
+      const badSlot = rerollable.find((g) => RANK_NUM[(g as any)["Rank Name"]] < player.rank - 1);
+      if (badSlot) quartermasterRerollMutation(game, player, badSlot, ctx.log);
+    }
+
+    // Chessmaster passive: reassign up to 2 units between lanes during planning
+    if (player.tactician?.Name === "The Chessmaster") {
+      const moves = await this.chooseChessmasterReassign(player, game);
+      for (const { unitId, destSeatIndex } of moves.slice(0, 2)) {
+        const srcPlayer = game.players.find((q) => [...(q.active ? [q.active] : []), ...q.reserve].some((u) => u.id === unitId));
+        const destPlayer = game.players.find((q) => q.seatIndex === destSeatIndex);
+        if (srcPlayer && destPlayer && srcPlayer !== destPlayer) {
+          chessmasterReassignMutation(game, srcPlayer, unitId, destPlayer, ctx.log);
+        }
+      }
+    }
 
     reorderActive(player);
     return new Map();
@@ -394,6 +429,11 @@ export class BotDecisionProvider implements DecisionProvider {
         commanderActivateCardMutation(game, card, player, ctx.log, ctx.dispatch);
       } else {
         nonCommanderActivateCardMutation(game, card, player, ctx.log, ctx.dispatch);
+      }
+      // Tactician passive: "Draw another card when using Active effects on commander cards"
+      if (choice === "activate" && player.tactician?.Name === "The Tactician" && game.commandDeck.length) {
+        player.hand.push(game.commandDeck.shift()!);
+        ctx.log(`  [The Tactician] ${player.name} draws a bonus card from command deck`);
       }
     }
   }
@@ -554,5 +594,9 @@ export class BotDecisionProvider implements DecisionProvider {
   // Bots don't need to wait — resolve immediately so the server-side loop isn't blocked.
   async waitForCombatAck(_game: GameState, _snapshot: CombatRoundSnapshot): Promise<void> {
     return;
+  }
+
+  async chooseChessmasterReassign(_p: GamePlayer, _game: GameState): Promise<{ unitId: string; destSeatIndex: number }[]> {
+    return [];
   }
 }

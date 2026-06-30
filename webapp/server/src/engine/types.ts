@@ -27,6 +27,9 @@ export interface UnitInstance {
   /** Per-unit ability counters (e.g. consecutive_hits for "bonus damage on consecutive hits"
    * abilities) -- mirrors Working/sim.py's UnitInstance.charges Counter. */
   charges: Record<string, number>;
+  /** Set by The Chessmaster's Reassign action; cleared at round start. Grants half-damage
+   * protection on the unit's first combat hit this round. */
+  reassignedThisRound?: boolean;
 }
 
 export interface GamePlayer {
@@ -97,6 +100,14 @@ export interface GamePlayer {
     accusationsMade: number;
     accusationsCorrect: number;
     timesAccused: number;
+    /** Interdictor SO: total enemy abilities (reveals) this player has caused to be denied. */
+    abilitiesDenied: number;
+    /** AFK SO: number of rounds this player completed without adding any unit or gear to any lane. */
+    afkCleanRounds: number;
+    /** Kremlen SO: total resources this player drew from the command pool (card activations + Command Requisition buys). */
+    commandPoolSpendTotal: number;
+    /** Kremlen SO: total resources this player spent from their own pool (card activations + Command Requisition buys). */
+    ownSpendTotal: number;
   };
 }
 
@@ -235,8 +246,23 @@ export interface GameState {
   missionRankCompletedThisRound: number;
   /** Garbage Day's "Recycle" pile -- Command Cards pushed here when activated (while this Event
    * is active or garbageDayPermanent is set), so "restore from recycle to hand" has something
-   * real to draw from. */
-  recyclePile: CommandCard[];
+   * real to draw from. Gear also goes here (from hand overflow, retire, shop evictions). */
+  recyclePile: (CommandCard | GearCard)[];
+  /** Gear items returned to a player's hand from unit-death/retire this round, keyed by seatIndex.
+   * Cap: 1 normally, 2 for The Reclaimer. Reset each round. */
+  gearHandReturnedThisRound: Map<number, number>;
+  /** AFK SO: seatIndices that added a unit or gear to any lane this round. Reset each round. */
+  unitsOrGearAddedSeats: Set<number>;
+  /** Quartermaster active: GearCards currently in shopGear that arrived via a rank roll-fill (not direct-fill).
+   * Used to offer the once-per-round reroll. Reset each round. */
+  quartermasterRolledShopGear: Set<GearCard>;
+  /** The Gunsmith resource: 1st weapon purchase per round is free. Tracks which seats have used it. Reset each round. */
+  gunsmithFreeWeaponUsedSeats: Set<number>;
+  /** The Bulwark resource: 1st armor purchase per round is free. Tracks which seats have used it. Reset each round. */
+  bulwarkFreeArmorUsedSeats: Set<number>;
+  /** Tracks which players have already had their Reclaimer passive ("1st item to recycle → hand")
+   * fire this round. Reset each round. */
+  reclaimerPassiveFiredThisRound: Set<number>;
   /** Per-round set of seatIndices that activated a Command Card this round (feeding recyclePile).
    * Used by Garbage Day's Completion Condition ("each player Recycled a card this round"). */
   recycledThisRound: Set<number>;
@@ -367,8 +393,7 @@ export interface GameState {
    * Tactician's Active (refresh + free next use). Consumed by the gear active loop: if the key
    * is present, cost is skipped once and the entry is deleted. Reset each round. */
   freeAbilityNextUse: Set<string>;
-  /** The Kingmaker Tactician's Active ("Command cannot change next turn") -- skips the normal
-   * commander-handoff block at end of the round it is set, then cleared. */
+  /** When set, skips the normal commander-handoff at end of the round (then cleared). */
   commanderLocked: boolean;
   /** Silence in no mans land Completion Reward: "Scouts reveal additional enemies" -- permanently
    * adds to every round's scout reveal count. Stacks if the reward fires multiple times. */

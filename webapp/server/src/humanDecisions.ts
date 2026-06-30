@@ -13,7 +13,7 @@ import {
   type TacticianActivePrompt,
   type TacticianActiveResponse,
 } from "./engine/decisions.js";
-import type { CommandCard, EventCard, GearCard, UnitCard } from "./engine/data.js";
+import { toInt, type CommandCard, type EventCard, type GearCard, type UnitCard } from "./engine/data.js";
 import {
   affordableGear,
   affordableUnits,
@@ -238,6 +238,58 @@ export function resolveGearDiscardChoice(socketId: string, requestId: string, di
   req.resolve(discardIndices);
 }
 
+// ── Chessmaster Reassign ──────────────────────────────────────────────────────
+
+const CHESSMASTER_REASSIGN_TIMEOUT_MS = 30000;
+const CHESSMASTER_CONSENT_TIMEOUT_MS = 20000;
+
+interface PendingChessmasterReassign {
+  socketId: string;
+  resolve: (moves: { unitId: string; destSeatIndex: number }[] | null) => void;
+}
+const pendingChessmasterReassign = new Map<string, PendingChessmasterReassign>();
+
+interface PendingChessmasterConsent {
+  socketId: string;
+  resolve: (accepted: boolean | null) => void;
+}
+const pendingChessmasterConsent = new Map<string, PendingChessmasterConsent>();
+
+export function resolveChessmasterReassign(
+  socketId: string,
+  requestId: string,
+  moves: { unitId: string; destSeatIndex: number }[]
+) {
+  const req = pendingChessmasterReassign.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingChessmasterReassign.delete(requestId);
+  req.resolve(Array.isArray(moves) ? moves : null);
+}
+
+export function resolveChessmasterConsent(socketId: string, requestId: string, accepted: boolean) {
+  const req = pendingChessmasterConsent.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingChessmasterConsent.delete(requestId);
+  req.resolve(Boolean(accepted));
+}
+
+// ── Cross-Lane Gear Offer ─────────────────────────────────────────────────────
+
+const GEAR_OFFER_TIMEOUT_MS = 20000;
+
+interface PendingGearOfferConsent {
+  socketId: string;
+  resolve: (accepted: boolean | null) => void;
+}
+const pendingGearOfferConsent = new Map<string, PendingGearOfferConsent>();
+
+export function resolveGearOfferConsent(socketId: string, requestId: string, accepted: boolean) {
+  const req = pendingGearOfferConsent.get(requestId);
+  if (!req || req.socketId !== socketId) return;
+  pendingGearOfferConsent.delete(requestId);
+  req.resolve(Boolean(accepted));
+}
+
 interface PendingPerfectInfo {
   socketId: string;
   resolve: (layout: Record<string, number[]> | null) => void;
@@ -388,6 +440,7 @@ export class MixedDecisionProvider implements DecisionProvider {
         socket.off("planning:buyUnit", onBuyUnit);
         socket.off("planning:buyGear", onBuyGear);
         socket.off("planning:resolveCard", onResolveCard);
+        socket.off("planning:sendGear", onSendGear);
         socket.off("planning:done", onDone);
         resolveWindow(cardChoices);
       };
@@ -440,11 +493,70 @@ export class MixedDecisionProvider implements DecisionProvider {
         sendUpdate();
       };
 
+      // Cross-lane gear equip: send gear from this player's gearHand to another player's active unit.
+      // Requires the destination player's consent (if human). No additional Tech cost — gear was already purchased.
+      const onSendGear = async (
+        payload: { gearName: string; toSeatIndex: number },
+        ack?: (r: { ok: boolean; error?: string }) => void
+      ) => {
+        const gearIdx = player.gearHand.findIndex((g) => (g as any).Name === payload?.gearName);
+        if (gearIdx < 0) { ack?.({ ok: false, error: "Gear not in hand." }); return; }
+        const gear = player.gearHand[gearIdx];
+        const destPlayer = game.players.find((q) => q.seatIndex === payload?.toSeatIndex);
+        if (!destPlayer || !destPlayer.active) { ack?.({ ok: false, error: "Target has no active unit." }); return; }
+        if (destPlayer === player) { ack?.({ ok: false, error: "Use buyGear to equip on your own unit." }); return; }
+
+        // Slot availability check (mirrors equipGearOntoActiveMutation)
+        const gType = (gear as any).Type as string | undefined;
+        const SLOT_LIMITED = new Set(["Weapon", "Armor", "Utility"]);
+        if (gType && SLOT_LIMITED.has(gType)) {
+          const expander = gType === "Utility" ? "Ammo Pouches" : gType === "Weapon" ? "Extra Holster" : null;
+          const hasExpander = expander ? destPlayer.active.equipped.some((eq) => (eq as any).Name === expander) : false;
+          const cap = hasExpander ? 2 : 1;
+          const sameTypeCount = destPlayer.active.equipped.filter((eq) => (eq as any).Type === gType).length;
+          if (sameTypeCount >= cap) { ack?.({ ok: false, error: `${destPlayer.name} has no free ${gType} slot.` }); return; }
+        }
+
+        // Get consent from the destination player (skip for bots — they always accept)
+        const destSeat = this.room.seats.find((s) => s?.seatIndex === payload.toSeatIndex);
+        const destSocket = destSeat && !destSeat.isBot ? this.lookupSocket(destSeat.clientId) : null;
+        let accepted = true;
+        if (destSocket) {
+          const offerId = randomUUID();
+          accepted = await new Promise<boolean>((resolve) => {
+            const timer = setTimeout(() => { pendingGearOfferConsent.delete(offerId); resolve(false); }, GEAR_OFFER_TIMEOUT_MS);
+            pendingGearOfferConsent.set(offerId, { socketId: destSocket.id, resolve: (a) => { clearTimeout(timer); resolve(a ?? false); } });
+            destSocket.emit("planning:gearOffer", {
+              requestId: offerId, timeoutMs: GEAR_OFFER_TIMEOUT_MS,
+              fromName: player.name, gearName: (gear as any).Name, gearType: gType ?? "?",
+            });
+          });
+        }
+        if (!accepted) { ack?.({ ok: false, error: `${destPlayer.name} declined.` }); return; }
+
+        // Apply equip
+        player.gearHand.splice(gearIdx, 1);
+        destPlayer.active.equipped.push(gear);
+        const hpBonus = toInt((gear as any).HP ?? "0");
+        destPlayer.active.maxHp += hpBonus;
+        destPlayer.active.curHp += hpBonus;
+        destPlayer.active.curShields += toInt((gear as any).Shields ?? "0");
+        if ((gear as any).Name === "Recon Satellite") destPlayer.hasReconSatellite = true;
+        if ((gear as any).Name === "Last Stand Beacon") destPlayer.hasLastStandBeacon = true;
+        game.unitsOrGearAddedSeats.add(destPlayer.seatIndex);
+        player.stats.gearEquippedToAllies += 1;
+        ctx.log(`  [Cross-lane] ${player.name} equips ${(gear as any).Name} onto ${destPlayer.name}'s ${destPlayer.active.card.Name}`);
+        ack?.({ ok: true });
+        this.onStateChange();
+        sendUpdate();
+      };
+
       const onDone = () => finish();
 
       socket.on("planning:buyUnit", onBuyUnit);
       socket.on("planning:buyGear", onBuyGear);
       socket.on("planning:resolveCard", onResolveCard);
+      socket.on("planning:sendGear", onSendGear);
       socket.on("planning:done", onDone);
 
       socket.emit("planning:prompt", {
@@ -933,5 +1045,61 @@ export class MixedDecisionProvider implements DecisionProvider {
     );
 
     pendingCombatRound.delete(roomCode);
+  }
+
+  async chooseChessmasterReassign(
+    player: import("./engine/types.js").GamePlayer,
+    game: import("./engine/types.js").GameState
+  ): Promise<{ unitId: string; destSeatIndex: number }[]> {
+    const seat = this.room.seats.find((s) => s?.seatIndex === player.seatIndex);
+    if (!seat || seat.isBot) return this.bot.chooseChessmasterReassign(player, game);
+    const socket = this.lookupSocket(seat.clientId);
+    if (!socket) return this.bot.chooseChessmasterReassign(player, game);
+
+    const allUnits = [...(player.active ? [player.active] : []), ...player.reserve];
+    if (!allUnits.length) return [];
+
+    // Step 1: ask the Chessmaster to propose up to 2 moves
+    const requestId = randomUUID();
+    const proposed = await new Promise<{ unitId: string; destSeatIndex: number }[] | null>((resolve) => {
+      const timer = setTimeout(() => { pendingChessmasterReassign.delete(requestId); resolve(null); }, CHESSMASTER_REASSIGN_TIMEOUT_MS);
+      pendingChessmasterReassign.set(requestId, { socketId: socket.id, resolve: (m) => { clearTimeout(timer); resolve(m); } });
+      socket.emit("chessmaster:reassign:prompt", {
+        requestId, timeoutMs: CHESSMASTER_REASSIGN_TIMEOUT_MS,
+        yourUnits: allUnits.map((u) => ({ id: u.id, name: u.card.Name, rank: u.card.Rank })),
+        lanes: game.players.filter((q) => q.seatIndex !== player.seatIndex).map((q) => ({
+          seatIndex: q.seatIndex, ownerName: q.name, rank: q.rank,
+          activeUnit: q.active ? q.active.card.Name : null,
+        })),
+      });
+    });
+
+    if (!proposed || proposed.length === 0) return [];
+
+    // Step 2: for each proposed move, get consent from the destination lane owner
+    const accepted: { unitId: string; destSeatIndex: number }[] = [];
+    for (const move of proposed.slice(0, 2)) {
+      const destPlayer = game.players.find((q) => q.seatIndex === move.destSeatIndex);
+      const unit = allUnits.find((u) => u.id === move.unitId);
+      if (!destPlayer || !unit) continue;
+
+      const destSeat = this.room.seats.find((s) => s?.seatIndex === move.destSeatIndex);
+      const destSocket = destSeat && !destSeat.isBot ? this.lookupSocket(destSeat.clientId) : null;
+
+      let consentGiven = true; // bots always consent
+      if (destSocket) {
+        const consentId = randomUUID();
+        consentGiven = await new Promise<boolean>((resolve) => {
+          const timer = setTimeout(() => { pendingChessmasterConsent.delete(consentId); resolve(false); }, CHESSMASTER_CONSENT_TIMEOUT_MS);
+          pendingChessmasterConsent.set(consentId, { socketId: destSocket.id, resolve: (a) => { clearTimeout(timer); resolve(a ?? false); } });
+          destSocket.emit("chessmaster:reassign:consent", {
+            requestId: consentId, timeoutMs: CHESSMASTER_CONSENT_TIMEOUT_MS,
+            fromName: player.name, unitName: unit.card.Name, unitRank: unit.card.Rank,
+          });
+        });
+      }
+      if (consentGiven) accepted.push(move);
+    }
+    return accepted;
   }
 }

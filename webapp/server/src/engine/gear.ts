@@ -2,7 +2,7 @@ import { toInt, type GearCard } from "./data.js";
 import { Combatant } from "./combat.js";
 import { eventSeverity } from "./events.js";
 import { RANK_NUM } from "./constants.js";
-import { canActivateAbility, canAfford, canUseEffect, GEAR_COST_KEYS, healUnit, makeUnitInstance, pay, recordAbilityActivation, recordEffectUse, weakestPlayer, type RoundTempState } from "./state.js";
+import { canActivateAbility, canAfford, canUseEffect, GEAR_COST_KEYS, grantShields, healUnit, makeUnitInstance, pay, recordAbilityActivation, recordEffectUse, weakestPlayer, type RoundTempState } from "./state.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
 
 /** Name-keyed dispatch tables, ported 1:1 from Working/sim.py -- Gear has fewer cards with more
@@ -26,8 +26,18 @@ function unitsOf(p: GamePlayer): UnitInstance[] {
   return [...(p.active ? [p.active] : []), ...p.reserve];
 }
 
-export function applyGearCombatMods(c: Combatant, ui: UnitInstance, commanderRank = 1) {
+export function applyGearCombatMods(c: Combatant, ui: UnitInstance, commanderRank = 1, p?: GamePlayer, playerProgress = 0) {
   const names = new Set(ui.equipped.filter((g) => "Name" in (g as any)).map((g) => (g as any).Name as string));
+  // Gunsmith passive: each Weapon-type gear adds +Progress damage
+  if (p?.tactician?.Name === "The Gunsmith" && playerProgress > 0) {
+    const weaponCount = ui.equipped.filter((g) => (g as any).Type === "Weapon").length;
+    if (weaponCount > 0) c.dmg += weaponCount * playerProgress;
+  }
+  // Bulwark passive: each Armor-type gear adds +3 armor
+  if (p?.tactician?.Name === "The Bulwark") {
+    const armorCount = ui.equipped.filter((g) => (g as any).Type === "Armor").length;
+    if (armorCount > 0) c.armor += armorCount * 3;
+  }
   if ([...names].some((n) => GEAR_IGNORE_ARMOR.has(n))) c.ignoreArmor = true;
   if ([...names].some((n) => GEAR_DOUBLE_VS_SHIELDS.has(n))) c.shieldMultiplier = 2;
   for (const [n, amt] of Object.entries(GEAR_SHRED_ARMOR)) {
@@ -92,7 +102,7 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
       const name = (g as any).Name as string | undefined;
       if (!name) continue;
       if (name in GEAR_PRECOMBAT_HEAL) healUnit(ui, GEAR_PRECOMBAT_HEAL[name], game);
-      if (name in GEAR_PRECOMBAT_SHIELD) ui.curShields += GEAR_PRECOMBAT_SHIELD[name];
+      if (name in GEAR_PRECOMBAT_SHIELD) grantShields(ui, GEAR_PRECOMBAT_SHIELD[name], p);
       if (name === "XVL3" || name === "XVL33") {
         const roll = roll1to6();
         ui.charges[name] = roll;
@@ -110,8 +120,8 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
         else if (roll === 4 || roll === 5) tempState.tempBuff(ui, { Armor: 6 });
         else if (roll === 6) ui.curHp = 0;
       }
-      if (name === "Shield Projector") ui.curShields += 60;
-      if (name === "Slayer Suit") ui.curShields += 5;
+      if (name === "Shield Projector") grantShields(ui, 60, p);
+      if (name === "Slayer Suit") grantShields(ui, 5, p);
       if (name === "Exosuit") tempState.tempBuff(ui, { Armor: 3 });
       // Night Vision Passive: "Unit gets a free attack against Revealed enemies" -- there's no
       // separate "Revealed" flag on enemy instances (they're plain stat-lines, no Reveal-trigger
@@ -180,6 +190,8 @@ function applyGearActive(
 ) {
   const w = weakestPlayer(game);
   const other = game.players.find((q) => q !== p) ?? p;
+  // Engineer passive: utility gear actives get +1 additional target (different from the 1st)
+  const isEngineer = p.tactician?.Name === "The Engineer" && ui.equipped.some((g) => (g as any).Name === name && (g as any).Type === "Utility");
 
   switch (name) {
     case "Combat Stims": {
@@ -191,7 +203,7 @@ function applyGearActive(
     case "Grenade Launcher":
     case "Scoped Weapons":
     case "Black Iron":
-      if (w.laneEnemyReserve.length) w.laneEnemyReserve = w.laneEnemyReserve.slice(1);
+      if (w.laneEnemyReserve.length) w.laneEnemyReserve = w.laneEnemyReserve.slice(isEngineer ? 2 : 1);
       break;
     case "Grenades":
       w.laneEnemyReserve = w.laneEnemyReserve.filter((e) => toInt(e.HP) > 5);
@@ -215,9 +227,9 @@ function applyGearActive(
     case "Medkit":
     case "Field Medkit":
     case "Triage Pack": {
-      const targets = unitsOf(w).filter((u) => u.curHp < u.maxHp);
-      if (targets.length) {
-        const t = targets.reduce((a, b) => (b.curHp - b.maxHp < a.curHp - a.maxHp ? b : a));
+      const targets = unitsOf(w).filter((u) => u.curHp < u.maxHp).sort((a, b) => (a.curHp - a.maxHp) - (b.curHp - b.maxHp));
+      const healCount = isEngineer ? 2 : 1;
+      for (const t of targets.slice(0, healCount)) {
         if (healUnit(t, Math.floor(t.maxHp / 2) + 1, game)) w.stats.healsGiven += 1;
       }
       break;
@@ -236,22 +248,25 @@ function applyGearActive(
       }
       break;
     case "Shield Pack":
-      ui.curShields += 20;
+      grantShields(ui, 20, p);
       ui.equipped = ui.equipped.filter((g) => (g as any).Name !== "Shield Pack");
       break;
     case "Entrenchment":
       if (w.active) tempState.tempBuff(w.active, { Armor: 5 });
+      if (isEngineer && w.reserve[0]) tempState.tempBuff(w.reserve[0], { Armor: 5 });
       break;
     case "Stun Grenades": {
       const target = game.players.reduce((a, b) => (b.laneEnemyReserve.length > a.laneEnemyReserve.length ? b : a));
-      if (target.laneEnemyReserve.length) target.laneEnemyReserve = target.laneEnemyReserve.slice(1);
+      if (target.laneEnemyReserve.length) target.laneEnemyReserve = target.laneEnemyReserve.slice(isEngineer ? 2 : 1);
       break;
     }
     case "Deployable Sentry":
       if (w.active) tempState.tempBuff(w.active, { Damage: 5 });
+      if (isEngineer && w.reserve[0]) tempState.tempBuff(w.reserve[0], { Damage: 5 });
       break;
     case "Heavy Sentry":
       if (w.active) tempState.tempBuff(w.active, { Damage: 7 });
+      if (isEngineer && w.reserve[0]) tempState.tempBuff(w.reserve[0], { Damage: 7 });
       break;
     case "Isolation Field":
       if (w.laneEnemyReserve.length) w.laneEnemyReserve = w.laneEnemyReserve.slice(0, 1);
@@ -267,11 +282,11 @@ function applyGearActive(
       healUnit(ui, undefined, game);
       break;
     case "Repair Kit": {
-      const candidates = unitsOf(w).filter(
-        (u) => u.curHp < u.maxHp && (u.card.Type.includes("Vehicle") || u.card.Type.includes("Mech"))
-      );
-      if (candidates.length) {
-        const t = candidates.reduce((a, b) => (b.curHp - b.maxHp < a.curHp - a.maxHp ? b : a));
+      const candidates = unitsOf(w)
+        .filter((u) => u.curHp < u.maxHp && (u.card.Type.includes("Vehicle") || u.card.Type.includes("Mech")))
+        .sort((a, b) => (a.curHp - a.maxHp) - (b.curHp - b.maxHp));
+      const repairCount = isEngineer ? 2 : 1;
+      for (const t of candidates.slice(0, repairCount)) {
         if (healUnit(t, Math.floor(t.maxHp / 2), game)) w.stats.healsGiven += 1;
       }
       break;
@@ -305,7 +320,8 @@ function applyGearActive(
       break;
     }
     case "Shield Generator":
-      if (w.active) w.active.curShields += 20;
+      if (w.active) grantShields(w.active, 20, w);
+      if (isEngineer && w.reserve[0]) grantShields(w.reserve[0], 20, w);
       break;
     case "Exosuit":
       if (other.active && p.active && other.active !== p.active) {

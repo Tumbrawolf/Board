@@ -112,6 +112,12 @@ export function healUnit(ui: UnitInstance, amount?: number, game?: { plagueActiv
   return healed;
 }
 
+/** Grant shields to a player unit, doubling the amount for The Bastion ("Double Shield gains"). */
+export function grantShields(ui: UnitInstance, amount: number, p: GamePlayer) {
+  if (amount <= 0) return;
+  ui.curShields += p.tactician?.Name === "The Bastion" ? amount * 2 : amount;
+}
+
 export const UNIT_COST_KEYS = ["Organic Cost", "Tech Cost", "Alien Cost"] as const;
 export const GEAR_COST_KEYS = ["Organic Cost", "Tech Cost", "Alien Cost"] as const;
 

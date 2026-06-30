@@ -24,6 +24,8 @@ export class Combatant {
   attacksFirst = false;
   /** The Chessmaster active: player units deal double damage to this enemy. */
   takesDoubleDamage = false;
+  /** The Chessmaster passive: reassigned unit takes half damage from their 1st hit this combat. */
+  halfFirstHit = false;
   reflectFraction = 0;
   lifestealFraction = 0;
   /** Unit skips its next attack (clears after the skipped turn). */
@@ -110,6 +112,8 @@ export class Combatant {
   stunOnHitChance = 0;
   /** High Priest: heal all enemies in lane by this amount each exchange, and grant each healed enemy shields = healed. */
   healAllEnemiesOnAttack = 0;
+  /** The Breaker resource: accumulates total enemy armor+shields stripped by this combatant. */
+  enemyArmorShieldStripped = 0;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
@@ -145,7 +149,9 @@ export function computeDealt(attacker: Combatant, defender: Combatant): number {
   }
   const hadShields = defender.curShields > 0;
   if (attacker.shredArmor && defender.armor > 0) {
-    defender.armor -= Math.min(attacker.shredArmor, defender.armor);
+    const shredded = Math.min(attacker.shredArmor, defender.armor);
+    defender.armor -= shredded;
+    attacker.enemyArmorShieldStripped += shredded;
   }
   // Shields absorb from the raw attack value — armor does not reduce damage to shields.
   let raw = attacker.dmg;
@@ -153,6 +159,7 @@ export function computeDealt(attacker: Combatant, defender: Combatant): number {
     const shieldDmg = raw * attacker.shieldMultiplier;
     const absorbed = Math.min(defender.curShields, shieldDmg);
     defender.curShields -= absorbed;
+    attacker.enemyArmorShieldStripped += absorbed;
     raw -= Math.floor(absorbed / attacker.shieldMultiplier);
   }
   // Armor reduces whatever gets through shields; minimum 1 only when damage remains.
@@ -161,6 +168,8 @@ export function computeDealt(attacker: Combatant, defender: Combatant): number {
     ? Math.floor(baseArmor * (1 + defender.armorBonusFraction))
     : baseArmor;
   let dealt = raw > 0 ? Math.max(1, raw - effectiveArmor) : 0;
+  // Chessmaster passive: reassigned unit takes half damage from their 1st hit
+  if (defender.halfFirstHit && dealt > 0) { dealt = Math.max(1, Math.floor(dealt / 2)); defender.halfFirstHit = false; }
   if (defender.reflectFraction && (!defender.reflectOnlyWithShields || hadShields)) {
     attacker.curHp -= Math.floor(dealt * defender.reflectFraction);
   }

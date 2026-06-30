@@ -2,7 +2,7 @@ import { RANK_NUM, type Location } from "./constants.js";
 import { toInt, type CommandCard, type EnemyCard, type GearCard, type UnitCard } from "./data.js";
 import type { TacticianActivePrompt, TacticianActiveResponse, DecisionProvider } from "./decisions.js";
 import { classifyEnemy } from "./enemies.js";
-import { canActivateAbility, makeUnitInstance, recordAbilityActivation, reorderActive, canUseEffect, recordEffectUse, type RoundTempState } from "./state.js";
+import { canActivateAbility, grantShields, makeUnitInstance, recordAbilityActivation, reorderActive, canUseEffect, recordEffectUse, type RoundTempState } from "./state.js";
 import type { GamePlayer, GameState } from "./types.js";
 
 /** Returns a cost-adjusted copy of card for affordability/payment purposes -- covers the
@@ -31,6 +31,7 @@ export function tacticianDiscountedCost<T extends UnitCard | GearCard>(p: GamePl
     if (name === "The Gunsmith" && ctype === "Weapon") c["Tech Cost"] = Math.max(0, toInt(c["Tech Cost"]) - 1);
     else if (name === "The Bulwark" && ctype === "Armor") c["Tech Cost"] = Math.max(0, toInt(c["Tech Cost"]) - 1);
     else if (name === "The Engineer" && ctype === "Utility") c["Tech Cost"] = Math.max(0, toInt(c["Tech Cost"]) - 2);
+    else if (name === "The Chessmaster" && ctype === "Utility") c["Tech Cost"] = Math.max(0, toInt(c["Tech Cost"]) - 1);
   } else if (kind === "unit") {
     if (name === "The Drillmaster" && rank < 5) c["Alien Cost"] = 0;
     else if (name === "The Specialist" && rank > 4) c["Alien Cost"] = Math.floor(toInt(c["Alien Cost"]) / 2);
@@ -74,6 +75,7 @@ export function tacticianRankCeiling(p: GamePlayer, card: UnitCard): number {
   if (name === "The Pilot") {
     return ctype.includes("Mech") ? p.rank + 3 : p.rank - 1;
   }
+  if (name === "The Specialist") return p.rank + 1;
   return p.rank;
 }
 
@@ -83,10 +85,8 @@ export function tacticianContainmentBuildDiscount(p: GamePlayer, loc: Location, 
   return { ...card, Alien: "0" };
 }
 
-/** The Breaker ("Units in your lane Shred on hit = your rank"), The Bastion ("Units in your
- * lane Shred 2 when entering combat"), and The Drillmaster ("Units under Rank 5 gain
- * Attack/HP = double your rank − their rank") all modify per-Combatant stats at construction.
- * Pass the source UnitInstance so Drillmaster can read the unit's rank. */
+/** The Breaker, The Bastion, The Drillmaster, and The Specialist all modify per-Combatant
+ * stats at construction. Pass the source UnitInstance so rank-aware passives can read it. */
 export function applyTacticianCombatMods(c: import("./combat.js").Combatant, p: GamePlayer, ui?: import("./types.js").UnitInstance) {
   const name = p.tactician?.Name;
   if (name === "The Breaker") c.shredArmor = Math.max(c.shredArmor, p.rank);
@@ -101,6 +101,13 @@ export function applyTacticianCombatMods(c: import("./combat.js").Combatant, p: 
         c.curHp = Math.min(c.curHp + bonus, c.hp);
       }
     }
+  } else if (name === "The Specialist" && ui) {
+    const unitRank = RANK_NUM[(ui.card as any).Rank ?? ""] ?? 0;
+    if (unitRank > 5) {
+      c.dmg  += 5;
+      c.hp   += 5;
+      c.curHp = Math.min(c.curHp + 5, c.hp);
+    }
   }
 }
 
@@ -108,11 +115,11 @@ export function applyTacticianCombatMods(c: import("./combat.js").Combatant, p: 
  * same timing as every other precombat Unit/Gear shield bonus. */
 export function applyTacticianPrecombat(p: GamePlayer) {
   if (p.tactician?.Name === "The Bastion" && p.active) {
-    p.active.curShields += p.rank;
+    grantShields(p.active, p.rank, p);
   }
 }
 
-/** Once-per-round (or once-per-game for The Kingmaker) Active effects for all 18 Tactician
+/** Once-per-round Active effects for all 17 Tactician
  * roles. Called pre-combat, BEFORE gear actives, so The Engineer's refresh takes effect in
  * the same round's gear active loop. Bot decisions use BotDecisionProvider heuristics;
  * human seats emit a socket prompt via chooseTacticianActiveTarget and wait for a response.
@@ -121,8 +128,8 @@ export function applyTacticianPrecombat(p: GamePlayer) {
  * immediately activate the drawn command card. `commander` is the current round's commander,
  * needed for The Tactician's dispatch context.
  *
- * Deferred (no real hook yet): The Pathfinder (needs reveal system -- see project memory
- * "Deferred mechanics"), The Quartermaster (needs roll-fill tracking). */
+ * The Pathfinder active adds revealPreventionCharges (+2); reveals are consumed in game.ts.
+ * The Quartermaster active is handled in the planning phase (decisions.ts planning loop). */
 export async function applyTacticianActive(
   game: GameState,
   p: GamePlayer,
@@ -136,12 +143,7 @@ export async function applyTacticianActive(
   const name = tac.Name;
   const synId = `tac-${p.seatIndex}`;
 
-  // The Kingmaker is once-per-game (effectUses); all others are once-per-round.
-  if (name === "The Kingmaker") {
-    if (!canUseEffect(game, `tac-kingmaker-${p.seatIndex}`, 1)) return;
-  } else {
-    if (!canActivateAbility(game, synId, name)) return;
-  }
+  if (!canActivateAbility(game, synId, name)) return;
 
   const allUnits = (q: GamePlayer) => [...(q.active ? [q.active] : []), ...q.reserve];
   let activated = false;
@@ -201,7 +203,7 @@ export async function applyTacticianActive(
       const g = p.active.equipped[pick.equippedIdx] as any;
       const armorStat = toInt(g.Armor ?? "0");
       p.active.equipped.splice(pick.equippedIdx, 1); // destroyed
-      p.active.curShields += armorStat * 2;
+      grantShields(p.active, armorStat * 2, p);
       log(`  [The Bulwark] ${p.name} destroys ${g.Name} (${armorStat} Armor) for +${armorStat * 2} shields`);
       activated = true;
       break;
@@ -265,25 +267,6 @@ export async function applyTacticianActive(
         log(`  [The Tactician] ${p.name} draws ${card.Name} and keeps it in hand`);
         activated = true; // still counts as using the active
       }
-      break;
-    }
-
-    // ── The Kingmaker ─────────────────────────────────────────────────────────
-    case "The Kingmaker": {
-      const opts = game.players
-        .filter(q => q.seatIndex !== p.seatIndex)
-        .map(q => ({ seatIndex: q.seatIndex, name: q.name, rank: q.rank }));
-      if (!opts.length) break;
-      const resp = await decisions.chooseTacticianActiveTarget(p, game, {
-        tacticianName: name, kind: "player_pick", playerOptions: opts,
-      });
-      const newCommIdx = game.players.findIndex(q => q.seatIndex === resp.targetSeat);
-      if (newCommIdx === -1) break;
-      game.commanderIdx = newCommIdx;
-      game.commanderLocked = true;
-      recordEffectUse(game, `tac-kingmaker-${p.seatIndex}`);
-      log(`  [The Kingmaker] ${p.name} designates ${game.players[newCommIdx].name} as commander (locked for 1 round)`);
-      activated = true;
       break;
     }
 
@@ -390,7 +373,7 @@ export async function applyTacticianActive(
     case "The Bastion": {
       const gain = p.rank * 10;
       for (const q of game.players) {
-        if (q.active) q.active.curShields += gain;
+        if (q.active) grantShields(q.active, gain, q);
       }
       log(`  [The Bastion] ${p.name} grants +${gain} shields to all friendlies`);
       activated = true;
@@ -448,14 +431,20 @@ export async function applyTacticianActive(
       break;
     }
 
-    // ── Deferred ──────────────────────────────────────────────────────────────
+    // ── The Pathfinder ────────────────────────────────────────────────────────
     case "The Pathfinder":
-      // Active ("prevent reveal ability on next 2 enemies") requires a reveal-trigger dispatch
-      // system that doesn't exist yet. Tracked in project memory "Deferred mechanics".
+      // Grant 2 reveal-prevention charges. The reveal dispatch in game.ts already consumes
+      // revealPreventionCharges (reset each round), so this is fully wired end-to-end.
+      game.revealPreventionCharges += 2;
+      log(`  [The Pathfinder] ${p.name} prevents the next 2 enemy reveal abilities (${game.revealPreventionCharges} charge(s) total)`);
+      activated = true;
       break;
+
+    // ── The Quartermaster ─────────────────────────────────────────────────────
     case "The Quartermaster":
-      // Active ("reroll one Roll-fill result") requires per-slot roll-fill tracking that
-      // doesn't exist yet. Tracked in project memory "Deferred mechanics".
+      // Active handled during the planning phase (planning loop in decisions.ts calls
+      // quartermasterRerollMutation when roll-filled gear is below player rank).
+      // No pre-combat trigger needed here.
       break;
 
     default:
@@ -463,8 +452,6 @@ export async function applyTacticianActive(
   }
 
   if (activated) {
-    if (name !== "The Kingmaker") {
-      recordAbilityActivation(game, p.seatIndex, synId, name);
-    }
+    recordAbilityActivation(game, p.seatIndex, synId, name);
   }
 }

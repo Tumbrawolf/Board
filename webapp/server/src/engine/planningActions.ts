@@ -156,6 +156,10 @@ export function affordableGear(game: GameState, p: GamePlayer): GearCard[] {
   return game.shopGear.filter((g) => {
     if (RANK_NUM[(g as any)["Rank Name"]] > p.rank) return false;
     if (game.shopGearFreeType === (g as any).Type || game.shopGearFreeType === "any") return true;
+    const gType = (g as any).Type as string;
+    // Gunsmith/Bulwark resource: first purchase of the matching type is free
+    if (p.tactician?.Name === "The Gunsmith" && gType === "Weapon" && !game.gunsmithFreeWeaponUsedSeats.has(p.seatIndex)) return true;
+    if (p.tactician?.Name === "The Bulwark" && gType === "Armor" && !game.bulwarkFreeArmorUsedSeats.has(p.seatIndex)) return true;
     return canAffordIncludingCommand(game, p, tacticianDiscountedCost(p, g as any, "gear"), GEAR_COST_KEYS);
   });
 }
@@ -164,13 +168,20 @@ export function affordableGear(game: GameState, p: GamePlayer): GearCard[] {
  * upgrade over the pool's current best, else to the buyer's own active/reserve. */
 export function buyUnitMutation(game: GameState, p: GamePlayer, choice: UnitCard, log: (t: string) => void) {
   payIncludingCommand(game, p, tacticianDiscountedCost(p, choice, "unit"), UNIT_COST_KEYS);
+  game.unitsOrGearAddedSeats.add(p.seatIndex); // AFK SO tracking
   game.shopUnits.splice(game.shopUnits.indexOf(choice), 1);
   refillShopUnit(game);
   const ui = makeUnitInstance(choice);
   const currentBestScoutValue = game.teamScoutPool.length ? Math.max(...game.teamScoutPool.map((u) => scoutValue(u))) : -1;
   if (choice.Type.includes("Scout") && scoutValue(ui) > currentBestScoutValue) {
+    // Pathfinder passive: scouts have double combat stats
+    if (p.tactician?.Name === "The Pathfinder") {
+      ui.card = { ...choice, Damage: String(toInt(choice.Damage) * 2), HP: String(ui.maxHp * 2) } as UnitCard;
+      ui.maxHp = ui.maxHp * 2;
+      ui.curHp = ui.maxHp;
+    }
     game.teamScoutPool.push(ui);
-    log(`  ${p.name} donates ${ui.card.Name} to the team scout pool`);
+    log(`  ${p.name} donates ${ui.card.Name} to the team scout pool${p.tactician?.Name === "The Pathfinder" ? " (double stats)" : ""}`);
   } else if (p.active === null) {
     p.active = ui;
   } else {
@@ -223,6 +234,7 @@ export function equipGearOntoActiveMutation(game: GameState, p: GamePlayer, g: a
     if (commandReq) game.commandPool.Tech -= cost - fromSelf;
   }
   p.active.equipped.push(g);
+  game.unitsOrGearAddedSeats.add(p.seatIndex); // AFK SO tracking
   const hpBonus = toInt(g.HP);
   p.active.maxHp += hpBonus;
   p.active.curHp += hpBonus;
@@ -236,12 +248,100 @@ export function equipGearOntoActiveMutation(game: GameState, p: GamePlayer, g: a
   return true;
 }
 
+/** Chessmaster Reassign: move a unit from one player's lane to another's. Marks the unit as
+ * reassigned so it receives half-damage protection on its first combat hit this round. */
+export function chessmasterReassignMutation(
+  game: GameState,
+  fromPlayer: GamePlayer,
+  unitId: string,
+  toPlayer: GamePlayer,
+  log: (t: string) => void
+): boolean {
+  const allUnits = [...(fromPlayer.active ? [fromPlayer.active] : []), ...fromPlayer.reserve];
+  const ui = allUnits.find((u) => u.id === unitId);
+  if (!ui) return false;
+  // Remove from source lane
+  if (fromPlayer.active?.id === unitId) fromPlayer.active = fromPlayer.reserve.length ? fromPlayer.reserve.shift()! : null;
+  else fromPlayer.reserve = fromPlayer.reserve.filter((u) => u.id !== unitId);
+  // Add to destination lane
+  if (!toPlayer.active) toPlayer.active = ui;
+  else toPlayer.reserve.push(ui);
+  ui.reassignedThisRound = true;
+  log(`  [Chessmaster Reassign] ${ui.card.Name} moved from ${fromPlayer.name}'s lane to ${toPlayer.name}'s lane`);
+  return true;
+}
+
 export function buyGearMutation(game: GameState, p: GamePlayer, choice: GearCard, log: (t: string) => void) {
   const isFreeType = game.shopGearFreeType === (choice as any).Type || game.shopGearFreeType === "any";
-  if (!isFreeType) payIncludingCommand(game, p, tacticianDiscountedCost(p, choice as any, "gear"), GEAR_COST_KEYS);
+  const gType = (choice as any).Type as string;
+  const isGunsmithFree = p.tactician?.Name === "The Gunsmith" && gType === "Weapon" && !game.gunsmithFreeWeaponUsedSeats.has(p.seatIndex);
+  const isBulwarkFree = p.tactician?.Name === "The Bulwark" && gType === "Armor" && !game.bulwarkFreeArmorUsedSeats.has(p.seatIndex);
+  if (isGunsmithFree) {
+    game.gunsmithFreeWeaponUsedSeats.add(p.seatIndex);
+    log(`  [Gunsmith] ${p.name}'s 1st weapon purchase this round (${(choice as any).Name}) is free`);
+  } else if (isBulwarkFree) {
+    game.bulwarkFreeArmorUsedSeats.add(p.seatIndex);
+    log(`  [Bulwark] ${p.name}'s 1st armor purchase this round (${(choice as any).Name}) is free`);
+  } else if (!isFreeType) {
+    payIncludingCommand(game, p, tacticianDiscountedCost(p, choice as any, "gear"), GEAR_COST_KEYS);
+  }
   game.shopGear.splice(game.shopGear.indexOf(choice as any), 1);
   refillShopGear(game);
   equipGearOntoActiveMutation(game, p, choice, log);
+}
+
+/** Returns roll-filled shop gear the Quartermaster can reroll this round (active not yet used). */
+export function rerollableGear(game: GameState, p: GamePlayer): GearCard[] {
+  if (p.tactician?.Name !== "The Quartermaster") return [];
+  const key = `qm-reroll-${p.seatIndex}`;
+  if ((game.abilityUsesThisRound.get(key) ?? 0) > 0) return [];
+  return game.shopGear.filter((g) => game.quartermasterRolledShopGear.has(g));
+}
+
+/** Quartermaster active: remove a roll-filled slot and re-roll it with 2d6. Once per round. */
+export function quartermasterRerollMutation(game: GameState, p: GamePlayer, choice: GearCard, log: (t: string) => void) {
+  const idx = game.shopGear.indexOf(choice);
+  if (idx < 0) return;
+  game.shopGear.splice(idx, 1);
+  game.quartermasterRolledShopGear.delete(choice);
+  game.gearDeck.push(choice);
+  // Roll 2d6, fill a new slot
+  const topRank = Math.max(...game.players.map((q) => q.rank), 1);
+  const sum = (1 + Math.floor(Math.random() * 6)) + (1 + Math.floor(Math.random() * 6));
+  const roll = Math.min(sum, 8);
+  const targetRank = Math.min(roll, topRank);
+  let pool = game.gearDeck.filter((g) => RANK_NUM[g["Rank Name"]] === targetRank);
+  if (!pool.length) pool = game.gearDeck.filter((g) => RANK_NUM[g["Rank Name"]] <= 3);
+  if (!pool.length) pool = game.gearDeck;
+  if (pool.length) {
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    game.shopGear.push(picked);
+    game.quartermasterRolledShopGear.add(picked);
+    log(`  [Quartermaster Active] ${p.name} rerolled shop slot: ${(choice as any).Name} → ${(picked as any).Name} (2d6 roll: ${roll})`);
+  }
+  game.abilityUsesThisRound.set(`qm-reroll-${p.seatIndex}`, 1);
+}
+
+/** Reclaimer resource: buy gear from recyclePile at half the normal cost. */
+export function buyGearFromRecycleMutation(game: GameState, p: GamePlayer, choice: GearCard, log: (t: string) => void) {
+  const base = tacticianDiscountedCost(p, choice as any, "gear");
+  const halved: any = { ...base };
+  for (const k of GEAR_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
+  payIncludingCommand(game, p, halved, GEAR_COST_KEYS);
+  const idx = (game.recyclePile as any[]).indexOf(choice);
+  if (idx >= 0) (game.recyclePile as any[]).splice(idx, 1);
+  equipGearOntoActiveMutation(game, p, choice, log);
+}
+
+/** Returns recyclePile gear the Reclaimer player can afford at half cost. */
+export function affordableRecyclePileGear(game: GameState, p: GamePlayer): GearCard[] {
+  if (p.tactician?.Name !== "The Reclaimer") return [];
+  return (game.recyclePile as any[]).filter((g: any) => {
+    if (!("Rank Name" in g)) return false; // skip Command Cards in recyclePile
+    const halved: any = { ...tacticianDiscountedCost(p, g, "gear") };
+    for (const k of GEAR_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
+    return canAfford(p.res, halved, GEAR_COST_KEYS);
+  }) as GearCard[];
 }
 
 /** Both roles share this gate: a card with a capped one-time effect (Strategic Withdrawal) that's
@@ -347,8 +447,11 @@ export function nonCommanderActivateCardMutation(
   for (const res of ["Organic", "Tech", "Alien"] as const) {
     const cost = Math.ceil(toInt((card as any)[res]) * costMult);
     const fromSelf = Math.min(actor.res[res], cost);
+    const fromPool = cost - fromSelf;
     actor.res[res] -= fromSelf;
-    game.commandPool[res] -= cost - fromSelf;
+    game.commandPool[res] -= fromPool;
+    actor.stats.ownSpendTotal += fromSelf; // Kremlen SO tracking
+    actor.stats.commandPoolSpendTotal += fromPool;
   }
   log(`  [Active Effect] ${loc}: ${actor.name} (non-commander) activates ${card.Name} -> ${card["Active Effect"]}`);
   dispatch(card, loc);

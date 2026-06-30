@@ -57,6 +57,7 @@ import {
   adjacentSeats,
   canUseEffect,
   dealPreCombatDamage,
+  grantShields,
   healUnit,
   instancePower,
   makeTempCard,
@@ -215,6 +216,10 @@ export class GameEngine {
         accusationsMade: 0,
         accusationsCorrect: 0,
         timesAccused: 0,
+        abilitiesDenied: 0,
+        afkCleanRounds: 0,
+        commandPoolSpendTotal: 0,
+        ownSpendTotal: 0,
       },
     }));
 
@@ -287,6 +292,12 @@ export class GameEngine {
       retiresThisRound: new Map(),
       missionRankCompletedThisRound: 0,
       recyclePile: [],
+      gearHandReturnedThisRound: new Map(),
+      reclaimerPassiveFiredThisRound: new Set(),
+      unitsOrGearAddedSeats: new Set(),
+      quartermasterRolledShopGear: new Set(),
+      gunsmithFreeWeaponUsedSeats: new Set(),
+      bulwarkFreeArmorUsedSeats: new Set(),
       recycledThisRound: new Set(),
       garbageDayPermanent: false,
       locationSharingBonus: 0,
@@ -479,7 +490,18 @@ export class GameEngine {
     game.retiresThisRound = new Map();
     game.missionRankCompletedThisRound = 0;
     game.recycledThisRound = new Set();
+    game.gearHandReturnedThisRound = new Map();
+    game.reclaimerPassiveFiredThisRound = new Set();
+    game.unitsOrGearAddedSeats = new Set();
+    game.quartermasterRolledShopGear = new Set();
+    game.gunsmithFreeWeaponUsedSeats = new Set();
+    game.bulwarkFreeArmorUsedSeats = new Set();
     game.returnedToSupplyThisRound = { Organic: 0, Tech: 0, Alien: 0 };
+    for (const p of game.players) {
+      for (const ui of [...(p.active ? [p.active] : []), ...p.reserve]) {
+        ui.reassignedThisRound = false;
+      }
+    }
     game.containedThisRound = 0;
     game.shieldsDestroyedThisRound = 0;
     game.activationsThisRound = new Map();
@@ -881,6 +903,7 @@ export class GameEngine {
         isCommander,
         eligibleToActivateAsNonCommander:
           isCommander ||
+          p.tactician?.Name === "The Tactician" || // passive: can play commander cards from anywhere
           this.placementsThisRound[p.seatIndex].includes("Command") ||
           this.placementsThisRound[p.seatIndex].includes("Battlefield"),
         log: (t: string) => this.log(t),
@@ -920,7 +943,8 @@ export class GameEngine {
         const discarded = p.gearHand.filter((_, i) => discardSet.has(i));
         p.gearHand = p.gearHand.filter((_, i) => !discardSet.has(i));
         p.stats.gearDiscarded += discarded.length;
-        if (discarded.length) this.log(`  ${p.name} discards ${discarded.map((g) => (g as any).Name).join(", ")} (gear hand limit)`);
+        for (const g of discarded) this.sendGearToRecycle(game, p, g as any);
+        if (discarded.length) this.log(`  ${p.name} discards ${discarded.map((g) => (g as any).Name).join(", ")} (gear hand limit → recycle)`);
       }
     }
 
@@ -951,6 +975,13 @@ export class GameEngine {
       }
     }
 
+    // AFK SO: if the player added nothing to any lane this round, count it as a clean round.
+    if (!isPrepRound) {
+      for (const p of game.players) {
+        if (!game.unitsOrGearAddedSeats.has(p.seatIndex)) p.stats.afkCleanRounds += 1;
+      }
+    }
+
     // ---------------- CLEANUP ----------------
     // Reinforcements: surviving temp units and their gear return to their decks; dead units leave gear destroyed.
     if (game.reinforcementUnitIds.size > 0) {
@@ -960,7 +991,7 @@ export class GameEngine {
           const reserveIdx = p.reserve.findIndex((u) => u.id === uid);
           if (inActive || reserveIdx >= 0) {
             const ui = inActive ? p.active! : p.reserve[reserveIdx];
-            for (const g of ui.equipped) game.gearDeck.push(g as any);
+            for (const g of ui.equipped) (game.recyclePile as any[]).push(g);
             game.unitDeck.push(ui.card);
             if (inActive) {
               p.active = p.reserve.length ? p.reserve.shift()! : null;
@@ -1148,8 +1179,7 @@ export class GameEngine {
 
     const prevCommanderRank = game.players[game.commanderIdx].rank;
     if (game.commanderLocked) {
-      // The Kingmaker's active locked the commander for this round -- skip the handoff.
-      this.log(`  [The Kingmaker] Commander position locked -- ${game.players[game.commanderIdx].name} remains commander next round`);
+      this.log(`  [Commander locked] ${game.players[game.commanderIdx].name} remains commander next round`);
     } else if (game.forceCommanderChange) {
       // Leadership Crisis (or every-other-round penalty): use unanimous vote winner if available,
       // otherwise pick randomly (split vote = no agreed candidate, someone gets picked anyway).
@@ -1166,13 +1196,6 @@ export class GameEngine {
       game.commanderIdx = idx !== -1 ? idx : (game.commanderIdx + 1) % game.players.length;
     } else {
       game.commanderIdx = (game.commanderIdx + 1) % game.players.length;
-    }
-    // The Kingmaker: "You cannot be the commander -- if you would become commander, make
-    // another player commander instead." Redirects to the next player in seat order.
-    if (game.players[game.commanderIdx].tactician?.Name === "The Kingmaker") {
-      const kingmaker = game.players[game.commanderIdx];
-      game.commanderIdx = (game.commanderIdx + 1) % game.players.length;
-      this.log(`  [The Kingmaker] ${kingmaker.name} cannot be commander -- passes the role to ${game.players[game.commanderIdx].name}`);
     }
     // Usurper / Conductor SO: track handoffs where incoming rank is lower / higher than outgoing.
     if (!game.commanderLocked) {
@@ -1350,7 +1373,7 @@ export class GameEngine {
           }
         } else if (loc === "Containment Block") {
           const containedRank = game.containedEnemyPool.reduce((s, r) => s + ENEMY_RANK_NUM[(r as any).Rank as EnemyRank], 0);
-          const capacityMult = game.containmentCapacityDoubled ? 2 : 1;
+          const capacityMult = (game.containmentCapacityDoubled ? 2 : 1) * (p.tactician?.Name === "The Jailer" ? 2 : 1);
           const amt = (full ? containedRank + 1 : Math.floor((containedRank + 1) / 2)) * capacityMult;
           grantIncome(p, "Alien", amt);
         } else if (loc === "Battlefield") {
@@ -1508,12 +1531,42 @@ export class GameEngine {
           p.res[biggest.split(" ")[0] as keyof typeof p.res] += toInt((u.card as any)[biggest]);
         }
         game.unitDeck.push(u.card);
-        p.gearHand.push(...u.equipped.filter((g) => "Rank Name" in (g as any)));
+        this.returnOrRecycleGear(game, p, u.equipped.filter((g) => "Rank Name" in (g as any)) as any[]);
         p.stats.unitsRetired += 1;
         game.retiresThisRound.set(p.seatIndex, (game.retiresThisRound.get(p.seatIndex) ?? 0) + 1);
         this.log(`  ${p.name} retires ${u.card.Name} (Rank ${u.card.Rank})${game.retireGivesNoResource ? "" : " for a partial refund"}`);
       }
     }
+  }
+
+  /** Routes a gear card to recyclePile, but intercepts for the Reclaimer passive:
+   * "1st item put into recycling is returned to your hand each turn." */
+  private sendGearToRecycle(game: GameState, p: GamePlayer, g: import("./data.js").GearCard) {
+    if (p.tactician?.Name === "The Reclaimer" && !game.reclaimerPassiveFiredThisRound.has(p.seatIndex)) {
+      game.reclaimerPassiveFiredThisRound.add(p.seatIndex);
+      p.gearHand.push(g);
+      this.log(`  [Reclaimer] ${p.name}'s 1st recycled gear (${(g as any).Name}) returned to hand`);
+    } else {
+      (game.recyclePile as any[]).push(g);
+    }
+  }
+
+  /** Returns up to 1 gear card (2 for The Reclaimer) to hand from a batch (retire/death);
+   * routes the rest to recyclePile. Updates gearHandReturnedThisRound. */
+  private returnOrRecycleGear(game: GameState, p: GamePlayer, gear: import("./data.js").GearCard[]) {
+    const isReclaimer = p.tactician?.Name === "The Reclaimer";
+    const returnCap = isReclaimer ? 2 : 1;
+    const alreadyReturned = game.gearHandReturnedThisRound.get(p.seatIndex) ?? 0;
+    let returned = alreadyReturned;
+    for (const g of gear) {
+      if (returned < returnCap) {
+        p.gearHand.push(g);
+        returned++;
+      } else {
+        this.sendGearToRecycle(game, p, g);
+      }
+    }
+    game.gearHandReturnedThisRound.set(p.seatIndex, returned);
   }
 
   /** Shared slot cap for Med Bay: 2 base, 4 with Share Rooms built, Infinity during Emergency Triage. */
@@ -1535,7 +1588,7 @@ export class GameEngine {
         p.res[biggest.split(" ")[0] as keyof typeof p.res] += toInt((ui.card as any)[biggest]);
       }
       game.unitDeck.push(ui.card);
-      p.gearHand.push(...ui.equipped.filter((g) => "Rank Name" in (g as any)));
+      this.returnOrRecycleGear(game, p, ui.equipped.filter((g) => "Rank Name" in (g as any)) as any[]);
       p.stats.unitsRetired += 1;
       game.retiresThisRound.set(p.seatIndex, (game.retiresThisRound.get(p.seatIndex) ?? 0) + 1);
       this.log(`  [Honorable Discharge] ${ui.card.Name} retires instead of dying`);
@@ -2003,6 +2056,7 @@ export class GameEngine {
         isCommander,
         eligibleToActivateAsNonCommander:
           isCommander ||
+          p.tactician?.Name === "The Tactician" ||
           this.placementsThisRound[p.seatIndex].includes("Command") ||
           this.placementsThisRound[p.seatIndex].includes("Battlefield"),
         log: (t: string) => this.log(t),
@@ -2195,6 +2249,11 @@ export class GameEngine {
       const revealCanBePrevented = !oracleAlive && !/cannot be prevented/i.test(reveal);
       if (revealCanBePrevented && game.revealPreventionCharges > 0) {
         game.revealPreventionCharges--;
+        // Interdictor SO: credit the denial to the Pathfinder player (who granted the charges),
+        // or else to the lane controller whose lane was protected.
+        const pathfinderPlayer = game.players.find((q) => q.tactician?.Name === "The Pathfinder");
+        const creditPlayer = pathfinderPlayer ?? game.players.find((q) => q.controlledLaneSeat === p.seatIndex) ?? p;
+        creditPlayer.stats.abilitiesDenied += 1;
         this.log(`  [${front.Name}] Reveal prevented (${game.revealPreventionCharges} charge(s) remaining)`);
         continue;
       }
@@ -3141,12 +3200,13 @@ export class GameEngine {
       const pCombatants = pUnits.map((ui, i) => {
         const c = combatantFromUnit(ui);
         if (!game.reserveAbilitiesDisabled || i < activeCount) {
-          applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
+          applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank, p, game.playerProgress);
         }
         applyUnitCombatMods(c, ui);
         applyTacticianCombatMods(c, p, ui);
         applyBossBoardWideMods(game, c, false);
         applyEventCombatMods(game, c, false, ui);
+        if (ui.reassignedThisRound) c.halfFirstHit = true;
         return c;
       });
       // Apply cross-lane pending stuns from reveal effects (e.g. Wasp adjacent-lane stun).
@@ -3572,6 +3632,14 @@ export class GameEngine {
       const enemySurvivors = lane.eq;
       const totalShieldsAbsorbed = lane.totalShieldsAbsorbed;
       game.shieldsDestroyedThisRound += totalShieldsAbsorbed;
+      // Breaker resource: grant shield equal to total enemy armor+shields stripped by player combatants.
+      if (p.tactician?.Name === "The Breaker" && p.active) {
+        const stripped = pCombatants.reduce((sum, c) => sum + c.enemyArmorShieldStripped, 0);
+        if (stripped > 0) {
+          grantShields(p.active, stripped, p);
+          this.log(`  [Breaker] ${p.name} gains ${stripped} shield from enemy armor/shields stripped`);
+        }
+      }
       // Tunnler/Tactician passive: each player unit that dies in this lane reduces the overrun tracker by 1.
       const playerDeaths = pCombatants.length - playerSurvivors.length;
       if (playerDeaths > 0) {
@@ -3777,7 +3845,7 @@ export class GameEngine {
       if (!target) continue;
       const rCombatants = reinforcements.map((ui) => {
         const c = combatantFromUnit(ui);
-        applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank);
+        applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank, p, game.playerProgress);
         applyUnitCombatMods(c, ui);
         applyTacticianCombatMods(c, p, ui);
         applyBossBoardWideMods(game, c, false);

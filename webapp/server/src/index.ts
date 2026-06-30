@@ -10,8 +10,11 @@ import {
   resolveCombatAck,
   resolveCommanderVote,
   resolveCommandersCallChoice,
+  resolveChessmasterReassign,
+  resolveChessmasterConsent,
   resolveEventChoice,
   resolveGearDiscardChoice,
+  resolveGearOfferConsent,
   resolveLaneAssignmentChoice,
   resolvePerfectInfoLayout,
   resolvePlacementChoice,
@@ -35,6 +38,10 @@ const io = new Server(httpServer, {
 
 const rooms = new RoomManager();
 
+function broadcastLobbyList() {
+  io.emit("lobby:list", rooms.listOpenLobbies());
+}
+
 // Each connected socket carries the room code + clientId it's currently associated with,
 // so we know who to broadcast to and who to clean up on disconnect.
 interface SocketData {
@@ -53,6 +60,7 @@ function lookupSocket(clientId: string) {
 
 io.on("connection", (socket) => {
   const data = socket.data as SocketData;
+  socket.emit("lobby:list", rooms.listOpenLobbies());
 
   function broadcastRoom(code: string) {
     const room = rooms.get(code);
@@ -72,6 +80,7 @@ io.on("connection", (socket) => {
     socket.join(room.state.code);
     ack?.({ ok: true, roomCode: room.state.code });
     broadcastRoom(room.state.code);
+    broadcastLobbyList();
   });
 
   socket.on(
@@ -93,6 +102,7 @@ io.on("connection", (socket) => {
       socket.join(room.state.code);
       ack?.({ ok: true, roomCode: room.state.code });
       broadcastRoom(room.state.code);
+      broadcastLobbyList();
     }
   );
 
@@ -134,6 +144,18 @@ io.on("connection", (socket) => {
   });
   socket.on("leadershipCrisis:vote", ({ requestId, seatIndex }: { requestId: string; seatIndex: number }) => {
     resolveCommanderVote(socket.id, requestId, seatIndex);
+  });
+  socket.on(
+    "chessmaster:reassign:response",
+    ({ requestId, moves }: { requestId: string; moves: { unitId: string; destSeatIndex: number }[] }) => {
+      resolveChessmasterReassign(socket.id, requestId, moves ?? []);
+    }
+  );
+  socket.on("chessmaster:reassign:consentResponse", ({ requestId, accepted }: { requestId: string; accepted: boolean }) => {
+    resolveChessmasterConsent(socket.id, requestId, accepted);
+  });
+  socket.on("planning:gearOfferResponse", ({ requestId, accepted }: { requestId: string; accepted: boolean }) => {
+    resolveGearOfferConsent(socket.id, requestId, accepted);
   });
 
   socket.on("combat:ack", ({ requestId }: { requestId: string }) => {
@@ -202,6 +224,7 @@ io.on("connection", (socket) => {
     const gameId = recordGameStart(room.state);
     ack?.({ ok: true });
     broadcastRoom(room.state.code);
+    broadcastLobbyList();
     runGame(io, room.state, gameId, lookupSocket).catch((err) => {
       console.error(`Game in room ${room.state.code} crashed:`, err);
       io.to(room.state.code).emit("game:log", { text: `[ERROR] Game crashed: ${String(err)}` });
@@ -218,6 +241,7 @@ io.on("connection", (socket) => {
     room.markDisconnected(data.clientId);
     broadcastRoom(room.state.code);
     rooms.deleteIfEmpty(room.state.code);
+    broadcastLobbyList();
   });
 });
 
