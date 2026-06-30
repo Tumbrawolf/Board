@@ -16,7 +16,7 @@ const GEAR_DELETE_ON_KILL = new Set(["Apocalypse Rounds", "Black Iron"]);
 
 const GEAR_RESERVE_HEAL: Record<string, number> = { "Basic Medkit": 2, Medkit: 3, "Field Medkit": 4, "Triage Pack": 5 };
 const GEAR_PRECOMBAT_HEAL: Record<string, number> = { "Regen Plates": 4, "Repair Kit": 3 };
-const GEAR_PRECOMBAT_SHIELD: Record<string, number> = { "Shield Generator": 5 };
+const GEAR_PRECOMBAT_SHIELD: Record<string, number> = { "Shield Generator": 5, "Deployable Shield": 10 };
 
 function roll1to6(): number {
   return 1 + Math.floor(Math.random() * 6);
