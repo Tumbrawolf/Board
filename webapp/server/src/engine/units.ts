@@ -67,10 +67,9 @@ export function tryReviveOnce(game: GameState, p: GamePlayer, ui: UnitInstance, 
 }
 
 /** The Doctor Tactician's Active ("Activate on Unit death -- Move this unit to med bay with its
- * equipment") -- saves the dying unit at 1 HP with gear intact instead of sending it to the
- * graveyard. Once per round (same canActivateAbility limit as all other actives); the "med bay"
- * part is approximated as the unit surviving in reserve at 1 HP, healable at Medical Bay next
- * round like any other wounded unit. */
+ * equipment"). Sets the dying unit to 1 HP with gear intact; the caller is responsible for pushing
+ * it to p.medBayUnits. Fires mid-combat (Phase 2) on the first unit death detected that exchange;
+ * Phase 3 is a fallback for deaths not caught mid-combat. Once per round. */
 export function tryDoctorSave(game: GameState, p: GamePlayer, ui: UnitInstance, log: (t: string) => void): boolean {
   if (p.tactician?.Name !== "The Doctor") return false;
   const syntheticId = `tac-${p.seatIndex}`;

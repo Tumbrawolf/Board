@@ -3475,6 +3475,9 @@ export class GameEngine {
       }, totalShieldsAbsorbed: 0 });
     }
 
+    // Track units Doctor-saved mid-combat; Phase 3 skips them to avoid double-processing.
+    const doctorSavedMidCombat = new Set<string>(); // UnitInstance ids
+
     // Phase 2: exchange-by-exchange combat rotation. Each outer iteration runs ONE exchange per
     // active lane, then awaits a client ack (pause / skip / timer auto-advance) before continuing.
     // Cross-lane effects (Soul Eater, all_lanes passives, etc.) still apply between exchanges.
@@ -3515,6 +3518,25 @@ export class GameEngine {
                     se.hp += Math.floor(dead.hp / 2);
                     se.curHp += Math.floor(dead.hp / 2);
                     this.log(`  [Soul Eater] Passive: ${dead.name} died in another lane → +${Math.floor(dead.dmg / 2)} dmg, +${Math.floor(dead.hp / 2)} HP`);
+                  }
+                }
+              }
+            }
+            // The Doctor active: intercept the first dying unit mid-combat and move it to medBayUnits.
+            if (newDeadPlayers.length > 0) {
+              const annihilationActive =
+                game.activeEvent?.["Event name"] === "Annihilation Clause" ||
+                (game.annihilationAlliesDeletedByHigherRank && ENEMY_RANK_NUM[diffRank] > lane.p.rank);
+              if (!annihilationActive) {
+                for (const deadC of newDeadPlayers) {
+                  if (deadC.deletedByEnemy) continue;
+                  const idx = lane.pCombatants.indexOf(deadC);
+                  if (idx < 0) continue;
+                  const ui = lane.pUnits[idx];
+                  if (tryDoctorSave(game, lane.p, ui, (t) => this.log(t))) {
+                    lane.p.medBayUnits.push(ui);
+                    doctorSavedMidCombat.add(ui.id);
+                    break; // once per round; tryDoctorSave already records activation
                   }
                 }
               }
@@ -3683,8 +3705,8 @@ export class GameEngine {
           newUnits.push(ui);
         } else if (!annihilationNoSaves && !c.deletedByEnemy && tryReviveOnce(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
-        } else if (!annihilationNoSaves && !c.deletedByEnemy && tryDoctorSave(game, p, ui, (t) => this.log(t))) {
-          newUnits.push(ui);
+        } else if (!annihilationNoSaves && !c.deletedByEnemy && !doctorSavedMidCombat.has(ui.id) && tryDoctorSave(game, p, ui, (t) => this.log(t))) {
+          p.medBayUnits.push(ui);
         } else if (
           !annihilationNoSaves && !c.deletedByEnemy && necromancerAlive &&
           ((ui.card as any).Type ?? "").toLowerCase() === "infantry"
