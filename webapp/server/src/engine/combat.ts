@@ -114,6 +114,12 @@ export class Combatant {
   healAllEnemiesOnAttack = 0;
   /** The Breaker resource: accumulates total enemy armor+shields stripped by this combatant. */
   enemyArmorShieldStripped = 0;
+  /** Player unit: heal this much HP each time this unit kills an enemy (heal_on_kill tag). */
+  healOnKill = 0;
+  /** Player unit: gain this many shields each time this unit kills an enemy (shields_on_kill tag). */
+  shieldsOnKill = 0;
+  /** Player unit: instantly kill the active enemy when its curHp < hp × this fraction before attacks (execute_low_hp tag). */
+  executeEnemyBelowFraction = 0;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
@@ -280,7 +286,11 @@ export function resolveLaneCombat(
   const fireDeathCb = (dying: Combatant) => {
     if (deathCb && eq[0]) { deathCb(dying, eq[0]); deathCb = undefined; }
   };
-  const fireKillCb = (killer: Combatant) => { if (onEnemyKill) onEnemyKill(killer); };
+  const fireKillCb = (killer: Combatant) => {
+    if (killer.healOnKill > 0) killer.curHp = Math.min(killer.hp, killer.curHp + killer.healOnKill);
+    if (killer.shieldsOnKill > 0) killer.curShields += killer.shieldsOnKill;
+    if (onEnemyKill) onEnemyKill(killer);
+  };
   const dmgMult = () => (doubleFirstAttack && !firstExchangeDone) ? 2 : 1;
 
   const enemyAttacks = (e: Combatant, p: Combatant, mult: number) => {
@@ -395,6 +405,15 @@ export function resolveLaneCombat(
     }
     if (eq[0]) executeCheck(eq[0]);
     if (!pq.length) break;
+    // Player execute: instantly kill the active enemy when it starts an exchange below 1/4 HP.
+    if (pq[0]?.executeEnemyBelowFraction > 0 && eq[0]) {
+      const thresh = Math.floor(eq[0].hp * pq[0].executeEnemyBelowFraction);
+      if (eq[0].curHp > 0 && eq[0].curHp < thresh) {
+        fireKillCb(pq[0]); eq.shift();
+        if (exitAfterFirstEnemyKill) break;
+        continue;
+      }
+    }
     const p = pq[0]; // active player — always retaliates
     const e = eq[0];
     const mult = dmgMult();

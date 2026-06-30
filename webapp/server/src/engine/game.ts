@@ -28,7 +28,7 @@ import {
   type LaneCombatOptions,
 } from "./combat.js";
 import { applyBattlefieldActive, applyCommandActive } from "./commandCards.js";
-import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, tryDoctorSave, tryReviveOnce } from "./units.js";
+import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, classifyUnit, tryDoctorSave, tryReviveOnce } from "./units.js";
 import { applyEnemyCombatMods, classifyEnemy } from "./enemies.js";
 import { applyGearCombatMods, applyPrecombatGear, tryChronostasisSave } from "./gear.js";
 import { applyBossBoardWideMods, applyBossTier, resolveBossExchange } from "./bosses.js";
@@ -3136,6 +3136,8 @@ export class GameEngine {
     const lanesWon = new Set<GamePlayer>();
     const lanesWithKill: GamePlayer[] = [];
     const overrunLeftover = new Map<GamePlayer, Combatant[]>();
+    // Tracks seatIndices where the player's active unit has delete_on_kill — those kills skip containment.
+    const deleteOnKillLanes = new Set<number>();
 
     // Tactician actives fire BEFORE gear actives so The Engineer's "refresh + free next use"
     // takes effect in the same round's gear active loop.
@@ -3228,6 +3230,8 @@ export class GameEngine {
         if (ui.reassignedThisRound) c.halfFirstHit = true;
         return c;
       });
+      // delete_on_kill: kills in this lane skip containment capture.
+      if (p.active && classifyUnit(p.active.card).has("delete_on_kill")) deleteOnKillLanes.add(p.seatIndex);
       // Apply cross-lane pending stuns from reveal effects (e.g. Wasp adjacent-lane stun).
       if (tempState.pendingPlayerStunSeats.has(p.seatIndex) && pCombatants[0]) {
         pCombatants[0].stunned = true;
@@ -3950,7 +3954,8 @@ export class GameEngine {
       resolveBossExchange(game, (t) => this.log(t), (p, ui) => this.retireOrGraveyard(p, ui));
     }
 
-    if (lanesWithKill.length && game.activeEvent?.["Event name"] !== "Annihilation Clause" && this.containmentSlots > 0 && game.containedEnemyPool.length < this.containmentSlots) {
+    const containableLanes = lanesWithKill.filter((p) => !deleteOnKillLanes.has(p.seatIndex));
+    if (containableLanes.length && game.activeEvent?.["Event name"] !== "Annihilation Clause" && this.containmentSlots > 0 && game.containedEnemyPool.length < this.containmentSlots) {
       const capturePool = this.enemyByRank[diffRank] ?? [];
       const captured = capturePool.length ? capturePool[Math.floor(Math.random() * capturePool.length)] : null;
       if (captured) {

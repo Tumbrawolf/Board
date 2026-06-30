@@ -49,6 +49,11 @@ export function applyUnitCombatMods(c: Combatant, ui: UnitInstance) {
   if (tags.has("attacks_first")) c.attacksFirst = true;
   if (tags.has("reflect_half") || tags.has("reflect_retaliate")) c.reflectFraction = 0.5;
   if (tags.has("consecutive_damage")) c.dmg += ui.charges["consecutive_hits"] ?? 0;
+  if (tags.has("execute_low_hp")) c.executeEnemyBelowFraction = 0.25;
+  if (tags.has("heal_on_kill")) c.healOnKill = c.dmg;
+  if (tags.has("shields_on_kill")) c.shieldsOnKill = 10;
+  // long_range: multi-lane targeting — no hook in single-lane model (same as sim.py)
+  // delete_on_kill: handled in game.ts Phase 3 (skip containment for that lane)
 }
 
 /** "Revive once without Gear if no reserves in lane" (Rambo) -- a per-unit, once-per-game save
@@ -101,7 +106,7 @@ export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, gam
   const noReserve = p.reserve.length === 0;
   for (const ui of allUnits) {
     const tags = classifyUnit(ui.card);
-    if (tags.has("precombat_heal")) healUnit(ui, 4, game);
+    if (tags.has("precombat_heal") || tags.has("once_per_combat_heal")) healUnit(ui, 4, game);
     if (tags.has("precombat_shield")) ui.curShields += 5;
     if (tags.has("lane_heal") && ui === p.active) {
       for (const other of p.reserve) healUnit(other, 2, game);
