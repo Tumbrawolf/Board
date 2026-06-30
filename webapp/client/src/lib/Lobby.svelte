@@ -12,6 +12,7 @@
   import LaneAssignmentPanel from "./LaneAssignmentPanel.svelte";
   import LeadershipCrisisPanel from "./LeadershipCrisisPanel.svelte";
   import PerfectInfoPanel from "./PerfectInfoPanel.svelte";
+  import CombatPanel from "./CombatPanel.svelte";
   import RulesPage from "./RulesPage.svelte";
   import FirstUseTip from "./FirstUseTip.svelte";
 
@@ -367,6 +368,7 @@
         </div>
       {/if}
 
+      <CombatPanel />
       <CommandersCallPanel />
       <VoteOfNoConfidencePanel />
       <LeadershipCrisisPanel />
