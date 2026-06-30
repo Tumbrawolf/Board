@@ -132,6 +132,12 @@ export interface PrivateStateSnapshot {
   gearHand: GearHandView[];
 }
 
+export interface LobbyEntry {
+  code: string;
+  playerCount: number;
+  maxSeats: number;
+}
+
 export const DEFAULT_SETTINGS: RoomSettings = {
   difficulty: "Normal",
   antagonistMix: "full",

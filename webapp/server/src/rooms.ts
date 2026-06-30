@@ -167,4 +167,15 @@ export class RoomManager {
     }
     return undefined;
   }
+
+  listOpenLobbies(): Array<{ code: string; playerCount: number; maxSeats: number }> {
+    const result: Array<{ code: string; playerCount: number; maxSeats: number }> = [];
+    for (const room of this.rooms.values()) {
+      if (room.state.status === "lobby") {
+        const playerCount = room.state.seats.filter((s) => s !== null).length;
+        result.push({ code: room.state.code, playerCount, maxSeats: MAX_SEATS });
+      }
+    }
+    return result;
+  }
 }
