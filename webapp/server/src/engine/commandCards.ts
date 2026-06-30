@@ -39,12 +39,14 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
   const { game, commander, tempState } = ctx;
   const name = card.Name;
   const w = weakestPlayer(game);
+  // Assume Command instant: commander counts as 1 rank higher for recruitment rank caps.
+  const effectiveCommanderRank = commander.rank + (game.assumeCommandBonusSeats.has(commander.seatIndex) ? 1 : 0);
 
   switch (name) {
     case "Mech Station": {
       if (!game.mechUnlocked) break;
       const freeMech = game.shopUnits
-        .filter((u) => u.Type.includes("Mech") && RANK_NUM[u.Rank] <= commander.rank)
+        .filter((u) => u.Type.includes("Mech") && RANK_NUM[u.Rank] <= effectiveCommanderRank)
         .sort((a, b) => RANK_NUM[b.Rank] - RANK_NUM[a.Rank])[0];
       if (freeMech) {
         game.shopUnits.splice(game.shopUnits.indexOf(freeMech), 1);
@@ -57,7 +59,7 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
     case "Vehicle Bay": {
       if (!game.vehicleUnlocked) break;
       const freeVehicle = game.shopUnits
-        .filter((u) => u.Type.includes("Vehicle") && RANK_NUM[u.Rank] <= commander.rank)
+        .filter((u) => u.Type.includes("Vehicle") && RANK_NUM[u.Rank] <= effectiveCommanderRank)
         .sort((a, b) => RANK_NUM[b.Rank] - RANK_NUM[a.Rank])[0];
       if (freeVehicle) {
         game.shopUnits.splice(game.shopUnits.indexOf(freeVehicle), 1);
@@ -104,7 +106,7 @@ export function applyCommandActive(ctx: CommandContext, card: CommandCard) {
       break;
     }
     case "Additional Bedding": {
-      const pool = game.shopUnits.filter((u) => RANK_NUM[u.Rank] <= commander.rank);
+      const pool = game.shopUnits.filter((u) => RANK_NUM[u.Rank] <= effectiveCommanderRank);
       if (pool.length) {
         const u = pool[Math.floor(Math.random() * pool.length)];
         game.shopUnits.splice(game.shopUnits.indexOf(u), 1);

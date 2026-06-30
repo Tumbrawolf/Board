@@ -122,6 +122,10 @@ export class Combatant {
   executeEnemyBelowFraction = 0;
   /** Player unit: gain shields equal to (damage dealt × this fraction) each attack (Slayer Suit passive). */
   shieldsOnDmgFraction = 0;
+  /** Trample keyword: overkill damage from player attacks carries into the next enemy in queue. */
+  trample = false;
+  /** TMRG / Crushing Advance: trample damage chains through ALL reserve enemies, not just the next one. */
+  trampleUnlimited = false;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
@@ -374,6 +378,22 @@ export function resolveLaneCombat(
     }
   };
 
+  // Trample: carry overkill damage into reserve enemies. If trampleUnlimited, chain all the way through.
+  const applyTrample = (attacker: Combatant, overkill: number) => {
+    if (!attacker.trample || overkill <= 0) return;
+    let carry = overkill;
+    while (carry > 0 && eq.length > 0) {
+      eq[0].curHp -= carry;
+      if (eq[0].curHp <= 0) {
+        carry = -eq[0].curHp;
+        fireKillCb(attacker); eq.shift();
+        if (!attacker.trampleUnlimited) break;
+      } else {
+        break;
+      }
+    }
+  };
+
   while (pq.length && eq.length) {
     // Snapshot active combatant HP before any exchange code runs (for ExchangeData on exit).
     const _xPName = pq[0]?.name ?? "";
@@ -436,7 +456,9 @@ export function resolveLaneCombat(
           if (e.explodeOnDeathFraction > 0) pq[0].curHp -= Math.floor(e.dmg * e.explodeOnDeathFraction);
           if (e.explodeOnDeathFlat > 0) pq[0].curHp -= e.explodeOnDeathFlat;
         }
+        const ok1 = e.curHp < 0 ? -e.curHp : 0;
         fireKillCb(p); eq.shift();
+        applyTrample(p, ok1);
         if (exitAfterFirstEnemyKill) break;
         continue;
       }
@@ -495,7 +517,10 @@ export function resolveLaneCombat(
         if (e.explodeOnDeathFraction > 0) pq[0].curHp -= Math.floor(e.dmg * e.explodeOnDeathFraction);
         if (e.explodeOnDeathFlat > 0) pq[0].curHp -= e.explodeOnDeathFlat;
       }
-      fireKillCb(pq[0] ?? p); eq.shift();
+      const ok2 = e.curHp < 0 ? -e.curHp : 0;
+      const attacker2 = pq[0] ?? p;
+      fireKillCb(attacker2); eq.shift();
+      applyTrample(attacker2, ok2);
       if (exitAfterFirstEnemyKill) break;
     }
     // Reserve enemy healers (e.g. Cleric passive): heal the active enemy after each exchange.

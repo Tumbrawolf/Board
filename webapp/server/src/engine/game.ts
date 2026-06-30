@@ -939,7 +939,8 @@ export class GameEngine {
           isCommander ||
           p.tactician?.Name === "The Tactician" || // passive: can play commander cards from anywhere
           this.placementsThisRound[p.seatIndex].includes("Command") ||
-          this.placementsThisRound[p.seatIndex].includes("Battlefield"),
+          this.placementsThisRound[p.seatIndex].includes("Battlefield") ||
+          game.commandCentralSeats.has(p.seatIndex), // Command Central instant
         log: (t: string) => this.log(t),
       };
     };
@@ -1219,6 +1220,14 @@ export class GameEngine {
         if (p.rank < RANK_ORDER.length) p.rank += 1;
       }
       this.log(`  [Rank Trickle] Every player +1 Rank -> [${game.players.map((p) => RANK_ORDER[p.rank - 1]).join(", ")}]`);
+    }
+
+    // Steady Hand instant: prevent the next time the current commander would lose the role.
+    const currentCommanderSeat = game.players[game.commanderIdx].seatIndex;
+    if (!game.commanderLocked && game.steadyHandSeats.has(currentCommanderSeat)) {
+      game.steadyHandSeats.delete(currentCommanderSeat);
+      game.commanderLocked = true;
+      this.log(`  [Steady Hand] ${game.players[game.commanderIdx].name} keeps commander role`);
     }
 
     const prevCommanderRank = game.players[game.commanderIdx].rank;
@@ -1637,9 +1646,17 @@ export class GameEngine {
     game.gearHandReturnedThisRound.set(p.seatIndex, returned);
   }
 
+  /** Assume Command instant: commander counts as 1 rank higher for rank-cap effects. */
+  private effectiveCommanderRank(): number {
+    const game = this.game;
+    const commander = game.players[game.commanderIdx];
+    return commander.rank + (game.assumeCommandBonusSeats.has(commander.seatIndex) ? 1 : 0);
+  }
+
   /** Shared slot cap for Med Bay: 2 base, 4 with Share Rooms built, Infinity during Emergency Triage. */
   private effectiveMedBaySlotCap(): number {
     const game = this.game;
+    if (game.medBaySlotCapOverride > 0) return game.medBaySlotCapOverride;
     // Emergency Triage unlocks to the board max (4); Share Rooms built also unlocks to 4; base is 2.
     const shareRoomsBuilt = (game.locationUpgradesBuilt["Medical Bay"] ?? []).some((c) => c.Name === "Share Rooms");
     if (game.activeEvent?.["Event name"] === "Emergency Triage" || shareRoomsBuilt) return 4;
@@ -2154,7 +2171,8 @@ export class GameEngine {
           isCommander ||
           p.tactician?.Name === "The Tactician" ||
           this.placementsThisRound[p.seatIndex].includes("Command") ||
-          this.placementsThisRound[p.seatIndex].includes("Battlefield"),
+          this.placementsThisRound[p.seatIndex].includes("Battlefield") ||
+          game.commandCentralSeats.has(p.seatIndex), // Command Central instant
         log: (t: string) => this.log(t),
         dispatch: (card: CommandCard, loc: Location) => {
           if (card.Name === "Suppression") {
@@ -2316,7 +2334,7 @@ export class GameEngine {
     // Security Drones passive: lanes with no active unit at combat start receive drones equal to commander rank.
     // Drones bypass the lane unit limit by design.
     if (!underminerActive && (game.locationUpgradesBuilt["Armory"] ?? []).some((c) => c.Name === "Security Drones")) {
-      const droneCount = commander.rank;
+      const droneCount = this.effectiveCommanderRank();
       for (const p of game.players) {
         if (p.active === null) {
           for (let i = 0; i < droneCount; i++) tempState.addTempUnit(p, makeUnitInstance(makeTempCard("Drone", 1, 1)));
@@ -3344,7 +3362,7 @@ export class GameEngine {
       const pCombatants = pUnits.map((ui, i) => {
         const c = combatantFromUnit(ui);
         if (!game.reserveAbilitiesDisabled || i < activeCount) {
-          applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank, p, game.playerProgress);
+          applyGearCombatMods(c, ui, this.effectiveCommanderRank(), p, game.playerProgress);
         }
         applyUnitCombatMods(c, ui);
         applyTacticianCombatMods(c, p, ui);
@@ -3376,6 +3394,11 @@ export class GameEngine {
       if (game.battlefieldDominanceSeats.has(p.seatIndex)) {
         for (const c of pCombatants) c.attacksFirst = true;
         this.log(`  [Battlefield Dominance] ${p.name}'s units all attack first this round`);
+      }
+      // Crushing Advance instant: trample damage chains through all reserve enemies this round.
+      if (game.crushingAdvanceSeats.has(p.seatIndex)) {
+        for (const c of pCombatants) { c.trample = true; c.trampleUnlimited = true; }
+        this.log(`  [Crushing Advance] ${p.name}'s units have unlimited trample this round`);
       }
       // Overrun carryover: surviving enemy from last round keeps its combat stats; skip fresh build.
       const _persisted = this.persistedEnemyCombatants.get(p.seatIndex);
@@ -3829,7 +3852,7 @@ export class GameEngine {
               targetLane.p.active = slayerUi;
               // Build a fresh combatant and inject it into the target lane's live combat queue.
               const newC = combatantFromUnit(slayerUi);
-              applyGearCombatMods(newC, slayerUi, game.players[game.commanderIdx].rank, slayerP, game.playerProgress);
+              applyGearCombatMods(newC, slayerUi, this.effectiveCommanderRank(), slayerP, game.playerProgress);
               applyUnitCombatMods(newC, slayerUi);
               applyEventCombatMods(game, newC, false, slayerUi);
               applyBossBoardWideMods(game, newC, false);
@@ -4078,7 +4101,7 @@ export class GameEngine {
       if (!target) continue;
       const rCombatants = reinforcements.map((ui) => {
         const c = combatantFromUnit(ui);
-        applyGearCombatMods(c, ui, game.players[game.commanderIdx].rank, p, game.playerProgress);
+        applyGearCombatMods(c, ui, this.effectiveCommanderRank(), p, game.playerProgress);
         applyUnitCombatMods(c, ui);
         applyTacticianCombatMods(c, p, ui);
         applyBossBoardWideMods(game, c, false);

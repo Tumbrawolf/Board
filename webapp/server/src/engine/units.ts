@@ -27,6 +27,8 @@ const UNIT_KEYWORD_RULES: [string, string[]][] = [
   ["revive_once", ["revive once without gear"]],
   ["boost_others_damage", ["boosts damage of other units"]],
   ["resource_on_kill", ["grants +1 progress when killed"]],
+  ["trample", ["trample"]],
+  ["trample_unlimited", ["through all reserve units"]],
 ];
 
 const unitTagCache = new Map<string, Set<string>>();
@@ -52,6 +54,8 @@ export function applyUnitCombatMods(c: Combatant, ui: UnitInstance) {
   if (tags.has("execute_low_hp")) c.executeEnemyBelowFraction = 0.25;
   if (tags.has("heal_on_kill")) c.healOnKill = c.dmg;
   if (tags.has("shields_on_kill")) c.shieldsOnKill = 10;
+  if (tags.has("trample") || tags.has("trample_unlimited")) c.trample = true;
+  if (tags.has("trample_unlimited")) c.trampleUnlimited = true;
   // long_range: multi-lane targeting — no hook in single-lane model (same as sim.py)
   // delete_on_kill: handled in game.ts Phase 3 (skip containment for that lane)
 }
