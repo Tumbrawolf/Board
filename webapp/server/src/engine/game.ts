@@ -3465,6 +3465,65 @@ export class GameEngine {
       pActiveStartHp: number;
     }> = [];
 
+    // Scout deploy: Nemesis and Special Forces can deploy from the shared scout pool to any lane
+    // at combat start, replacing the current active unit (active goes to top of reserve).
+    {
+      const deployableNames = new Set(["Nemesis", "Special Forces"]);
+      let idx = game.teamScoutPool.findIndex(ui => deployableNames.has(ui.card.Name));
+      while (idx >= 0) {
+        const deployed = game.teamScoutPool.splice(idx, 1)[0];
+        // Bot: deploy to the player with the most enemies in their lane.
+        const targetP = game.players.reduce((best, q) =>
+          q.laneEnemyReserve.length > best.laneEnemyReserve.length ? q : best
+        , game.players[0]);
+        if (targetP.active) targetP.reserve.unshift(targetP.active);
+        targetP.active = deployed;
+        // Stun effects fire during combatant build (pendingStun sets).
+        if (deployed.card.Name === "Special Forces") {
+          tempState.pendingEnemyStunSeats.add(targetP.seatIndex);
+          targetP.stats.stunsMade += 1;
+        } else if (deployed.card.Name === "Nemesis") {
+          tempState.pendingEnemyStunAllSeats.add(targetP.seatIndex);
+          targetP.stats.stunsMade += 1;
+          for (const adj of adjacentSeats(game, targetP.seatIndex)) tempState.pendingEnemyStunSeats.add(adj);
+        }
+        this.log(`  [Scout Deploy] ${deployed.card.Name} deployed to ${targetP.name}'s lane from scout pool.`);
+        idx = game.teamScoutPool.findIndex(ui => deployableNames.has(ui.card.Name));
+      }
+    }
+
+    // Lane swaps: Battle Buggy / APC / MG Quad — once per turn, swap active units between 2 lanes.
+    {
+      const swapped = new Set<GamePlayer>();
+      for (const p of game.players) {
+        if (swapped.has(p) || !p.active) continue;
+        const cardName = p.active.card.Name;
+        if (cardName !== "Battle Buggy" && cardName !== "APC" && cardName !== "MG Quad") continue;
+        const swapperUnit = p.active;
+        const candidates = game.players.filter(q => q !== p && q.active && !swapped.has(q));
+        if (!candidates.length) continue;
+        // Bot: swap with the most-threatened lane (most enemies).
+        const tgt = candidates.reduce((best, q) =>
+          q.laneEnemyReserve.length > best.laneEnemyReserve.length ? q : best
+        , candidates[0]);
+        const tmp = p.active; p.active = tgt.active!; tgt.active = tmp;
+        swapped.add(p); swapped.add(tgt);
+        // APC: 10 shields to both moved units.
+        if (cardName === "APC") { p.active.curShields += 10; tgt.active.curShields += 10; }
+        // MG Quad: deal 2× damage to front enemy in each of the two swapped lanes.
+        if (cardName === "MG Quad") {
+          const qdmg = toInt((swapperUnit.card as any).Damage) * 2;
+          for (const lp of [p, tgt]) {
+            if (lp.laneEnemyReserve.length && toInt(lp.laneEnemyReserve[0].HP) <= qdmg) {
+              const killed = lp.laneEnemyReserve.shift();
+              this.log(`  [MG Quad] Swap burst killed ${killed?.Name} in ${lp.name}'s lane.`);
+            }
+          }
+        }
+        this.log(`  [${cardName}] ${p.name} ↔ ${tgt.name}: swapped actives (${p.active.card.Name} / ${tgt.active.card.Name})`);
+      }
+    }
+
     // Phase 1: pre-combat setup per lane (build combatants and options, push to laneRuns).
     for (const p of game.players) {
       const titanAliveForLane = game.players.some((tp) => tp.laneEnemyReserve.some((e) => e.Name === "Titan" && !game.suppressedPassiveEnemyNames.has("Titan")));
@@ -3875,6 +3934,32 @@ export class GameEngine {
         preventPlayerStuns: !!(game as any)._siegeTankActive,
         onPlayerStunEnemy: (count) => { p.stats.stunsMade += count; },
       }, totalShieldsAbsorbed: 0, pActiveStartHp: pCombatants[0]?.curHp ?? 0 });
+    }
+
+    // Bastion: while Bastion is the active unit in any player's lane, ALL enemy attacks across
+    // all other lanes are redirected to Bastion (enemies effectively get long range to reach it).
+    {
+      const bastionLR = laneRuns.find(lr => lr.pq.length > 0 && lr.pq[0].name === "Bastion");
+      if (bastionLR) {
+        this.log(`  [Bastion] ${bastionLR.p.name}'s Bastion is active — all enemy attacks in other lanes target Bastion.`);
+        for (const lr of laneRuns) {
+          if (lr === bastionLR) continue;
+          const existingCb = lr.opts.onEnemyAttack;
+          const captured = bastionLR; // stable reference to the lane object
+          const capLR = lr;
+          lr.opts.onEnemyAttack = (attacker: Combatant) => {
+            const bastion = captured.pq.find(c => c.name === "Bastion" && c.curHp > 0);
+            if (bastion) {
+              bastion.curHp -= computeDealt(attacker, bastion);
+            } else if (existingCb) {
+              existingCb(attacker);
+            } else {
+              const tgt = capLR.pq[0];
+              if (tgt && tgt.curHp > 0) tgt.curHp -= computeDealt(attacker, tgt);
+            }
+          };
+        }
+      }
     }
 
     // Track units Doctor-saved mid-combat; Phase 3 skips them to avoid double-processing.
