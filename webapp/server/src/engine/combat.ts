@@ -155,6 +155,10 @@ export class Combatant {
   /** Long Range / "can target any lane when attacking": when the player's own lane is cleared of
    * enemies, this unit's attacks redirect to the front enemy in the highest-threat adjacent lane. */
   longRange = false;
+  /** Lazy Recruit: unit skips every other attack (attacks on exchange 1, 3, 5...; skips 2, 4, 6...). */
+  attacksEveryOther = false;
+  /** Tracks whether the next exchange should be a skip (toggles each exchange). */
+  attacksEveryOtherActive = false;
   /** Regen Plates active: suppress all keyword-driven passive combat mods for this unit this round. */
   suppressPassives = false;
   /** The Culling boss: enemy deletes player units whose rank is strictly lower than this enemy's rank. */
@@ -395,6 +399,10 @@ export function resolveLaneCombat(
 
   const playerAttacks = (p: Combatant, e: Combatant, mult: number): number => {
     if (p.stunned) { p.stunned = false; return 0; }
+    if (p.attacksEveryOther) {
+      p.attacksEveryOtherActive = !p.attacksEveryOtherActive;
+      if (!p.attacksEveryOtherActive) return 0; // skip this exchange
+    }
     const wasFullHp = e.curHp >= e.hp;
     const eBefore = e.curShields;
     const _bonusDmg = p.bonusDmgNextAttack; p.bonusDmgNextAttack = 0;

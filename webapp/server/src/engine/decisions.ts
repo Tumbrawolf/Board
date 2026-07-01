@@ -19,11 +19,14 @@ import {
   equipGearOntoActiveMutation,
   rerollableGear,
   quartermasterRerollMutation,
+  sacrificeForDiscountMutation,
 } from "./planningActions.js";
 import { lanePower, reorderActive } from "./state.js";
 import type { GamePlayer, GameState } from "./types.js";
 
 export type CommandCardChoice = "build" | "activate" | "skip";
+
+const SACRIFICE_UNIT_NAMES_BOT = new Set(["Conscript", "Recruit", "Stubborn Recruit", "Lazy Recruit", "Recruit Prodigy"]);
 
 // ── Tactician active targeting ────────────────────────────────────────────────
 
@@ -376,6 +379,11 @@ export class BotDecisionProvider implements DecisionProvider {
    * one call site in game.ts. Command Card decisions are deliberately NOT made here (returns an
    * empty map) -- a bot still decides those live, in game.ts's Phase 2, exactly as before. */
   async runPlanningWindow(player: GamePlayer, game: GameState, ctx: PlanningWindowCtx): Promise<Map<string, CommandCardChoice>> {
+    // Conscript-family sacrifice: spend a sacrifice unit from reserve to discount next purchase.
+    if (!player.nextRecruitmentDiscount) {
+      const hasSacrifice = player.reserve.some((u) => SACRIFICE_UNIT_NAMES_BOT.has(u.card.Name));
+      if (hasSacrifice) sacrificeForDiscountMutation(game, player, ctx.log);
+    }
     let bought = 0;
     while (bought < 2) {
       const choice = await this.chooseNextUnitPurchase(player, game, affordableUnits(game, player));

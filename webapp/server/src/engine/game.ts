@@ -196,6 +196,7 @@ export class GameEngine {
       nextGearFreeCount: 0,
       nextUnitFreeCount: 0,
       nextRankFreeUnit: 0,
+      nextRecruitmentDiscount: null,
       mechHalfPrice: false,
       vehicleHalfPrice: false,
       rankOneFree: false,
@@ -2382,6 +2383,13 @@ export class GameEngine {
       game.commandPool.Alien += toInt((scout.card as any)["Alien Scout"]) * scoutMult;
       if (scout.card.Name === "Civilian Survivalist") revealCount += 1;
       if (scout.card.Name === '"Python"') revealCount *= 2;
+      if (scout.card.Name === 'AMP "Surveyor"') {
+        // Doubles own resource generation; provides no enemy reveal.
+        game.commandPool.Organic += toInt((scout.card as any)["Organic Scout"]) * scoutMult;
+        game.commandPool.Tech += toInt((scout.card as any)["Tech Scout"]) * scoutMult;
+        game.commandPool.Alien += toInt((scout.card as any)["Alien Scout"]) * scoutMult;
+        revealCount = 0;
+      }
       if (scout.card.Name === "Saboteur Cell" && canUseEffect(game, "Saboteur Cell", 3)) {
         game.enemyProgress = Math.max(0, game.enemyProgress - 1);
         recordEffectUse(game, "Saboteur Cell");

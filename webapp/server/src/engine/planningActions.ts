@@ -198,7 +198,31 @@ export function buyUnitMutation(game: GameState, p: GamePlayer, choice: UnitCard
     log(`  [Free Unit] ${p.name}'s ${choice.Name} is free (${p.nextUnitFreeCount} credit(s) remaining)`);
   } else {
     const base = tacticianDiscountedCost(p, choice, "unit", game);
-    if (p.mechHalfPrice && choice.Type.includes("Mech")) {
+    if (p.nextRecruitmentDiscount) {
+      const disc = p.nextRecruitmentDiscount;
+      p.nextRecruitmentDiscount = null;
+      const discounted: any = { ...base };
+      const discMap: Record<string, number> = {
+        "Organic Cost": disc.Organic,
+        "Tech Cost": disc.Tech,
+        "Alien Cost": disc.Alien,
+      };
+      for (const k of UNIT_COST_KEYS) {
+        discounted[k] = String(Math.max(0, toInt(discounted[k]) - (discMap[k] ?? 0)));
+      }
+      log(`  [Sacrifice Discount] ${p.name} buys ${choice.Name} with reduced cost`);
+      if (p.mechHalfPrice && choice.Type.includes("Mech")) {
+        const halved: any = { ...discounted };
+        for (const k of UNIT_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
+        payIncludingCommand(game, p, halved, UNIT_COST_KEYS);
+      } else if (p.vehicleHalfPrice && choice.Type.includes("Vehicle")) {
+        const halved: any = { ...discounted };
+        for (const k of UNIT_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
+        payIncludingCommand(game, p, halved, UNIT_COST_KEYS);
+      } else {
+        payIncludingCommand(game, p, discounted, UNIT_COST_KEYS);
+      }
+    } else if (p.mechHalfPrice && choice.Type.includes("Mech")) {
       const halved: any = { ...base };
       for (const k of UNIT_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
       payIncludingCommand(game, p, halved, UNIT_COST_KEYS);
@@ -231,6 +255,32 @@ export function buyUnitMutation(game: GameState, p: GamePlayer, choice: UnitCard
   } else {
     p.reserve.push(ui);
   }
+}
+
+const SACRIFICE_UNIT_NAMES = new Set(["Conscript", "Recruit", "Stubborn Recruit", "Lazy Recruit", "Recruit Prodigy"]);
+
+/** Sacrifice a Conscript-family unit from the player's active or reserve slot to gain a cost
+ * discount on the next unit purchase. Returns true if a unit was sacrificed. */
+export function sacrificeForDiscountMutation(game: GameState, p: GamePlayer, log: (t: string) => void): boolean {
+  // Find the first sacrifice-eligible unit in reserve, or active as fallback.
+  let target: import("./types.js").UnitInstance | null = null;
+  const reserveIdx = p.reserve.findIndex((u) => SACRIFICE_UNIT_NAMES.has(u.card.Name));
+  if (reserveIdx >= 0) {
+    [target] = p.reserve.splice(reserveIdx, 1);
+  } else if (p.active && SACRIFICE_UNIT_NAMES.has(p.active.card.Name)) {
+    target = p.active;
+    p.active = p.reserve.shift() ?? null;
+  }
+  if (!target) return false;
+  const bonus = target.card.Name === "Recruit Prodigy" ? 2 : 1;
+  const disc = {
+    Organic: Math.max(0, toInt((target.card as any)["Organic Cost"]) + bonus),
+    Tech: Math.max(0, toInt((target.card as any)["Tech Cost"]) + bonus),
+    Alien: Math.max(0, toInt((target.card as any)["Alien Cost"]) + bonus),
+  };
+  p.nextRecruitmentDiscount = disc;
+  log(`  [Sacrifice] ${p.name} sacrifices ${target.card.Name} → next unit costs -${disc.Organic}O/-${disc.Tech}T/-${disc.Alien}A`);
+  return true;
 }
 
 /** Equips a gear card (from the shop or from gearHand) onto the player's active unit, paying its

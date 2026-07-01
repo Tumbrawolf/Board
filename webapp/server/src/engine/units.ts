@@ -46,6 +46,7 @@ const UNIT_KEYWORD_RULES: [string, string[]][] = [
   ["player_attacks_all_lanes", ["attacks all lanes simultaneously"]],
   ["buff_lane_dmg_armor", ["friendly units get +10 damage"]],
   ["counter_after_enemy_hit", ["attacks an additional time after enemy attacks"]],
+  ["attacks_every_other", ["attacks every 2nd round", "attacks every 2nd hit", "only attacks every 2nd"]],
 ];
 
 const unitTagCache = new Map<string, Set<string>>();
@@ -94,6 +95,7 @@ export function applyUnitCombatMods(c: Combatant, ui: UnitInstance) {
   if (tags.has("hits_double")) c.hitsDouble = true;
   if (tags.has("player_attacks_all_lanes")) c.playerAttacksAllLanes = true;
   if (tags.has("counter_after_enemy_hit")) c.counterAfterEachEnemyHit = true;
+  if (tags.has("attacks_every_other")) c.attacksEveryOther = true;
   if (tags.has("execute_low_hp") && ui.card.Name === "Attack Dogs") c.executeRequiresSameOrLowerRank = true;
 }
 
@@ -231,6 +233,15 @@ export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, gam
     // Siege Tank: prevent all player stuns this round while active.
     if (ui.card.Name === "Siege Tank" && ui === p.active && game) {
       (game as any)._siegeTankActive = true;
+    }
+    // RDMP "Mother": generates resources each round when in reserve slot.
+    if (ui.card.Name === 'RDMP "Mother"' && ui !== p.active) {
+      const org = toInt((ui.card as any)["Organic Scout"]);
+      const tech = toInt((ui.card as any)["Tech Scout"]);
+      const alien = toInt((ui.card as any)["Alien Scout"]);
+      if (org > 0) p.res.Organic += org;
+      if (tech > 0) p.res.Tech += tech;
+      if (alien > 0) p.res.Alien += alien;
     }
   }
   // Front Line Commander: "Boosts Damage of other units by this unit's attack when Active"

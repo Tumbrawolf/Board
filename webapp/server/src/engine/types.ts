@@ -78,6 +78,8 @@ export interface GamePlayer {
   /** Highest rank that the next free-unit credit covers. 0 = none. "Your next Rank 3 unit is free"
    * sets this to 3; consumed on the next unit purchase of that rank or lower. */
   nextRankFreeUnit: number;
+  /** Sacrifice discount from Conscript/Recruit family: applied to next unit purchase. */
+  nextRecruitmentDiscount: { Organic: number; Tech: number; Alien: number } | null;
   /** Permanent half-price discount on Mech units. Set by Steel Supremacy instant. */
   mechHalfPrice: boolean;
   /** Permanent half-price discount on Vehicle units. Set by Armored Column instant. */
