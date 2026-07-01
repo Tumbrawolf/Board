@@ -104,6 +104,8 @@ export function applyUnitCombatMods(c: Combatant, ui: UnitInstance) {
   if (tags.has("attacks_every_other")) c.attacksEveryOther = true;
   if (tags.has("execute_low_hp") && ui.card.Name === "Attack Dogs") c.executeRequiresSameOrLowerRank = true;
   if (ui.card.Name === 'RDMP "Glass"' || ui.card.Name === 'RDMP "Impailer"') c.trampleExcess = true;
+  // Plasma Tank: gain shields equal to enemy shields destroyed on each attack.
+  if (ui.card.Name === "Plasma Tank") c.gainShieldsEqualToShieldsDestroyed = true;
 }
 
 /** "Revive once without Gear if no reserves in lane" (Rambo) -- a per-unit, once-per-game save

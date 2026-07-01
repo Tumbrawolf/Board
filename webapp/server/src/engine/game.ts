@@ -245,6 +245,7 @@ export class GameEngine {
         unitsRetiredHighRankFullHp: 0,
         maxKillsInRoundWithNoDeaths: 0,
       },
+      honorableDischargeUnit: null,
     }));
 
     const leaderIdx = Math.floor(Math.random() * players.length);
@@ -618,6 +619,24 @@ export class GameEngine {
     for (const p of game.players) {
       p.reserve.push(...p.benchedUnits);
       p.benchedUnits = [];
+    }
+    // ATV: reset per-round swap-fired flag so it can act again this round.
+    for (const u of game.teamScoutPool) {
+      if (u.card.Name === "ATV") delete u.charges["swapFired"];
+    }
+    // Honorable Discharge / War Hero: redeploy any unit held from last round's retirement.
+    for (const p of game.players) {
+      if (p.honorableDischargeUnit) {
+        const unit = p.honorableDischargeUnit;
+        p.honorableDischargeUnit = null;
+        if (p.active === null) {
+          p.active = unit;
+          this.log(`  [Honorable Discharge] ${unit.card.Name} redeployed to ${p.name}'s active slot for this round`);
+        } else {
+          p.reserve.push(unit);
+          this.log(`  [Honorable Discharge] ${unit.card.Name} returned to ${p.name}'s reserve for this round`);
+        }
+      }
     }
     // Assigned Posts' Failure Penalty: re-roll locations each persist round, then force first
     // worker placement in runWorkerPlacementAndIncome (detected by activeEvent !== "Assigned Posts"
@@ -1829,16 +1848,17 @@ export class GameEngine {
       // War Hero mission instant: retire returned to hand + fully heal all units (one-shot).
       if (game.warHeroSeats.has(p.seatIndex)) {
         game.warHeroSeats.delete(p.seatIndex);
-        p.benchedUnits.push(ui);
+        ui.curHp = ui.maxHp; // heal to full before holding
+        p.honorableDischargeUnit = ui;
         for (const q of game.players) {
           for (const u of [...(q.active ? [q.active] : []), ...q.reserve]) u.curHp = u.maxHp;
         }
-        this.log(`  [War Hero] ${ui.card.Name} returned to hand; all units fully healed`);
+        this.log(`  [War Hero] ${ui.card.Name} held for next-round redeploy; all units fully healed`);
       // Honorable Discharge mission instant: retire returned to hand (one-shot).
       } else if (game.honorableDischargeSeats.has(p.seatIndex)) {
         game.honorableDischargeSeats.delete(p.seatIndex);
-        p.benchedUnits.push(ui);
-        this.log(`  [Honorable Discharge instant] ${ui.card.Name} returned to hand`);
+        p.honorableDischargeUnit = ui;
+        this.log(`  [Honorable Discharge instant] ${ui.card.Name} held for next-round redeploy`);
       } else {
         game.unitDeck.push(ui.card);
         this.returnOrRecycleGear(game, p, ui.equipped.filter((g) => "Rank Name" in (g as any)) as any[]);
@@ -2372,6 +2392,7 @@ export class GameEngine {
     game.missionEnemyStunSeats.clear();
 
     let revealCount = 2 + (game.nightVisionRevealBonus ?? 0) + game.permanentScoutRevealBonus;
+    let scoutIsPython = false;
     game.nightVisionRevealBonus = 0;
     if (game.teamScoutPool.length && !game.shadowSowerActive) {
       const scout = game.teamScoutPool.reduce((a, b) =>
@@ -2386,7 +2407,7 @@ export class GameEngine {
       game.commandPool.Alien += sA;
       for (const sp of game.players) { sp.res.Organic += sO; sp.res.Tech += sT; sp.res.Alien += sA; }
       if (scout.card.Name === "Civilian Survivalist") revealCount += 1;
-      if (scout.card.Name === '"Python"') revealCount *= 2;
+      if (scout.card.Name === '"Python"') { revealCount *= 2; scoutIsPython = true; }
       if (scout.card.Name === 'AMP "Surveyor"') {
         // Doubles own resource generation; provides no enemy reveal.
         game.commandPool.Organic += sO;
@@ -2454,6 +2475,31 @@ export class GameEngine {
       for (let i = 0; i < laneRevealCount; i++) {
         game.revealedEnemyNames.add(p.laneEnemyReserve[i].Name);
       }
+    }
+
+    // "Python": kills the 3 lowest-rank enemies revealed by scouting across all lanes.
+    if (scoutIsPython) {
+      // Collect all revealed enemies (first revealCount from each lane) with their lane reference.
+      const revealedByLane: { p: GamePlayer; e: EnemyCard }[] = [];
+      for (const p of game.players) {
+        const laneRevealCount = Math.min(revealCount, p.laneEnemyReserve.length);
+        for (let i = 0; i < laneRevealCount; i++) {
+          revealedByLane.push({ p, e: p.laneEnemyReserve[i] });
+        }
+      }
+      // Sort by rank ascending (lowest rank = easiest to kill first).
+      revealedByLane.sort((a, b) => (ENEMY_RANK_NUM[(a.e as any).Rank ?? ""] ?? 0) - (ENEMY_RANK_NUM[(b.e as any).Rank ?? ""] ?? 0));
+      let pythonKills = 0;
+      for (const { p, e } of revealedByLane) {
+        if (pythonKills >= 3) break;
+        const idx2 = p.laneEnemyReserve.indexOf(e);
+        if (idx2 >= 0) {
+          p.laneEnemyReserve.splice(idx2, 1);
+          this.log(`  [Python] Killed scouted ${e.Name} (${(e as any).Rank ?? "?"}) in ${p.name}'s lane`);
+          pythonKills++;
+        }
+      }
+      if (pythonKills > 0) this.log(`  [Python] Total ${pythonKills} lowest-rank scouted enemy/enemies killed`);
     }
 
     // Perfect Information: commander can see and rearrange enemy stacks after hoard build.
@@ -2547,13 +2593,22 @@ export class GameEngine {
         this.log(`  [${front.Name}] Reveal suppressed (already scouted this round)`);
         continue;
       }
-      // Smoke Pack: "When under half HP cannot be targeted by abilities" — blocks reveals.
-      if (
-        !oracleAlive &&
+      // Smoke Pack: "When under half HP cannot be targeted by abilities" — blocks reveals (directed targeting only).
+      // Smoke Launcher: "Units in this lane cannot be targeted by directed effects" — also blocks reveals.
+      // Neither blocks AoE passives (Emitter DoT, Totem of Decay) — those are LaneCombatOptions, not reveals.
+      const hasSmokePackUnderHalf = !oracleAlive &&
         p.active?.equipped.some((g) => (g as any).Name === "Smoke Pack") &&
-        p.active.curHp < Math.floor(p.active.maxHp / 2)
-      ) {
-        this.log(`  [${front.Name}] Reveal blocked (${p.name}'s active unit has Smoke Pack and is under half HP)`);
+        p.active.curHp < Math.floor(p.active.maxHp / 2);
+      const hasSmokeLauncher = !oracleAlive &&
+        [...(p.active ? [p.active] : []), ...p.reserve].some((ui) =>
+          ui.equipped.some((g) => (g as any).Name === "Smoke Launcher")
+        );
+      if (hasSmokePackUnderHalf) {
+        this.log(`  [${front.Name}] Reveal blocked (${p.name}'s active unit has Smoke Pack and is under half HP) — directed targeting denied`);
+        continue;
+      }
+      if (hasSmokeLauncher) {
+        this.log(`  [${front.Name}] Reveal blocked (${p.name}'s lane has Smoke Launcher — directed targeting denied)`);
         continue;
       }
       // Reveal prevention: player effects can grant prevention charges. Unpreventable reveals
@@ -3501,7 +3556,7 @@ export class GameEngine {
     // Scout deploy: Nemesis and Special Forces can deploy from the shared scout pool to any lane
     // at combat start, replacing the current active unit (active goes to top of reserve).
     {
-      const deployableNames = new Set(["Nemesis", "Special Forces"]);
+      const deployableNames = new Set(["Nemesis", "Special Forces", "Remote Drop Soldier"]);
       let idx = game.teamScoutPool.findIndex(ui => deployableNames.has(ui.card.Name));
       while (idx >= 0) {
         const deployed = game.teamScoutPool.splice(idx, 1)[0];
@@ -3519,6 +3574,30 @@ export class GameEngine {
           tempState.pendingEnemyStunAllSeats.add(targetP.seatIndex);
           targetP.stats.stunsMade += 1;
           for (const adj of adjacentSeats(game, targetP.seatIndex)) tempState.pendingEnemyStunSeats.add(adj);
+        } else if (deployed.card.Name === "Remote Drop Soldier") {
+          // On deploy: deal damage = unit damage to active enemy in target lane.
+          const rdsDmg = toInt(deployed.card.Damage);
+          if (rdsDmg > 0 && targetP.laneEnemyReserve.length > 0) {
+            targetP.laneEnemyReserve[0] = { ...targetP.laneEnemyReserve[0] }; // ensure distinct ref
+            const eHp = toInt(targetP.laneEnemyReserve[0].HP) - rdsDmg;
+            if (eHp <= 0) {
+              const killed = targetP.laneEnemyReserve.shift()!;
+              this.log(`  [Remote Drop Soldier] Deploy burst killed ${killed.Name} in ${targetP.name}'s lane (${rdsDmg} dmg)`);
+            } else {
+              (targetP.laneEnemyReserve[0] as any).HP = String(eHp);
+              this.log(`  [Remote Drop Soldier] Deploy burst: ${rdsDmg} damage to ${targetP.laneEnemyReserve[0].Name} in ${targetP.name}'s lane (${eHp} HP left)`);
+            }
+          }
+        }
+        // Pack Mule: new active deployed from scout — check for Pack Mule gear transfer.
+        {
+          const laneUnits = [...(targetP.active ? [targetP.active] : []), ...targetP.reserve];
+          const pm = laneUnits.find(u => u.card.Name === "Pack Mule" && u.equipped.length > 0);
+          if (pm && targetP.active && targetP.active !== pm) {
+            const pmGear = pm.equipped.shift()!;
+            targetP.active.equipped.push(pmGear);
+            this.log(`  [Pack Mule] Transferred ${(pmGear as any).Name ?? "gear"} to newly deployed ${targetP.active.card.Name}`);
+          }
         }
         this.log(`  [Scout Deploy] ${deployed.card.Name} deployed to ${targetP.name}'s lane from scout pool.`);
         idx = game.teamScoutPool.findIndex(ui => deployableNames.has(ui.card.Name));
@@ -3559,6 +3638,42 @@ export class GameEngine {
           }
         }
         this.log(`  [${cardName}] ${p.name} ↔ ${tgt.name}: swapped actives (${p.active.card.Name} / ${tgt.active.card.Name})`);
+      }
+    }
+
+    // ATV (Scout slot): once per round, swap actives in the 2 most-enemy lanes; each swapped unit
+    // deals a free attack to the front enemy in its new lane.
+    {
+      const atvUnit = game.teamScoutPool.find(u => u.card.Name === "ATV");
+      if (atvUnit && !(atvUnit.charges["swapFired"])) {
+        const eligible = game.players.filter(p => p.active !== null);
+        if (eligible.length >= 2) {
+          // Sort by enemy count descending; pick top 2 lanes.
+          const sorted = [...eligible].sort((a, b) => b.laneEnemyReserve.length - a.laneEnemyReserve.length);
+          const laneA = sorted[0];
+          const laneB = sorted[1];
+          // Swap actives.
+          const tmpActive = laneA.active!;
+          laneA.active = laneB.active!;
+          laneB.active = tmpActive;
+          this.log(`  [ATV] Scout swap: ${laneA.name} ↔ ${laneB.name} actives (${laneA.active.card.Name} / ${laneB.active.card.Name})`);
+          // Free attack: each swapped unit deals its damage to the front enemy in its new lane.
+          for (const lp of [laneA, laneB]) {
+            if (lp.active && lp.laneEnemyReserve.length > 0) {
+              const atk = toInt(lp.active.card.Damage);
+              const eHpBefore = toInt(lp.laneEnemyReserve[0].HP);
+              const eHpAfter = eHpBefore - atk;
+              if (eHpAfter <= 0) {
+                const killed = lp.laneEnemyReserve.shift()!;
+                this.log(`  [ATV] ${lp.active.card.Name}'s free attack killed ${killed.Name} in ${lp.name}'s lane (${atk} dmg)`);
+              } else {
+                (lp.laneEnemyReserve[0] as any).HP = String(eHpAfter);
+                this.log(`  [ATV] ${lp.active.card.Name}'s free attack: ${atk} to ${lp.laneEnemyReserve[0].Name} in ${lp.name}'s lane (${eHpAfter} HP left)`);
+              }
+            }
+          }
+          atvUnit.charges["swapFired"] = 1;
+        }
       }
     }
 
@@ -3975,6 +4090,32 @@ export class GameEngine {
             q.laneEnemyReserve.length > best.laneEnemyReserve.length ? q : best
           , otherPlayers[0]);
           firesaleTargetSeat = bestTarget.seatIndex;
+        }
+      }
+      // AMP "Tripwire" bonus: sacrifice self to deal 4× damage when an enemy passive fires this lane.
+      // Simplified: if front enemy has a non-empty Passive column AND Tripwire is active, fire once.
+      if (p.active?.card.Name === 'AMP "Tripwire"' && !(p.active.charges["tripwireFired"])) {
+        const frontPassive = (p.laneEnemyReserve[0] as any)?.Passive ?? "";
+        if (frontPassive) {
+          const tripwireDmg = toInt(p.active.card.Damage) * 4;
+          if (eCombatants.length > 0) {
+            eCombatants[0].curHp -= tripwireDmg;
+            this.log(`  [AMP "Tripwire"] ${p.name} sacrifices Tripwire (enemy passive present): ${tripwireDmg} damage to ${eCombatants[0].name}`);
+          }
+          p.active.charges["tripwireFired"] = 1;
+          // Sacrifice: remove Tripwire from lane and promote reserve.
+          const sacrificed = p.active;
+          p.active = p.reserve.shift() ?? null;
+          p.graveyard.push(sacrificed);
+          // Rebuild pCombatants and pUnits to reflect Tripwire's removal.
+          const newPUnits = [...(p.active ? [p.active] : []), ...p.reserve];
+          pCombatants.splice(0, pCombatants.length, ...newPUnits.map((ui) => {
+            const c = combatantFromUnit(ui);
+            applyGearCombatMods(c, ui, this.effectiveCommanderRank(), p, game.playerProgress);
+            applyUnitCombatMods(c, ui);
+            return c;
+          }));
+          pUnits.splice(0, pUnits.length, ...newPUnits);
         }
       }
       const needsOnAfterPlayerAttack = hasSplashPlayer || hasAllLanesPlayer || hasLaneHeal || firesaleTargetSeat >= 0;
@@ -4559,6 +4700,16 @@ export class GameEngine {
       });
       p.active = newUnits.length ? newUnits[0] : null;
       p.reserve = [...(newUnits.length > 1 ? newUnits.slice(1) : []), ...ghostEvadeUnits];
+      // Pack Mule: when a new unit enters the active slot, transfer its first equipped gear to the new active.
+      if (p.active && p.active !== preCombatActive.get(p.seatIndex)) {
+        const allLaneUnits = [...(p.active ? [p.active] : []), ...p.reserve];
+        const packMule = allLaneUnits.find(u => u.card.Name === "Pack Mule" && u.equipped.length > 0);
+        if (packMule && p.active !== packMule) {
+          const transferred = packMule.equipped.shift()!;
+          p.active.equipped.push(transferred);
+          this.log(`  [Pack Mule] Transferred ${(transferred as any).Name ?? "gear"} to new active ${p.active.card.Name}`);
+        }
+      }
       // Exploitation: unit survived combat but is marked to die after attacking.
       if (p.active && tempState.mustDieAfterCombat.has(p.active.id)) {
         this.log(`  [Exploitation] ${p.active.card.Name} dies after attacking`);

@@ -132,6 +132,8 @@ export class Combatant {
   stripEnemyBoosts = false;
   /** Player unit: execute enemy only if enemy rank ≤ this unit's rank (Attack Dogs). */
   executeRequiresSameOrLowerRank = false;
+  /** Player unit: gain shields equal to the number of enemy shields destroyed by this attack (Plasma Tank). */
+  gainShieldsEqualToShieldsDestroyed = false;
   /** Player unit: gain this many shields each time this unit kills an enemy (shields_on_kill tag). */
   shieldsOnKill = 0;
   shieldsOnKillEnemyRank = false;
@@ -422,6 +424,11 @@ export function resolveLaneCombat(
     e.curHp -= pDmg + bonusPlayerDmgPerAttack;
     totalShieldsAbsorbed += eBefore - e.curShields;
     if (p.shieldsOnDmgFraction > 0 && pDmg > 0) p.curShields += Math.floor(pDmg * p.shieldsOnDmgFraction);
+    // Plasma Tank: gain shields equal to enemy shields destroyed by this attack.
+    if (p.gainShieldsEqualToShieldsDestroyed) {
+      const shieldsDestroyed = Math.max(0, eBefore - e.curShields);
+      if (shieldsDestroyed > 0) p.curShields += shieldsDestroyed;
+    }
     if (p.stunOnHitCharges > 0 && pDmg > 0) { e.stunned = true; if (isFinite(p.stunOnHitCharges)) p.stunOnHitCharges--; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
     if (p.stunOnAttackFullHp && wasFullHp && pDmg > 0) { e.stunned = true; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
     if (splashAllyOnPlayerAttack && pq.length > 1) {

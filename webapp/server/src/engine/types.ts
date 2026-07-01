@@ -163,6 +163,9 @@ export interface GamePlayer {
     /** Flawless Assault req: max kills achieved in a single round where the player had 0 deaths. */
     maxKillsInRoundWithNoDeaths: number;
   };
+  /** Honorable Discharge / War Hero: unit held after retirement, redeployed at the next planning
+   * phase. Null when inactive. */
+  honorableDischargeUnit: UnitInstance | null;
 }
 
 export interface GameSettings {
