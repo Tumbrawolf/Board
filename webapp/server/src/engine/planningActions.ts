@@ -1,4 +1,4 @@
-import { RANK_NUM, UPGRADE_SLOT_CAP, type Location } from "./constants.js";
+﻿import { RANK_NUM, UPGRADE_SLOT_CAP, type Location } from "./constants.js";
 import type { CommandCard, GearCard, UnitCard } from "./data.js";
 import { toInt } from "./data.js";
 import { refillShopGear, refillShopUnit } from "./shop.js";
@@ -279,7 +279,7 @@ export function sacrificeForDiscountMutation(game: GameState, p: GamePlayer, log
     Alien: Math.max(0, toInt((target.card as any)["Alien Cost"]) + bonus),
   };
   p.nextRecruitmentDiscount = disc;
-  log(`  [Sacrifice] ${p.name} sacrifices ${target.card.Name} → next unit costs -${disc.Organic}O/-${disc.Tech}T/-${disc.Alien}A`);
+  log(`  [Sacrifice] ${p.name} sacrifices ${target.card.Name} â†’ next unit costs -${disc.Organic}O/-${disc.Tech}T/-${disc.Alien}A`);
   return true;
 }
 
@@ -360,6 +360,8 @@ export function chessmasterReassignMutation(
   const allUnits = [...(fromPlayer.active ? [fromPlayer.active] : []), ...fromPlayer.reserve];
   const ui = allUnits.find((u) => u.id === unitId);
   if (!ui) return false;
+  // EMP "Behemoth" is immovable — cannot be reassigned.
+  if (ui.card.Name === 'EMP "Behemoth"') { log(`  [EMP "Behemoth"] Cannot be moved — immovable unit`); return false; }
   // Remove from source lane
   if (fromPlayer.active?.id === unitId) fromPlayer.active = fromPlayer.reserve.length ? fromPlayer.reserve.shift()! : null;
   else fromPlayer.reserve = fromPlayer.reserve.filter((u) => u.id !== unitId);
@@ -421,7 +423,7 @@ export function quartermasterRerollMutation(game: GameState, p: GamePlayer, choi
     const picked = pool[Math.floor(Math.random() * pool.length)];
     game.shopGear.push(picked);
     game.quartermasterRolledShopGear.add(picked);
-    log(`  [Quartermaster Active] ${p.name} rerolled shop slot: ${(choice as any).Name} → ${(picked as any).Name} (2d6 roll: ${roll})`);
+    log(`  [Quartermaster Active] ${p.name} rerolled shop slot: ${(choice as any).Name} â†’ ${(picked as any).Name} (2d6 roll: ${roll})`);
   }
   game.abilityUsesThisRound.set(`qm-reroll-${p.seatIndex}`, 1);
 }

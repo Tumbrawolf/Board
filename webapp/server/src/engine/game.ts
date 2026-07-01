@@ -1,4 +1,4 @@
-import {
+﻿import {
   COMMAND_HAND_SIZE,
   COMMANDER_HAND_SIZE,
   ENEMY_RANK_NUM,
@@ -2378,16 +2378,21 @@ export class GameEngine {
         scoutValue(b) > scoutValue(a) ? b : a
       );
       const scoutMult = (game.locationUpgradesBuilt["Containment Block"] ?? []).some((c) => c.Name === "Scouting update") ? 2 : 1;
-      game.commandPool.Organic += toInt((scout.card as any)["Organic Scout"]) * scoutMult;
-      game.commandPool.Tech += toInt((scout.card as any)["Tech Scout"]) * scoutMult;
-      game.commandPool.Alien += toInt((scout.card as any)["Alien Scout"]) * scoutMult;
+      const sO = toInt((scout.card as any)["Organic Scout"]) * scoutMult;
+      const sT = toInt((scout.card as any)["Tech Scout"]) * scoutMult;
+      const sA = toInt((scout.card as any)["Alien Scout"]) * scoutMult;
+      game.commandPool.Organic += sO;
+      game.commandPool.Tech += sT;
+      game.commandPool.Alien += sA;
+      for (const sp of game.players) { sp.res.Organic += sO; sp.res.Tech += sT; sp.res.Alien += sA; }
       if (scout.card.Name === "Civilian Survivalist") revealCount += 1;
       if (scout.card.Name === '"Python"') revealCount *= 2;
       if (scout.card.Name === 'AMP "Surveyor"') {
         // Doubles own resource generation; provides no enemy reveal.
-        game.commandPool.Organic += toInt((scout.card as any)["Organic Scout"]) * scoutMult;
-        game.commandPool.Tech += toInt((scout.card as any)["Tech Scout"]) * scoutMult;
-        game.commandPool.Alien += toInt((scout.card as any)["Alien Scout"]) * scoutMult;
+        game.commandPool.Organic += sO;
+        game.commandPool.Tech += sT;
+        game.commandPool.Alien += sA;
+        for (const sp of game.players) { sp.res.Organic += sO; sp.res.Tech += sT; sp.res.Alien += sA; }
         revealCount = 0;
       }
       if (scout.card.Name === "Saboteur Cell" && canUseEffect(game, "Saboteur Cell", 3)) {
@@ -2430,8 +2435,23 @@ export class GameEngine {
 
     // Populate revealedEnemyNames: front (and scouted) enemies are "revealed" for Night Vision
     // and other reveal-conditional effects. Scouting reveals the first `revealCount` enemies.
+    // RDMP "Spotter": blocks reveals in its lane; takes 1 HP per blocked reveal.
+    // MCP "Hound": if it killed last round, blocks reveals in its lane this round.
     for (const p of game.players) {
-      for (let i = 0; i < Math.min(revealCount, p.laneEnemyReserve.length); i++) {
+      const spotterUnit = [...(p.active ? [p.active] : []), ...p.reserve].find((ui) => ui.card.Name === 'RDMP "Spotter"');
+      const houndBlocked = (((game as any)._houndKilledSeats) as Set<number> | undefined)?.has(p.seatIndex) ?? false;
+      const laneRevealCount = (spotterUnit || houndBlocked) ? 0 : Math.min(revealCount, p.laneEnemyReserve.length);
+      if (spotterUnit) {
+        const blocked = Math.min(revealCount, p.laneEnemyReserve.length);
+        if (blocked > 0) {
+          spotterUnit.curHp = Math.max(0, spotterUnit.curHp - blocked);
+          this.log(`  [RDMP "Spotter"] Blocked ${blocked} reveal(s) in ${p.name}'s lane, took ${blocked} HP damage (${spotterUnit.curHp} HP left)`);
+        }
+      }
+      if (houndBlocked && !spotterUnit) {
+        this.log(`  [MCP "Hound"] Reveals blocked in ${p.name}'s lane (killed last round)`);
+      }
+      for (let i = 0; i < laneRevealCount; i++) {
         game.revealedEnemyNames.add(p.laneEnemyReserve[i].Name);
       }
     }
@@ -2522,6 +2542,11 @@ export class GameEngine {
       if (!front) continue;
       const reveal: string = (front as any).Reveal ?? "";
       if (!reveal) continue;
+      // Already scouted: enemy was revealed during the scouting phase, so its reveal effect does not fire.
+      if (game.revealedEnemyNames.has(front.Name)) {
+        this.log(`  [${front.Name}] Reveal suppressed (already scouted this round)`);
+        continue;
+      }
       // Smoke Pack: "When under half HP cannot be targeted by abilities" — blocks reveals.
       if (
         !oracleAlive &&
@@ -3500,6 +3525,9 @@ export class GameEngine {
       }
     }
 
+    // isImmovable: EMP "Behemoth" cannot be healed or moved by any card effect.
+    const isImmovable = (ui: UnitInstance) => ui.card.Name === 'EMP "Behemoth"';
+
     // Lane swaps: Battle Buggy / APC / MG Quad — once per turn, swap active units between 2 lanes.
     {
       const swapped = new Set<GamePlayer>();
@@ -3507,8 +3535,10 @@ export class GameEngine {
         if (swapped.has(p) || !p.active) continue;
         const cardName = p.active.card.Name;
         if (cardName !== "Battle Buggy" && cardName !== "APC" && cardName !== "MG Quad") continue;
+        // EMP "Behemoth" is immovable — cannot be swapped.
+        if (isImmovable(p.active)) continue;
         const swapperUnit = p.active;
-        const candidates = game.players.filter(q => q !== p && q.active && !swapped.has(q));
+        const candidates = game.players.filter(q => q !== p && q.active && !swapped.has(q) && !isImmovable(q.active!));
         if (!candidates.length) continue;
         // Bot: swap with the most-threatened lane (most enemies).
         const tgt = candidates.reduce((best, q) =>
@@ -3541,6 +3571,17 @@ export class GameEngine {
         const preActivations = game.activationsThisRound.get(p.seatIndex) ?? 0;
         applyPrecombatGear(game, p, (t) => this.log(t), tempState);
         applyPrecombatUnit(p, tempState, game);
+        // Mobile Command Vehicle: roll 1D6 per resource type if present in lane (active or reserve).
+        const mcvUnit = p.active?.card.Name === "Mobile Command vehicle" ? p.active : p.reserve.find((u) => u.card.Name === "Mobile Command vehicle");
+        if (mcvUnit) {
+          const rollD6 = () => 1 + Math.floor(Math.random() * 6);
+          const rOrg = rollD6(), rTech = rollD6(), rAlien = rollD6();
+          p.res.Organic += rOrg;
+          p.res.Tech += rTech;
+          p.res.Alien += rAlien;
+          this.log("  [Mobile Command Vehicle] ${p.name} rolls D6 per resource: +${rOrg} Organic, +${rTech} Tech, +${rAlien} Alien");
+        }
+
         if (titanAliveForLane && (game.activationsThisRound.get(p.seatIndex) ?? 0) > preActivations) {
           tempState.titanStunnedSeats.add(p.seatIndex);
         }
@@ -3914,6 +3955,29 @@ export class GameEngine {
           if (adjLane && adjLane.eq.length > 0) adjLane.eq[0].curHp -= splashDmg;
         }
       } : undefined;
+      // Technician family (lane_heal): heal vehicles/mechs in lane by N HP after each player attack.
+      const technicianUnit = pUnits.find((ui) => classifyUnit(ui.card).has("lane_heal"));
+      let laneHealAmt = 0;
+      if (technicianUnit) {
+        const techText = `${(technicianUnit.card as any)["Main Effect"] ?? ""} ${(technicianUnit.card as any)["Bonus Effects"] ?? ""}`;
+        const techHealMatch = techText.match(/heal\s+(?:by\s+)?(\d+)\s+each\s+attack/i) ??
+                              techText.match(/heal\s+(?:vehicles?\s+and\s+mechs?\s+)?(?:by\s+)?(\d+)/i);
+        laneHealAmt = techHealMatch ? parseInt(techHealMatch[1]) : 1;
+      }
+      const hasLaneHeal = laneHealAmt > 0;
+      // AMP2 "Firesale": deal 10 damage per exchange to a chosen lane's active enemy (bot: most enemies).
+      const firesaleUnit = pUnits.find((ui) => ui.card.Name === 'AMP2 "Firesale"');
+      let firesaleTargetSeat = -1;
+      if (firesaleUnit) {
+        const otherPlayers = game.players.filter((op) => op.seatIndex !== p.seatIndex);
+        if (otherPlayers.length) {
+          const bestTarget = otherPlayers.reduce((best, q) =>
+            q.laneEnemyReserve.length > best.laneEnemyReserve.length ? q : best
+          , otherPlayers[0]);
+          firesaleTargetSeat = bestTarget.seatIndex;
+        }
+      }
+      const needsOnAfterPlayerAttack = hasSplashPlayer || hasAllLanesPlayer || hasLaneHeal || firesaleTargetSeat >= 0;
       laneRuns.push({ p, pUnits, pCombatants, eCombatants, pq: pCombatants, eq: eCombatants, opts: {
         bonusPlayerDmgPerAttack: tagTeamBonus + combatStimsBonus,
         onFirstPlayerDeath: ynpCb,
@@ -3928,7 +3992,7 @@ export class GameEngine {
         deathCloakFloor: p.laneEnemyReserve.some((e) => e.Name === "Death Cloak" && !game.suppressedPassiveEnemyNames.has(e.Name)),
         stackAttacksOnSameTarget: p.laneEnemyReserve.some((e) => e.Name === "Alpha Storm Claw" && !game.suppressedPassiveEnemyNames.has(e.Name)),
         sharedShieldPool,
-        onAfterPlayerAttack: (hasSplashPlayer || hasAllLanesPlayer) ? (attacker, dmg) => {
+        onAfterPlayerAttack: needsOnAfterPlayerAttack ? (attacker, dmg) => {
           // Adjacent splash
           if (playerSplashCb) playerSplashCb(attacker, dmg);
           // Leviathan: hit front enemy in ALL other lanes
@@ -3936,6 +4000,23 @@ export class GameEngine {
             for (const lr of laneRuns) {
               if (lr.p.seatIndex === p.seatIndex) continue;
               if (lr.eq.length > 0) lr.eq[0].curHp -= dmg;
+            }
+          }
+          // Technician family: heal vehicles and mechs in lane after each player attack.
+          if (hasLaneHeal && laneHealAmt > 0) {
+            for (let pi = 0; pi < pCombatants.length; pi++) {
+              const pc = pCombatants[pi];
+              if (/vehicle|mech/i.test(pc.unitType) && pc.curHp > 0 && pi < pUnits.length) {
+                healUnit(pUnits[pi], laneHealAmt, game);
+              }
+            }
+          }
+          // AMP2 "Firesale": 10 damage per attack to target lane's active enemy.
+          if (firesaleTargetSeat >= 0) {
+            const targetLR = laneRuns.find((lr) => lr.p.seatIndex === firesaleTargetSeat);
+            if (targetLR && targetLR.eq.length > 0 && targetLR.eq[0].curHp > 0) {
+              targetLR.eq[0].curHp -= 10;
+              this.log(`  [AMP2 "Firesale"] 10 damage to ${targetLR.eq[0].name} in ${targetLR.p.name}'s lane`);
             }
           }
         } : undefined,
@@ -4132,6 +4213,33 @@ export class GameEngine {
             }
           }
         }
+        // AMP "Marker": marks this lane's active enemy; all other lanes fire one extra attack at it each exchange.
+        {
+          const markerLanes = laneRuns.filter((lr) =>
+            lr.pUnits.some((ui) => ui.card.Name === 'AMP "Marker"') && lr.eq.length > 0
+          );
+          for (const markerLane of markerLanes) {
+            const markedEnemy = markerLane.eq[0];
+            if (!markedEnemy || markedEnemy.curHp <= 0) continue;
+            for (const lane of laneRuns) {
+              if (lane === markerLane) continue;
+              const pActive = lane.pq[0];
+              if (!pActive || pActive.curHp <= 0) continue;
+              // Exclude long_range units — they already fire via the Long Range block.
+              if (pActive.longRange) continue;
+              const dmg = computeDealt(pActive, markedEnemy);
+              markedEnemy.curHp -= dmg;
+              if (markedEnemy.curHp <= 0) {
+                markerLane.eq.shift();
+                this.log(`  [AMP "Marker"] ${lane.p.name}'s ${pActive.name} kills marked enemy ${markedEnemy.name} in ${markerLane.p.name}'s lane`);
+                break;
+              } else {
+                this.log(`  [AMP "Marker"] ${lane.p.name}'s ${pActive.name} deals ${dmg} to marked ${markedEnemy.name} in ${markerLane.p.name}'s lane (${markedEnemy.curHp} HP left)`);
+              }
+            }
+          }
+        }
+
         // Slayer Suit active: "Execute target enemy under 1/4 HP and is under rank 6, move this
         // unit to that lane". Fires once per exchange round after all lanes have resolved, so any
         // lane whose active enemy dropped below threshold this exchange can be targeted cross-lane.
@@ -4205,6 +4313,9 @@ export class GameEngine {
       for (const ui of lane.pUnits) ui.passiveSuppressedForCombat = false;
     }
 
+    // Reset per-round Hound kill tracker (populated during Phase 3 kills, consumed next round's reveal).
+    (game as any)._houndKilledSeats = new Set<number>();
+
     // Phase 3: post-combat resolution per lane.
     for (const lane of laneRuns) {
       const { p, pUnits, pCombatants, eCombatants } = lane;
@@ -4256,6 +4367,11 @@ export class GameEngine {
         lanesWithKill.push(p);
         p.stats.kills += kills;
         game.killsThisRound.set(p.seatIndex, (game.killsThisRound.get(p.seatIndex) ?? 0) + kills);
+        // MCP "Hound": if Hound is the active unit and scored a kill, block reveals next round.
+        if (pUnits[0]?.card.Name === 'MCP "Hound"') {
+          ((game as any)._houndKilledSeats as Set<number>).add(p.seatIndex);
+          this.log(`  [MCP "Hound"] Kill recorded — no enemy reveals in ${p.name}'s lane next round`);
+        }
         const killedCombatants = eCombatants.filter((c) => !enemySurvivors.includes(c));
         if (killedCombatants.length) {
           const lastKilledIdx = eCombatants.lastIndexOf(killedCombatants[killedCombatants.length - 1]);
@@ -4329,12 +4445,24 @@ export class GameEngine {
         lr.eq.some((ec) => ec.name === "Necromancer" && !game.suppressedPassiveEnemyNames.has("Necromancer"))
       );
       const newUnits: UnitInstance[] = [];
+      const ghostEvadeUnits: UnitInstance[] = [];
       pUnits.forEach((ui, i) => {
         const c = pCombatants[i];
         if (playerSurvivors.includes(c)) {
           ui.curHp = c.curHp;
           ui.curShields = c.curShields;
           newUnits.push(ui);
+        } else if (
+          !annihilationNoSaves && !c.deletedByEnemy &&
+          (ui.card.Name === 'ARV' || ui.card.Name === 'AMP2 "Ghost"') &&
+          p.reserve.length > 0 &&
+          !ui.charges['ghostEvadeUsed']
+        ) {
+          // ARV / AMP2 "Ghost": evade death once per combat — move to bottom of reserve.
+          ui.charges['ghostEvadeUsed'] = 1;
+          ui.curHp = 1;
+          ghostEvadeUnits.push(ui);
+          this.log(`  [${ui.card.Name}] Evaded death — moved to bottom of reserve (once per combat)`);
         } else if (!annihilationNoSaves && !c.deletedByEnemy && tempState.cannotDie.has(ui.id)) {
           ui.curHp = 1;
           newUnits.push(ui);
@@ -4430,7 +4558,7 @@ export class GameEngine {
         }
       });
       p.active = newUnits.length ? newUnits[0] : null;
-      p.reserve = newUnits.length > 1 ? newUnits.slice(1) : [];
+      p.reserve = [...(newUnits.length > 1 ? newUnits.slice(1) : []), ...ghostEvadeUnits];
       // Exploitation: unit survived combat but is marked to die after attacking.
       if (p.active && tempState.mustDieAfterCombat.has(p.active.id)) {
         this.log(`  [Exploitation] ${p.active.card.Name} dies after attacking`);

@@ -47,15 +47,7 @@ Mech,Captain,"AMP ""Tripwire""",Deal 5x damage to all enemies on death,Sacrifice
 Mech,Captain,"AMP ""Wolf""",Attacks 1st when attacking a unit,"Once per turn: on Kill Heal Missing Health, Gain that much damage for next attack",4,6,3,9,1,3,0,0,3,17
 Mech,Captain,"AMP ""Marker""","Once per turn: target enemy unit, allowing all units to attack them regardless of lane",Reset cooldown on kill,5,5,3,9,1,3,0,0,1,5
 Vehicle,Captain,Plasma Tank,Gain Shields when destroying enemy shields,Delete Units killed by this unit,4,6,6,6,1,6,0,0,3,17
-Vehicle,Captain,Mobile Command vehicle,"Roll Dice to generate resource on this card at start of each turn, these resources can be claimed any time outside of combat by any player
-
-Gain 1 dice if Reserve 2 Dice if in active slot","Rolls:
-1 Nothing
-2 x Organic
-3 x Tech
-4 x Alien
-5 x Organic and Tech
-6 x Organic Tech and Alien",5,4,5,6,1,5,0,0,1,3
+Vehicle,Captain,Mobile Command vehicle,"Roll 1D6 per resource type at start of each round, add result to player resources","Roll 1: Organic, Roll 2: Tech, Roll 3: Alien",5,4,5,6,1,5,0,0,1,3
 Vehicle,Captain,Tank Killer,"If target has over double the this units current HP, Deal double damage on hit and with abilities, Ignores Armor and Shields",Once per turn: Deal 3x damage to target,6,4,6,6,1,6,0,0,0,0
 Vehicle,Captain,Toxin Tank,"Enemies damaged by this unit cannot active abilities, Delete units killed while under this effect",,4,6,6,6,1,6,0,0,3,17
 Vehicle,Captain,Light Tank,,,4,6,6,6,1,6,0,0,3,17
@@ -99,7 +91,6 @@ Vehicle,Colonel,Demo Truck,Delete gear from this unit on death,"On death Explode
 Vehicle Scout,Colonel,"ARV ""Advanced Recon Vehicle""","Can Move between Lanes when Reserve, if this unit would die when in active position and you have reserve units alive, move it to bottom of reserve",Cannot be targeted by enemy abilities,10,9,9,10,4,25,6,7,1,7
 Infantry,Specialist,Knight,Attacks 1st when attacking a unit,"Gain 4 Power and heal 5 Health on Kill, Stun Enemies when targeted by abilities",10,14,18,6,6,18,0,0,8,40
 Mech,Specialist,"EMP ""Behemoth""",Gain Shields on kill = Rank of killed enemy,"Starts with Huge Shields and HP pools, Cannot be healed or moved",10,14,6,18,6,6,0,0,8,40
-Vehicle,Specialist,TMRG (Truck Mounted Rail Gun),"Attacks every 2nd turn, Executes units under X rank. Attacks Trample through all reserve units if able. Delete enemies on kill","After each Combat in reserve gain a Charge, after Charging for 3 rounds deal X damage to target lane (Hits all reserves and bosses at same time)",14,10,12,12,6,12,0,0,0,0
 Vehicle,Specialist,Tesla Tank,"Has 40 Shields, Deal damage = Shields to all enemies in lane when damaged, Has Attack = Shields - Health","On combat start if active slot, Stun all enemies",10,14,12,12,6,12,0,0,8,40
 Vehicle,Specialist,Scorpion Tank,Attacks and abilities ignore armor and shields,Once per turn: Deal 2x attack damage to a target,10,14,12,12,6,12,0,0,8,40
 Vehicle,Specialist,Overlord Tank,Friendly Units get +10 damage and +5 armor while this unit is in active slot,,10,14,12,12,6,12,0,0,8,40

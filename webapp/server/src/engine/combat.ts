@@ -1,4 +1,4 @@
-import { toInt } from "./data.js";
+﻿import { toInt } from "./data.js";
 import type { EnemyCard, UnitCard } from "./data.js";
 import type { UnitInstance } from "./types.js";
 
@@ -134,6 +134,7 @@ export class Combatant {
   executeRequiresSameOrLowerRank = false;
   /** Player unit: gain this many shields each time this unit kills an enemy (shields_on_kill tag). */
   shieldsOnKill = 0;
+  shieldsOnKillEnemyRank = false;
   /** Player unit: instantly kill the active enemy when its curHp < hp × this fraction before attacks (execute_low_hp tag). */
   executeEnemyBelowFraction = 0;
   /** Player unit: stun the front enemy when this unit kills (stun_on_kill / MCP Hound). */
@@ -148,6 +149,8 @@ export class Combatant {
   stunBelowHalfFired = false;
   /** Player unit: gain shields equal to (damage dealt × this fraction) each attack (Slayer Suit passive). */
   shieldsOnDmgFraction = 0;
+  perExchangeToxinDmg = 0;
+  trampleExcess = false;
   /** Trample keyword: overkill damage from player attacks carries into the next enemy in queue. */
   trample = false;
   /** TMRG / Crushing Advance: trample damage chains through ALL reserve enemies, not just the next one. */
@@ -343,7 +346,7 @@ export function resolveLaneCombat(
   const fireDeathCb = (dying: Combatant) => {
     if (deathCb && eq[0]) { deathCb(dying, eq[0]); deathCb = undefined; }
   };
-  const fireKillCb = (killer: Combatant) => {
+  const fireKillCb = (killer: Combatant, dyingEnemy?: Combatant) => {
     if (killer.healOnKill > 0) killer.curHp = Math.min(killer.hp, killer.curHp + killer.healOnKill);
     if (killer.healFullOnKill) {
       const missing = killer.hp - killer.curHp;
@@ -351,6 +354,7 @@ export function resolveLaneCombat(
       if (missing > 0) killer.bonusDmgNextAttack += missing;
       killer.healFullOnKill = false; // once per turn
     }
+    if (killer.shieldsOnKillEnemyRank && dyingEnemy) killer.shieldsOnKill = dyingEnemy.combatantRankNum;
     if (killer.shieldsOnKill > 0) killer.curShields += killer.shieldsOnKill;
     if (killer.stunOnKill && eq.length > 0) { eq[0].stunned = true; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
     if (onEnemyKill) onEnemyKill(killer);
@@ -426,6 +430,8 @@ export function resolveLaneCombat(
     }
     const totalDealt = pDmg + bonusPlayerDmgPerAttack;
     if (onAfterPlayerAttack && totalDealt > 0) onAfterPlayerAttack(p, totalDealt);
+    if (p.perExchangeToxinDmg > 0 && e.curHp > 0) { e.curHp -= p.perExchangeToxinDmg; }
+    if (p.trampleExcess && e.curHp < 0 && eq.length > 1) { const xcessDmg = -e.curHp; eq[1].curHp -= xcessDmg; e.curHp = 0; }
     return totalDealt;
   };
 
@@ -517,7 +523,7 @@ export function resolveLaneCombat(
       if (eq[0].curHp > 0 && eq[0].curHp < thresh) {
         const rankOk = !pq[0].executeRequiresSameOrLowerRank || eq[0].combatantRankNum <= pq[0].combatantRankNum;
         if (rankOk) {
-          fireKillCb(pq[0]); eq.shift();
+          fireKillCb(pq[0], eq[0]); eq.shift();
           if (exitAfterFirstEnemyKill) break;
           continue;
         }
@@ -543,7 +549,7 @@ export function resolveLaneCombat(
           if (e.explodeOnDeathFlat > 0) pq[0].curHp -= e.explodeOnDeathFlat;
         }
         const ok1 = e.curHp < 0 ? -e.curHp : 0;
-        fireKillCb(p); eq.shift();
+        fireKillCb(p, eq[0]); eq.shift();
         applyTrample(p, ok1);
         if (exitAfterFirstEnemyKill) break;
         continue;
@@ -617,7 +623,7 @@ export function resolveLaneCombat(
       }
       const ok2 = e.curHp < 0 ? -e.curHp : 0;
       const attacker2 = pq[0] ?? p;
-      fireKillCb(attacker2); eq.shift();
+      fireKillCb(attacker2, eq[0]); eq.shift();
       applyTrample(attacker2, ok2);
       if (exitAfterFirstEnemyKill) break;
     }

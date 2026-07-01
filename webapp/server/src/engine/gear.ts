@@ -1,4 +1,4 @@
-import { toInt, type GearCard } from "./data.js";
+﻿import { toInt, type GearCard } from "./data.js";
 import { Combatant } from "./combat.js";
 import { eventSeverity } from "./events.js";
 import { RANK_NUM } from "./constants.js";
@@ -53,6 +53,9 @@ export function applyGearCombatMods(c: Combatant, ui: UnitInstance, commanderRan
   if ([...names].some((n) => GEAR_DELETE_ON_KILL.has(n))) c.deleteOnKill = true;
   // Airburst Rounds: "Attacks splash onto adjacent lanes for half damage"
   if (names.has("Airburst Rounds")) c.splashAdjacentFraction = 0.5;
+  if (names.has("Toxin Rounds") && p && (p as any).toxinRoundsActive) {
+    c.perExchangeToxinDmg = (p as any).toxinRoundsActive as number;
+  }
   if ((ui.charges["Holographic Decoys"] ?? 0) > 0) {
     ui.charges["Holographic Decoys"] -= 1;
     c.firstHitPrevented = true;
@@ -246,13 +249,17 @@ function applyGearActive(
     case "Black Iron":
       if (w.laneEnemyReserve.length) w.laneEnemyReserve = w.laneEnemyReserve.slice(isEngineer ? 2 : 1);
       break;
-    case "Grenades":
-      w.laneEnemyReserve = w.laneEnemyReserve.filter((e) => toInt(e.HP) > 5);
+    case "Grenades": {
+      const grenadeDmg = (p.active ? toInt(p.active.card.Damage) : 0) * 2;
+      if (grenadeDmg > 0 && w.laneEnemyReserve.length) {
+        w.laneEnemyReserve = w.laneEnemyReserve.map((e) => ({ ...e, HP: String(Math.max(0, toInt(e.HP) - grenadeDmg)) })).filter((e) => toInt(e.HP) > 0);
+        log("  [Grenades] ${p.name}'s active unit deals ${grenadeDmg} (2x ${grenadeDmg / 2} DMG) to all enemies in lane");
+      }
       break;
+    }
     case "Scouting Drones":
-      p.res.Organic += 2;
-      p.res.Tech += 2;
-      p.res.Alien += 2;
+      game.nightVisionRevealBonus = (game.nightVisionRevealBonus ?? 0) + 5;
+      log("  [Scouting Drones] ${p.name} reveals 5 additional enemies across lanes this round");
       break;
     case "Basic Exo": {
       const owned = unitsOf(p);
@@ -286,7 +293,16 @@ function applyGearActive(
       }
       break;
     }
-    case "Landmines":
+    case "Landmines": {
+      let landmineTargets = 0;
+      w.laneEnemyReserve = w.laneEnemyReserve.map((e) => {
+        const cur = toInt((e as any).pendingDamage ?? 0);
+        landmineTargets++;
+        return { ...e, pendingDamage: String(cur + 5) } as any;
+      });
+      log("  [Landmines] ${p.name} marked ${landmineTargets} reserve enemies with 5 pending damage on entry");
+      break;
+    }
     case "Artillery Strike":
     case "Bomber Drone":
     case "Chem Strike":
@@ -294,9 +310,8 @@ function applyGearActive(
       w.laneEnemyReserve = w.laneEnemyReserve.filter((e) => toInt(e.HP) > (name === "Reactive Plating" ? 15 : 10));
       break;
     case "Toxin Rounds":
-      for (const q of game.players) {
-        q.laneEnemyReserve = q.laneEnemyReserve.filter((e) => toInt(e.HP) > q.rank * 3);
-      }
+      (p as any).toxinRoundsActive = p.rank;
+      log("  [Toxin Rounds] ${p.name} activates Toxin Rounds -- ${p.rank} flat damage per exchange this round");
       break;
     case "Shield Pack":
       grantShields(ui, 20, p);

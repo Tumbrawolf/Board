@@ -1,4 +1,4 @@
-import { toInt, type UnitCard } from "./data.js";
+﻿import { toInt, type UnitCard } from "./data.js";
 import { Combatant } from "./combat.js";
 import { canActivateAbility, canUseEffect, healUnit, recordAbilityActivation, recordEffectUse, type RoundTempState } from "./state.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
@@ -78,7 +78,13 @@ export function applyUnitCombatMods(c: Combatant, ui: UnitInstance) {
     const fixedHeal = cardText.match(/gain\s+(\d+)\s+(?:health|hp)\s+on\s+kill/i);
     c.healOnKill = fixedHeal ? parseInt(fixedHeal[1]) : c.dmg;
   }
-  if (tags.has("shields_on_kill")) c.shieldsOnKill = 10;
+  if (tags.has("shields_on_kill")) {
+    if (ui.card.Name === 'EMP "Behemoth"') {
+      c.shieldsOnKillEnemyRank = true;
+    } else {
+      c.shieldsOnKill = 10;
+    }
+  }
   if (tags.has("trample") || tags.has("trample_unlimited")) c.trample = true;
   if (tags.has("trample_unlimited")) c.trampleUnlimited = true;
   if (tags.has("long_range")) c.longRange = true;
@@ -97,6 +103,7 @@ export function applyUnitCombatMods(c: Combatant, ui: UnitInstance) {
   if (tags.has("counter_after_enemy_hit")) c.counterAfterEachEnemyHit = true;
   if (tags.has("attacks_every_other")) c.attacksEveryOther = true;
   if (tags.has("execute_low_hp") && ui.card.Name === "Attack Dogs") c.executeRequiresSameOrLowerRank = true;
+  if (ui.card.Name === 'RDMP "Glass"' || ui.card.Name === 'RDMP "Impailer"') c.trampleExcess = true;
 }
 
 /** "Revive once without Gear if no reserves in lane" (Rambo) -- a per-unit, once-per-game save
@@ -172,7 +179,11 @@ export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, gam
   const noReserve = p.reserve.length === 0;
   for (const ui of allUnits) {
     const tags = classifyUnit(ui.card);
-    if (tags.has("precombat_heal") || tags.has("once_per_combat_heal")) healUnit(ui, 4, game);
+    if (tags.has("precombat_heal")) healUnit(ui, 4, game);
+    if (tags.has("once_per_combat_heal")) {
+      const healAmt = ui.card.Name === "Combat Medic" ? 10 : ui.card.Name === 'MCP "Doc"' ? 30 : 4;
+      healUnit(ui, healAmt, game);
+    }
     if (tags.has("precombat_shield")) ui.curShields += 5;
     if (tags.has("lane_heal")) {
       const cardText = `${(ui.card as any)["Main Effect"] ?? ""} ${(ui.card as any)["Bonus Effects"] ?? ""}`;

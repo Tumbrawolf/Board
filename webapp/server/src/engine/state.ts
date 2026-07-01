@@ -1,4 +1,4 @@
-import { RANK_ORDER } from "./constants.js";
+﻿import { RANK_ORDER } from "./constants.js";
 import { toInt } from "./data.js";
 import type { GearCard, UnitCard } from "./data.js";
 import type { GamePlayer, GameState, ResourcePool, UnitInstance } from "./types.js";
@@ -102,6 +102,7 @@ export function dealPreCombatDamage(ui: UnitInstance, rawDmg: number, ignoreArmo
 
 export function healUnit(ui: UnitInstance, amount?: number, game?: { plagueActive: boolean }): number {
   if (game?.plagueActive) return 0;
+  if (ui.card.Name === 'EMP "Behemoth"') return 0;
   if (amount === undefined) {
     const healed = ui.maxHp - ui.curHp;
     ui.curHp = ui.maxHp;
