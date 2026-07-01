@@ -12,7 +12,7 @@ Players act as commanders defending against escalating threats (fodder, infantry
 - Spend a three-resource economy — **Organic, Tech, and Alien** — to recruit units, buy gear, and trigger location abilities.
 - Staff shared **locations** (Barracks, Armory, Medical Bay, Containment Block, Command, Battlefield) to generate passive effects and unlock active abilities each round.
 - Equip units with **Gear** (Armor, Weapon, Utility, Consumable), with restrictions for Infantry-only or Vehicle/Mech-only equipment.
-- Play a **Tactician** — one of 18 commander roles (e.g. The Gunsmith, The Bulwark, The Drillmaster, The Kingmaker, The Quartermaster) — each granting unique passive and active abilities that shape strategy.
+- Play a **Tactician** — one of 17 commander roles (e.g. The Gunsmith, The Bulwark, The Drillmaster, The Quartermaster) — each granting unique passive and active abilities that shape strategy.
 - Resolve random **Events** each round with pass/fail conditions and consequences.
 - Complete **Missions** for escalating rewards, from early "kill 1 enemy" objectives to late-game resource/unit sacrifices.
 - Pursue a **Secret Objective** aligned as Allied, Neutral, Saboteur, or Chaos — meaning not everyone at the table is rooting for the group's survival. Suspect someone? **Vote of No Confidence** (optional rule) lets the table formally accuse them, at real cost either way.
@@ -31,7 +31,7 @@ Players act as commanders defending against escalating threats (fodder, infantry
 | `Command Cards.csv` | Location ability cards (Barracks, Armory, Medical Bay, Containment Block, Command, Battlefield) |
 | `Event Cards.csv` | Per-round event cards with pass/fail effects |
 | `Mission Cards.csv` | Mission objectives, requirements, and rewards |
-| `Tactician Cards.csv` | The 18 commander roles and their abilities (The Quartermaster added this round — see Feedback #15) |
+| `Tactician Cards.csv` | The 17 commander roles and their abilities |
 | `Secret Objective Cards.csv` | Hidden win conditions for Allied/Neutral/Saboteur/Chaos alignments |
 | `Keywords.csv` | Glossary of recurring ability terms, verified at 38 entries — added **Long Range** and **Mobile**, two new keywords created to replace repeated full-sentence ability text on 16 units (see Feedback #17) |
 | `Location Actions.csv` | Slot counts and effects per board location, exported from `Data for cards.xlsx`'s `Location Actions` sheet. Cross-checked word-for-word against `Rules.docx`'s Locations section this round and corrected where they'd drifted apart (see Feedback #21). |
@@ -62,13 +62,13 @@ Each round runs through four stages, plus actions players can take anytime:
 | Card Set | Total |
 |---|---|
 | Unit Stats | 103 |
-| Enemy Stats | 93 |
+| Enemy Stats | 92 |
 | Gear Stats | 68 |
 | Mission Cards | 117 |
 | Command Cards | 55 |
-| Event Cards | 38 |
-| Secret Objective Cards | 41 |
-| Tactician Cards | 18 |
+| Event Cards | 34 |
+| Secret Objective Cards | 40 |
+| Tactician Cards | 17 |
 | Boss Stats | 15 bosses (each scaling across 5 tiers) |
 
 **Units by rank:** Conscript 3, Private 9, Sergeant 24, Captain 18, Major 18, Colonel 17, Specialist 7, Brigadier 7
@@ -103,7 +103,7 @@ A few things worth considering as the project matures:
     - **Vote of No Confidence, added (optional rule).** The base game had no way for the team to act on suspicion of a Saboteur — only a fully hidden card with zero interaction surface. Designed so the cost lands on the accuser specifically (escrowed resources/cards, returned + a promotion if right and believed; lost + a demotion if wrong), so it can't be used to grief the table. Not yet simulation-tested.
     - **2-player games run consistently easier** than 3–4 player across every mechanic tested (worker-sharing contention and shop-slot competition both naturally have less bite with fewer players). Decided against adding a dedicated fix — Difficulty Levels (Normal/Hard) already gives a 2-player table a lever to pull, and a documentation note now recommends using it.
 
-15. **The Quartermaster, a new Tactician.** Designed to give the Roll-fill shop mechanic a dedicated build-around: Passive upgrades Roll-fill from 1d8 to 2d6 (capped at 8), Active rerolls one unwanted Roll-fill result per round. Added to `Tactician Cards.csv`, bringing the set to 18.
+15. **The Quartermaster, a new Tactician.** Designed to give the Roll-fill shop mechanic a dedicated build-around: Passive upgrades Roll-fill from 1d8 to 2d6 (capped at 8), Active rerolls one unwanted Roll-fill result per round. Added to `Tactician Cards.csv`, bringing the set to 18. (The Kingmaker was subsequently deleted, returning the count to 17.)
 
 16. **Armor and Shields, promoted to real fields.** Previously buried as free-text inside ability descriptions on Units, Gear, and Enemies (e.g. "has 5 Armor and 15 Shields" sitting inside a sentence about something else entirely). Audited every CSV by hand to separate genuine flat base stats from conditional grants, auras to *other* units, and attack abilities that reference *enemy* armor — only true unconditional base stats were extracted. Result: 25 units, 9 gear items, and 9 enemies now have real `Armor`/`Shields` columns; `Rules.docx`'s card-breakdown sections updated to document the new fields.
 
@@ -219,3 +219,5 @@ None of these block playtesting as-is — the ruleset is in a genuinely playable
     - **→ Medical Bay** (survival/damage mitigation): Final Stand, Tranq Rounds, Barrier Systems
     - **→ Battlefield** (combat effects): Nuke, Strategic Withdrawal
     - Resource costs updated to match destination location (e.g. Armory cards now cost 3/8/3; Medical Bay cards 8/3/3). All passive lookups in `game.ts` and `planningActions.ts` updated to use the new location keys. Result: Barracks 10, Armory 8, Containment 9, Medical Bay 9, Command 9, Battlefield 10 — a tight 8–10 range across all six locations. **Note**: upgrade slot caps in `constants.ts` (Armory: 1, Medical Bay: 2, Command: 2, Battlefield: 3, Containment Block: 3, Barracks: 4) pre-date this redistribution and may warrant revisiting now that the card pools are more evenly distributed.
+
+46. **Gear hand limit set at 4 unequipped cards per player.** Each player may hold at most 4 unequipped Gear cards. The limit is checked at Cleanup each round — any player over 4 discards down to 4, their choice which to discard; discarded Gear goes to Recycling. Written into both `Rules.docx` and `Board_Rules_Reorganized.docx`: the rule is stated alongside the existing Gear-on-combat-death paragraph (Combat Stage), and a new "Gear Hand Check" step is added to Cleanup Stage immediately after Command Card Refill.
