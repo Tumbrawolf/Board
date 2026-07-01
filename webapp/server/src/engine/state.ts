@@ -151,6 +151,8 @@ export class RoundTempState {
   pendingReserveStunSeats = new Set<number>();
   /** Player seat indices whose active enemy starts combat stunned (set by cross-lane reveal effects). */
   pendingEnemyStunSeats = new Set<number>();
+  /** Player seat indices whose ALL enemies start combat stunned (Tesla Tank, Mammoth Tank, Covert Operation). */
+  pendingEnemyStunAllSeats = new Set<number>();
   /** Extra shields to add to the active enemy combatant in each lane when built. */
   pendingEnemyActiveShields = new Map<number, number>();
   /** Player seat indices whose active unit starts combat stunned because they activated an ability while Titan is alive. */
@@ -201,6 +203,7 @@ export class RoundTempState {
     this.pendingPlayerStunSeats.clear();
     this.pendingReserveStunSeats.clear();
     this.pendingEnemyStunSeats.clear();
+    this.pendingEnemyStunAllSeats.clear();
     this.pendingEnemyActiveShields.clear();
   }
 }

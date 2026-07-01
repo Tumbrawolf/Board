@@ -49,7 +49,10 @@ export function applyGearCombatMods(c: Combatant, ui: UnitInstance, commanderRan
   // Laser Designator: "Other units can target your lane when attacking" — no-op; Long Range already
   // handles cross-lane targeting for units with the long_range tag; this gear has no additional hook.
   if (names.has("Slayer Suit")) c.shieldsOnDmgFraction = 0.25;
+  if (names.has("Isolation Field")) c.stripEnemyBoosts = true;
   if ([...names].some((n) => GEAR_DELETE_ON_KILL.has(n))) c.deleteOnKill = true;
+  // Airburst Rounds: "Attacks splash onto adjacent lanes for half damage"
+  if (names.has("Airburst Rounds")) c.splashAdjacentFraction = 0.5;
   if ((ui.charges["Holographic Decoys"] ?? 0) > 0) {
     ui.charges["Holographic Decoys"] -= 1;
     c.firstHitPrevented = true;
@@ -124,7 +127,11 @@ export function applyPrecombatGear(game: GameState, p: GamePlayer, log: (t: stri
         ui.charges["Quantum Plates Roll"] = roll;
         if (roll === 2 || roll === 3) tempState.tempBuff(ui, { Armor: -4 });
         else if (roll === 4 || roll === 5) tempState.tempBuff(ui, { Armor: 6 });
-        else if (roll === 6) ui.curHp = 0;
+        else if (roll === 6) {
+          ui.curHp = 0;
+          if (p.laneEnemyReserve.length) p.laneEnemyReserve.shift();
+          log(`  [Quantum Plates] Roll 6: unit and active enemy both killed!`);
+        }
       }
       if (name === "Shield Projector") {
         // Shared pool drawn collectively by all units in the lane during combat — not distributed.
@@ -297,7 +304,7 @@ function applyGearActive(
       break;
     case "Entrenchment":
       if (w.active) tempState.tempBuff(w.active, { Armor: 5 });
-      if (isEngineer && w.reserve[0]) tempState.tempBuff(w.reserve[0], { Armor: 5 });
+      for (const ru of w.reserve) tempState.tempBuff(ru, { Armor: 5 });
       break;
     case "Stun Grenades": {
       const target = game.players.reduce((a, b) => (b.laneEnemyReserve.length > a.laneEnemyReserve.length ? b : a));

@@ -28,7 +28,7 @@ import {
   type LaneCombatOptions,
 } from "./combat.js";
 import { applyBattlefieldActive, applyCommandActive } from "./commandCards.js";
-import { applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, classifyUnit, tryDoctorSave, tryReviveOnce } from "./units.js";
+import { applyDeathStun, applyExplodeOnDeath, applyPrecombatUnit, applyUnitCombatMods, classifyUnit, tryDoctorSave, tryReviveOnce } from "./units.js";
 import { applyEnemyCombatMods, classifyEnemy } from "./enemies.js";
 import { applyGearCombatMods, applyPrecombatGear, tryChronostasisSave } from "./gear.js";
 import { applyBossBoardWideMods, applyBossTier, resolveBossExchange } from "./bosses.js";
@@ -3399,6 +3399,7 @@ export class GameEngine {
     const overrunLeftover = new Map<GamePlayer, Combatant[]>();
     // Tracks seatIndices where the player's active unit has delete_on_kill — those kills skip containment.
     const deleteOnKillLanes = new Set<number>();
+    (game as any)._siegeTankActive = false;
 
     // Tactician actives fire BEFORE gear actives so The Engineer's "refresh + free next use"
     // takes effect in the same round's gear active loop.
@@ -3667,6 +3668,11 @@ export class GameEngine {
         eCombatants[0].stunned = true;
         this.log(`  [Stun] Enemy active in ${p.name}'s lane starts combat stunned (cross-lane reveal).`);
       }
+      // Unit abilities that stun ALL enemies in lane (Tesla Tank, Mammoth Tank, Covert Operation).
+      if (tempState.pendingEnemyStunAllSeats.has(p.seatIndex) && eCombatants.length > 0) {
+        for (const ec of eCombatants) ec.stunned = true;
+        this.log(`  [Stun All] All enemies in ${p.name}'s lane start combat stunned.`);
+      }
       // Sundering Blow: strip armor and shields from front enemy in the targeted lane.
       if (game.sunderedLaneSeat === p.seatIndex && eCombatants[0]) {
         this.log(`  [Sundering Blow] ${eCombatants[0].name}: armor ${eCombatants[0].armor} → 0, shields ${eCombatants[0].curShields} → 0`);
@@ -3830,6 +3836,17 @@ export class GameEngine {
         };
       }
       const sharedShieldPool = p.sharedShieldPool > 0 ? { remaining: p.sharedShieldPool } : undefined;
+      const hasSplashPlayer = pCombatants.some((c) => c.splashAdjacentFraction > 0);
+      const hasAllLanesPlayer = pCombatants.some((c) => c.playerAttacksAllLanes);
+      const playerSplashCb: ((attacker: Combatant, dmg: number) => void) | undefined = hasSplashPlayer ? (attacker, dmg) => {
+        if (attacker.splashAdjacentFraction <= 0 || dmg <= 0) return;
+        const splashDmg = Math.floor(dmg * attacker.splashAdjacentFraction);
+        if (splashDmg <= 0) return;
+        for (const seat of adjacentSeats(game, p.seatIndex)) {
+          const adjLane = laneRuns.find((lr) => lr.p.seatIndex === seat);
+          if (adjLane && adjLane.eq.length > 0) adjLane.eq[0].curHp -= splashDmg;
+        }
+      } : undefined;
       laneRuns.push({ p, pUnits, pCombatants, eCombatants, pq: pCombatants, eq: eCombatants, opts: {
         bonusPlayerDmgPerAttack: tagTeamBonus + combatStimsBonus,
         onFirstPlayerDeath: ynpCb,
@@ -3844,6 +3861,19 @@ export class GameEngine {
         deathCloakFloor: p.laneEnemyReserve.some((e) => e.Name === "Death Cloak" && !game.suppressedPassiveEnemyNames.has(e.Name)),
         stackAttacksOnSameTarget: p.laneEnemyReserve.some((e) => e.Name === "Alpha Storm Claw" && !game.suppressedPassiveEnemyNames.has(e.Name)),
         sharedShieldPool,
+        onAfterPlayerAttack: (hasSplashPlayer || hasAllLanesPlayer) ? (attacker, dmg) => {
+          // Adjacent splash
+          if (playerSplashCb) playerSplashCb(attacker, dmg);
+          // Leviathan: hit front enemy in ALL other lanes
+          if (attacker.playerAttacksAllLanes && dmg > 0) {
+            for (const lr of laneRuns) {
+              if (lr.p.seatIndex === p.seatIndex) continue;
+              if (lr.eq.length > 0) lr.eq[0].curHp -= dmg;
+            }
+          }
+        } : undefined,
+        preventPlayerStuns: !!(game as any)._siegeTankActive,
+        onPlayerStunEnemy: (count) => { p.stats.stunsMade += count; },
       }, totalShieldsAbsorbed: 0, pActiveStartHp: pCombatants[0]?.curHp ?? 0 });
     }
 
@@ -4261,6 +4291,7 @@ export class GameEngine {
         ) {
           // Necromancer passive: infantry that die while Necromancer is alive are reanimated as enemies.
           applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
+          applyDeathStun(tempState, p, ui, (t) => this.log(t));
           p.stats.deaths += 1;
           game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
           const reanimated: EnemyCard = {
@@ -4280,11 +4311,23 @@ export class GameEngine {
         } else if (c.deletedByEnemy) {
           // deleteOnKill: unit is permanently erased — no graveyard, no medical bay, no gear drop.
           applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
+          applyDeathStun(tempState, p, ui, (t) => this.log(t));
           p.stats.deaths += 1;
           game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
           this.log(`  [Delete on Kill] ${ui.card.Name} permanently deleted`);
+        } else if (!annihilationNoSaves && !c.deletedByEnemy && ui.card.Name === "Supply Truck") {
+          // Supply Truck: returns to reserve (top of deck) instead of dying.
+          ui.curHp = ui.maxHp; // restore HP
+          const realGear = ui.equipped.filter((g) => "Rank Name" in (g as any)) as import("./data.js").GearCard[];
+          if (realGear.length) {
+            ui.equipped = ui.equipped.filter((g) => !("Rank Name" in (g as any)));
+            this.returnOrRecycleGear(game, p, realGear);
+          }
+          newUnits.push(ui); // will be placed in reserve after active is determined
+          this.log(`  [Supply Truck] Returned to reserve (deck) instead of dying.`);
         } else {
           applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
+          applyDeathStun(tempState, p, ui, (t) => this.log(t));
           const realGear = ui.equipped.filter((g) => "Rank Name" in (g as any)) as import("./data.js").GearCard[];
           if (realGear.length) {
             ui.equipped = ui.equipped.filter((g) => !("Rank Name" in (g as any)));

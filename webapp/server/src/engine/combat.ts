@@ -118,10 +118,34 @@ export class Combatant {
   trampleKills = 0;
   /** Player unit: heal this much HP each time this unit kills an enemy (heal_on_kill tag). */
   healOnKill = 0;
+  /** Player unit: heal to max HP on kill (heal_full_on_kill / AMP Wolf). */
+  healFullOnKill = false;
+  /** Player unit: after healing-on-kill fires, gain that much as bonus damage for next attack (AMP Wolf). */
+  bonusDmgNextAttack = 0;
+  /** Player unit: fire one extra player attack after each enemy attack in this exchange (AMP Volt). */
+  counterAfterEachEnemyHit = false;
+  /** Player unit: attack twice per exchange when trading blows (Mammoth Tank "Hits Twice"). */
+  hitsDouble = false;
+  /** Player unit: each attack also hits the front enemy in every other lane (Leviathan). */
+  playerAttacksAllLanes = false;
+  /** Player unit: at combat start, zero out all enemy armor and shields in this lane (Isolation Field gear). */
+  stripEnemyBoosts = false;
+  /** Player unit: execute enemy only if enemy rank ≤ this unit's rank (Attack Dogs). */
+  executeRequiresSameOrLowerRank = false;
   /** Player unit: gain this many shields each time this unit kills an enemy (shields_on_kill tag). */
   shieldsOnKill = 0;
   /** Player unit: instantly kill the active enemy when its curHp < hp × this fraction before attacks (execute_low_hp tag). */
   executeEnemyBelowFraction = 0;
+  /** Player unit: stun the front enemy when this unit kills (stun_on_kill / MCP Hound). */
+  stunOnKill = false;
+  /** Player unit: stun the active enemy when attacking it while it is at full HP (stun_on_attack_full_hp / Breacher). */
+  stunOnAttackFullHp = false;
+  /** Player unit: stun the first enemy to deal damage to this unit once per round (stun_when_first_damaged / AMP2 Gladiator). */
+  stunNextAttacker = false;
+  /** Player unit: stun all active enemies when HP drops below 50% this round (stun_at_half_hp / AMP Volt). */
+  stunBelowHalf = false;
+  /** Tracks whether stunBelowHalf already fired this round (resets each round via fresh Combatant). */
+  stunBelowHalfFired = false;
   /** Player unit: gain shields equal to (damage dealt × this fraction) each attack (Slayer Suit passive). */
   shieldsOnDmgFraction = 0;
   /** Trample keyword: overkill damage from player attacks carries into the next enemy in queue. */
@@ -270,6 +294,12 @@ export interface LaneCombatOptions {
   /** Shield Projector passive: shared shield pool drawn from before any unit loses HP to enemy attacks.
    *  Pass as a mutable object so all hits in the same lane call drain from the same counter. */
   sharedShieldPool?: { remaining: number };
+  /** Player splash / unit ability: fires after each successful player attack with the raw damage dealt. */
+  onAfterPlayerAttack?: (attacker: Combatant, dmgDealt: number) => void;
+  /** Fires each time a player unit stuns an enemy; count = number of enemies stunned. Used for stunsMade tracking. */
+  onPlayerStunEnemy?: (count: number) => void;
+  /** Siege Tank: when true, skip all stun applications to player combatants. */
+  preventPlayerStuns?: boolean;
 }
 
 /** Default: both sides attack simultaneously each exchange — deaths resolve after both attacks land.
@@ -295,6 +325,9 @@ export function resolveLaneCombat(
     stackAttacksOnSameTarget = false,
     exitAfterFirstEnemyKill = false,
     exitAfterEachExchange = false,
+    onAfterPlayerAttack,
+    onPlayerStunEnemy,
+    preventPlayerStuns = false,
   } = options;
   let lastExchange: ExchangeData | undefined;
   const pq = [...playerCombatants];
@@ -308,7 +341,14 @@ export function resolveLaneCombat(
   };
   const fireKillCb = (killer: Combatant) => {
     if (killer.healOnKill > 0) killer.curHp = Math.min(killer.hp, killer.curHp + killer.healOnKill);
+    if (killer.healFullOnKill) {
+      const missing = killer.hp - killer.curHp;
+      killer.curHp = killer.hp;
+      if (missing > 0) killer.bonusDmgNextAttack += missing;
+      killer.healFullOnKill = false; // once per turn
+    }
     if (killer.shieldsOnKill > 0) killer.curShields += killer.shieldsOnKill;
+    if (killer.stunOnKill && eq.length > 0) { eq[0].stunned = true; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
     if (onEnemyKill) onEnemyKill(killer);
   };
   const dmgMult = () => (doubleFirstAttack && !firstExchangeDone) ? 2 : 1;
@@ -340,22 +380,27 @@ export function resolveLaneCombat(
     if (eDmg > 0 && e.doubleDmgVsTypes.has(p.unitType.toLowerCase().replace(/s$/, ""))) p.curHp -= eDmg;
     const totalDmg = eDmg + typeBonus;
     if (totalDmg > 0) {
-      if (e.stunOnHitCharges > 0) { p.stunned = true; if (isFinite(e.stunOnHitCharges)) e.stunOnHitCharges--; }
-      if (e.stunOnHitInterval > 0) { e.stunHitCount++; if (e.stunHitCount % e.stunOnHitInterval === 0) p.stunned = true; }
-      if (e.stunOnHitChance > 0 && Math.random() < e.stunOnHitChance) p.stunned = true;
+      if (e.stunOnHitCharges > 0) { if (!preventPlayerStuns) p.stunned = true; if (isFinite(e.stunOnHitCharges)) e.stunOnHitCharges--; }
+      if (e.stunOnHitInterval > 0) { e.stunHitCount++; if (e.stunHitCount % e.stunOnHitInterval === 0 && !preventPlayerStuns) p.stunned = true; }
+      if (e.stunOnHitChance > 0 && Math.random() < e.stunOnHitChance && !preventPlayerStuns) p.stunned = true;
       if (e.gainArmorOnHit > 0) e.armor += e.gainArmorOnHit;
       if (e.gainShieldOnHit > 0) e.curShields += e.gainShieldOnHit;
       if (e.gainDmgOnHit > 0) { e.dmg += e.gainDmgOnHit; e.baseDmg += e.gainDmgOnHit; }
       if (e.shredShieldOnHit > 0) p.curShields = Math.max(0, p.curShields - e.shredShieldOnHit);
       if (e.healSelfFlatOnHit > 0) e.curHp = Math.min(e.hp, e.curHp + e.healSelfFlatOnHit);
+      if (p.stunNextAttacker) { e.stunned = true; p.stunNextAttacker = false; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
       if (onAfterEnemyAttack) onAfterEnemyAttack(e, eDmg);
     }
   };
 
-  const playerAttacks = (p: Combatant, e: Combatant, mult: number) => {
-    if (p.stunned) { p.stunned = false; return; }
+  const playerAttacks = (p: Combatant, e: Combatant, mult: number): number => {
+    if (p.stunned) { p.stunned = false; return 0; }
+    const wasFullHp = e.curHp >= e.hp;
     const eBefore = e.curShields;
+    const _bonusDmg = p.bonusDmgNextAttack; p.bonusDmgNextAttack = 0;
+    p.dmg += _bonusDmg;
     let pDmg = computeDealt(p, e) * mult * (e.takesDoubleDamage ? 2 : 1);
+    p.dmg -= _bonusDmg;
     // Manipulator passive: redirect half of dealt damage to the first reserve enemy.
     if (e.halvesToReserveOnHit && eq.length > 1) {
       const redirected = Math.floor(pDmg / 2);
@@ -365,11 +410,15 @@ export function resolveLaneCombat(
     e.curHp -= pDmg + bonusPlayerDmgPerAttack;
     totalShieldsAbsorbed += eBefore - e.curShields;
     if (p.shieldsOnDmgFraction > 0 && pDmg > 0) p.curShields += Math.floor(pDmg * p.shieldsOnDmgFraction);
-    if (p.stunOnHitCharges > 0 && pDmg > 0) { e.stunned = true; if (isFinite(p.stunOnHitCharges)) p.stunOnHitCharges--; }
+    if (p.stunOnHitCharges > 0 && pDmg > 0) { e.stunned = true; if (isFinite(p.stunOnHitCharges)) p.stunOnHitCharges--; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
+    if (p.stunOnAttackFullHp && wasFullHp && pDmg > 0) { e.stunned = true; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
     if (splashAllyOnPlayerAttack && pq.length > 1) {
       const allyIdx = 1 + Math.floor(Math.random() * (pq.length - 1));
       pq[allyIdx].curHp -= p.dmg;
     }
+    const totalDealt = pDmg + bonusPlayerDmgPerAttack;
+    if (onAfterPlayerAttack && totalDealt > 0) onAfterPlayerAttack(p, totalDealt);
+    return totalDealt;
   };
 
   // Death Cloak passive: floor the attacked enemy at 1 HP; redirect overflow to Death Cloak in reserve.
@@ -450,13 +499,20 @@ export function resolveLaneCombat(
     }
     if (eq[0]) executeCheck(eq[0]);
     if (!pq.length) break;
+    // Isolation Field: strip all enemy armor and shields at start of exchange.
+    if (eq[0] && pq.some(pc => pc.stripEnemyBoosts)) {
+      for (const ec of eq) { ec.armor = 0; ec.curShields = 0; }
+    }
     // Player execute: instantly kill the active enemy when it starts an exchange below 1/4 HP.
     if (pq[0]?.executeEnemyBelowFraction > 0 && eq[0]) {
       const thresh = Math.floor(eq[0].hp * pq[0].executeEnemyBelowFraction);
       if (eq[0].curHp > 0 && eq[0].curHp < thresh) {
-        fireKillCb(pq[0]); eq.shift();
-        if (exitAfterFirstEnemyKill) break;
-        continue;
+        const rankOk = !pq[0].executeRequiresSameOrLowerRank || eq[0].combatantRankNum <= pq[0].combatantRankNum;
+        if (rankOk) {
+          fireKillCb(pq[0]); eq.shift();
+          if (exitAfterFirstEnemyKill) break;
+          continue;
+        }
       }
     }
     const p = pq[0]; // active player — always retaliates
@@ -495,7 +551,7 @@ export function resolveLaneCombat(
         if (e.deleteOnKillIfLowerRank && eTarget.combatantRankNum < e.combatantRankNum) eTarget.deletedByEnemy = true;
         fireDeathCb(eTarget); pq.splice(0, 1);
         if (e.splashToReserveOnKill && pq.length > 0) pq[0].curHp -= Math.floor(e.dmg / 2);
-        if (e.stunAllOnKill) for (const pc of pq) pc.stunned = true;
+        if (e.stunAllOnKill && !preventPlayerStuns) for (const pc of pq) pc.stunned = true;
         if (e.armorResetOnKill > 0) e.armor = e.armorResetOnKill;
         if (e.absorbHalfStatsOnKill) { e.dmg += Math.floor(eTarget.dmg / 2); e.hp += Math.floor(eTarget.hp / 2); e.curHp += Math.floor(eTarget.hp / 2); }
         if (e.absorbFullStatsOnKill) { e.dmg += eTarget.dmg; e.hp += eTarget.hp; e.curHp += eTarget.hp; e.armor += eTarget.armor; e.baseDmg += eTarget.dmg; }
@@ -515,7 +571,17 @@ export function resolveLaneCombat(
         enemyAttacks(e, eTarget, mult);
       }
       playerAttacks(p, e, mult);
+      if (p.hitsDouble && eq.length > 0 && eq[0].curHp > 0 && !p.stunned) playerAttacks(p, eq[0], 1);
       applyDeathCloakFloor(e);
+    }
+    // AMP Volt: fire one extra player attack after each enemy attack.
+    if (eq.length > 0 && eq[0].curHp > 0) {
+      for (const pc of pq) {
+        if (pc.counterAfterEachEnemyHit && !pc.stunned && pc.curHp > 0) {
+          playerAttacks(pc, eq[0], 1);
+          break; // only the first eligible unit fires
+        }
+      }
     }
     firstExchangeDone = true;
     if (eTarget.curHp <= 0) {
@@ -524,7 +590,7 @@ export function resolveLaneCombat(
       if (e.deleteOnKillIfLowerRank && eTarget.combatantRankNum < e.combatantRankNum) eTarget.deletedByEnemy = true;
       fireDeathCb(eTarget); pq.splice(eTargetIdx, 1);
       if (eTargetIdx === 0 && e.splashToReserveOnKill && pq.length > 0) pq[0].curHp -= Math.floor(e.dmg / 2);
-      if (e.stunAllOnKill) for (const pc of pq) pc.stunned = true;
+      if (e.stunAllOnKill && !preventPlayerStuns) for (const pc of pq) pc.stunned = true;
       if (eTargetIdx === 0 && e.armorResetOnKill > 0) e.armor = e.armorResetOnKill;
       if (eTargetIdx === 0 && e.absorbHalfStatsOnKill) { e.dmg += Math.floor(eTarget.dmg / 2); e.hp += Math.floor(eTarget.hp / 2); e.curHp += Math.floor(eTarget.hp / 2); }
       if (eTargetIdx === 0 && e.absorbFullStatsOnKill) { e.dmg += eTarget.dmg; e.hp += eTarget.hp; e.curHp += eTarget.hp; e.armor += eTarget.armor; e.baseDmg += eTarget.dmg; }
@@ -546,6 +612,14 @@ export function resolveLaneCombat(
       fireKillCb(attacker2); eq.shift();
       applyTrample(attacker2, ok2);
       if (exitAfterFirstEnemyKill) break;
+    }
+    // AMP Volt: stun all enemies when any player unit drops below half HP (once per unit per round).
+    for (const pc of pq) {
+      if (pc.stunBelowHalf && !pc.stunBelowHalfFired && pc.curHp > 0 && pc.curHp < pc.hp / 2) {
+        pc.stunBelowHalfFired = true;
+        for (const ec of eq) ec.stunned = true;
+        if (onPlayerStunEnemy) onPlayerStunEnemy(eq.length);
+      }
     }
     // Reserve enemy healers (e.g. Cleric passive): heal the active enemy after each exchange.
     if (eq[0]) {
