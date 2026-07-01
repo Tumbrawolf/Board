@@ -12,6 +12,7 @@ export class Combatant {
   curHp: number;
   armor: number;
   curShields: number;
+  maxShields: number;
   ignoreArmor = false;
   shieldMultiplier = 1;
   shredArmor = 0;
@@ -179,6 +180,7 @@ export class Combatant {
     this.curHp = this.hp;
     this.armor = toInt(card.Armor);
     this.curShields = toInt(card.Shields);
+    this.maxShields = this.curShields;
   }
 }
 
@@ -189,6 +191,7 @@ export function combatantFromUnit(ui: UnitInstance): Combatant {
   c.hp = ui.maxHp;
   c.curHp = ui.curHp;
   c.curShields = ui.curShields;
+  c.maxShields = ui.curShields;
   c.unitType = (ui.card as any).Type ?? "";
   return c;
 }
@@ -359,6 +362,11 @@ export function resolveLaneCombat(
     if (killer.shieldsOnKillEnemyRank && dyingEnemy) killer.shieldsOnKill = dyingEnemy.combatantRankNum;
     if (killer.shieldsOnKill > 0) killer.curShields += killer.shieldsOnKill;
     if (killer.stunOnKill && eq.length > 0) { eq[0].stunned = true; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
+    // Plasma Tank: gain shields equal to the shields the killed enemy had (on kill only).
+    if (killer.gainShieldsEqualToShieldsDestroyed && dyingEnemy) {
+      const shieldsGained = dyingEnemy.maxShields;
+      if (shieldsGained > 0) killer.curShields += shieldsGained;
+    }
     if (onEnemyKill) onEnemyKill(killer);
   };
   const dmgMult = () => (doubleFirstAttack && !firstExchangeDone) ? 2 : 1;
@@ -424,11 +432,6 @@ export function resolveLaneCombat(
     e.curHp -= pDmg + bonusPlayerDmgPerAttack;
     totalShieldsAbsorbed += eBefore - e.curShields;
     if (p.shieldsOnDmgFraction > 0 && pDmg > 0) p.curShields += Math.floor(pDmg * p.shieldsOnDmgFraction);
-    // Plasma Tank: gain shields equal to enemy shields destroyed by this attack.
-    if (p.gainShieldsEqualToShieldsDestroyed) {
-      const shieldsDestroyed = Math.max(0, eBefore - e.curShields);
-      if (shieldsDestroyed > 0) p.curShields += shieldsDestroyed;
-    }
     if (p.stunOnHitCharges > 0 && pDmg > 0) { e.stunned = true; if (isFinite(p.stunOnHitCharges)) p.stunOnHitCharges--; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
     if (p.stunOnAttackFullHp && wasFullHp && pDmg > 0) { e.stunned = true; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
     if (splashAllyOnPlayerAttack && pq.length > 1) {

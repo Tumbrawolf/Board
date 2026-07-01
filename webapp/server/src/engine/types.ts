@@ -166,6 +166,13 @@ export interface GamePlayer {
   /** Honorable Discharge / War Hero: unit held after retirement, redeployed at the next planning
    * phase. Null when inactive. */
   honorableDischargeUnit: UnitInstance | null;
+  /** Stasis Suit / Emergency Extractor: units returned to hand mid-combat (with gear attached).
+   * Redeployed at the next planning phase, same as honorableDischargeUnit. */
+  unitHand: UnitInstance[];
+  /** Indices into laneEnemyReserve that have been revealed/scouted (face-up) for this player.
+   * Index 0 is always implicitly revealed (next-in-line). Cleared and re-populated each round when
+   * the hoard is built. Persists within a round as enemies are killed/shifted. */
+  revealedEnemyIndices: Set<number>;
 }
 
 export interface GameSettings {
@@ -598,4 +605,17 @@ export interface GameState {
   /** Iron Grip instant: seat indices where the commander may not rotate away without a player vote.
    * Persistent. When the current commander is in this set, rotation is blocked unless overridden. */
   ironGripSeats: Set<number>;
+
+  // ── Ability Interception flags (Stealth Buggy/Tank, MCP Slapper, EMP Slayer) ─────────────────
+
+  /** Ability Interception: seat indices where directed (targeted) enemy abilities are blocked this
+   * round. Set by Stealth Buggy/Tank "cannot be targeted by abilities" passive when active.
+   * Does NOT block AoE passives (Emitter DoT, Totem of Decay, Hive Mind buffs). Reset each round. */
+  directedAbilityImmuneLanes: Set<number>;
+  /** Ability Interception: first-ability cancel budget remaining per lane this round.
+   * Key = seatIndex, value = cancels remaining (Stealth Buggy/Tank cancel 1st enemy ability). Reset each round. */
+  firstAbilityCancelPerLane: Map<number, number>;
+  /** Ability Interception: seat indices whose front enemy's abilities are fully suppressed this round
+   * (MCP "Slapper" targeting). Covers both activated and passive effects in that lane. Reset each round. */
+  enemyAbilitySuppressedSeats: Set<number>;
 }

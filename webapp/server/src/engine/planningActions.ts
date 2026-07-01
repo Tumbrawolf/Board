@@ -144,6 +144,20 @@ function payIncludingCommand(game: GameState, p: GamePlayer, card: UnitCard | Ge
   }
 }
 
+/** Returns a unit from any lane position (active or reserve) to the owning player's unitHand.
+ * The unit keeps all equipped gear. Removes it from active/reserve; if it was in the active slot,
+ * the first reserve unit is promoted to active. */
+export function returnUnitToHand(game: GameState, p: GamePlayer, ui: UnitInstance, log: (t: string) => void) {
+  if (p.active === ui) {
+    p.active = p.reserve.length ? p.reserve.shift()! : null;
+  } else {
+    const idx = p.reserve.indexOf(ui);
+    if (idx >= 0) p.reserve.splice(idx, 1);
+  }
+  p.unitHand.push(ui);
+  log(`  [Unit Hand] ${p.name}'s ${ui.card.Name} returned to hand (${ui.equipped.map((g) => (g as any).Name).filter(Boolean).join(", ") || "no gear"})`);
+}
+
 export function affordableUnits(game: GameState, p: GamePlayer): UnitCard[] {
   return game.shopUnits.filter((u) => {
     if (RANK_NUM[u.Rank] > tacticianRankCeiling(p, u) && !tacticianBypassesRankCheck(p, u)) return false;

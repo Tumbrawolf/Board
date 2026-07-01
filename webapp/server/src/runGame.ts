@@ -126,7 +126,12 @@ function snapshot(engine: GameEngine) {
         ? { id: p.active.id, name: p.active.card.Name, hp: p.active.curHp, maxHp: p.active.maxHp, shields: p.active.curShields, equipped: p.active.equipped.map((eq) => (eq as any).Name).filter(Boolean) }
         : null,
       reserve: p.reserve.map((u) => ({ id: u.id, name: u.card.Name, hp: u.curHp, maxHp: u.maxHp, shields: u.curShields })),
-      laneEnemyReserve: p.laneEnemyReserve.map((e) => ({ name: e.Name, hp: toInt(e.HP), damage: toInt(e.Damage) })),
+      laneEnemyReserve: p.laneEnemyReserve.map((e, idx) => {
+        // Index 0 (next-in-line) and scouted indices are face-up; all others are hidden.
+        const isRevealed = idx === 0 || p.revealedEnemyIndices.has(idx);
+        if (isRevealed) return { name: e.Name, hp: toInt(e.HP), damage: toInt(e.Damage), faceUp: true };
+        return { name: "???", hp: 0, damage: 0, faceUp: false };
+      }),
       revealedSecretObjective: p.revealedSecretObjective,
       stats: p.stats,
     })),

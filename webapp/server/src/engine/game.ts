@@ -50,6 +50,7 @@ import {
   cardEligibleForPlanning,
   commanderActivateCardMutation,
   nonCommanderActivateCardMutation,
+  returnUnitToHand,
 } from "./planningActions.js";
 import { ensureLowestRankGear, ensureLowestRankUnit, refillShopGear, refillShopUnit } from "./shop.js";
 import {
@@ -101,6 +102,16 @@ function shuffle<T>(arr: T[]): T[] {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+/** Called whenever the front enemy (index 0) is removed from p.laneEnemyReserve.
+ * Shifts all revealed indices down by 1, dropping index 0 (it's gone). */
+function shiftRevealedIndices(p: GamePlayer): void {
+  const shifted = new Set<number>();
+  for (const idx of p.revealedEnemyIndices) {
+    if (idx > 0) shifted.add(idx - 1);
+  }
+  p.revealedEnemyIndices = shifted;
 }
 
 export interface SeatInput {
@@ -246,6 +257,8 @@ export class GameEngine {
         maxKillsInRoundWithNoDeaths: 0,
       },
       honorableDischargeUnit: null,
+      unitHand: [],
+      revealedEnemyIndices: new Set<number>(),
     }));
 
     const leaderIdx = Math.floor(Math.random() * players.length);
@@ -426,6 +439,9 @@ export class GameEngine {
       abilityDenialDamage: 0,
       sunderedLaneSeat: -1,
       ironGripSeats: new Set(),
+      directedAbilityImmuneLanes: new Set(),
+      firstAbilityCancelPerLane: new Map(),
+      enemyAbilitySuppressedSeats: new Set(),
     };
 
     refillShopUnit(this.game);
@@ -613,6 +629,10 @@ export class GameEngine {
     game.freeAbilityNextUse = new Set();
     game.commanderLocked = false;
     game.reserveAbilitiesDisabled = false;
+    // Ability Interception: reset per-round directed-immunity and suppression flags.
+    game.directedAbilityImmuneLanes = new Set();
+    game.firstAbilityCancelPerLane = new Map();
+    game.enemyAbilitySuppressedSeats = new Set();
     // Reset lane assignments to identity each round (commander re-assigns below after Event pick).
     for (const p of game.players) p.controlledLaneSeat = p.seatIndex;
     // Silence in no mans land: restore any units benched last round back to reserve.
@@ -637,6 +657,19 @@ export class GameEngine {
           this.log(`  [Honorable Discharge] ${unit.card.Name} returned to ${p.name}'s reserve for this round`);
         }
       }
+    }
+    // Stasis Suit / Emergency Extractor: redeploy units returned to hand.
+    for (const p of game.players) {
+      for (const unit of p.unitHand) {
+        if (p.active === null) {
+          p.active = unit;
+          this.log(`  [Unit Hand] ${unit.card.Name} redeployed to ${p.name}'s active slot`);
+        } else {
+          p.reserve.push(unit);
+          this.log(`  [Unit Hand] ${unit.card.Name} returned to ${p.name}'s reserve`);
+        }
+      }
+      p.unitHand = [];
     }
     // Assigned Posts' Failure Penalty: re-roll locations each persist round, then force first
     // worker placement in runWorkerPlacementAndIncome (detected by activeEvent !== "Assigned Posts"
@@ -923,7 +956,7 @@ export class GameEngine {
                 const front = tp.laneEnemyReserve[0] as any;
                 const newHp = Math.max(0, toInt(front.HP) - atk);
                 front.HP = String(newHp);
-                if (newHp <= 0) tp.laneEnemyReserve.shift();
+                if (newHp <= 0) { tp.laneEnemyReserve.shift(); shiftRevealedIndices(tp); }
               }
             }
             csLog(`active unit deals ${atk} damage to each lane's front enemy`);
@@ -937,16 +970,37 @@ export class GameEngine {
         } else if (/Kill Lowest HP unit/i.test(reveal)) {
           let lowestHp = Infinity, lowestLane: GamePlayer | null = null, lowestIdx = -1;
           for (const tp of game.players) tp.laneEnemyReserve.forEach((e, i) => { const hp = toInt((e as any).HP); if (hp < lowestHp) { lowestHp = hp; lowestLane = tp; lowestIdx = i; } });
-          if (lowestLane && lowestIdx >= 0) { const killed = (lowestLane as GamePlayer).laneEnemyReserve.splice(lowestIdx, 1)[0]; csLog(`executed ${killed.Name} (${lowestHp} HP, lowest)`); }
+          if (lowestLane && lowestIdx >= 0) {
+            const _llp = lowestLane as GamePlayer;
+            const killed = _llp.laneEnemyReserve.splice(lowestIdx, 1)[0];
+            const _as = new Set<number>(); for (const ri of _llp.revealedEnemyIndices) { if (ri < lowestIdx) _as.add(ri); else if (ri > lowestIdx) _as.add(ri - 1); } _llp.revealedEnemyIndices = _as;
+            csLog(`executed ${killed.Name} (${lowestHp} HP, lowest)`);
+          }
         // ── kill highest rank enemy ─────────────────────────────────────────
         } else if (/Kill highest rank/i.test(reveal)) {
           let highestRank = -1, highestLane: GamePlayer | null = null, highestIdx = -1;
           for (const tp of game.players) tp.laneEnemyReserve.forEach((e, i) => { const r = ENEMY_RANK_NUM[(e as any).Rank as EnemyRank] ?? 0; if (r > highestRank) { highestRank = r; highestLane = tp; highestIdx = i; } });
-          if (highestLane && highestIdx >= 0) { const killed = (highestLane as GamePlayer).laneEnemyReserve.splice(highestIdx, 1)[0]; csLog(`executed ${killed.Name} (highest rank)`); }
+          if (highestLane && highestIdx >= 0) {
+            const _hlp = highestLane as GamePlayer;
+            const killed = _hlp.laneEnemyReserve.splice(highestIdx, 1)[0];
+            const _as = new Set<number>(); for (const ri of _hlp.revealedEnemyIndices) { if (ri < highestIdx) _as.add(ri); else if (ri > highestIdx) _as.add(ri - 1); } _hlp.revealedEnemyIndices = _as;
+            csLog(`executed ${killed.Name} (highest rank)`);
+          }
         // ── execute under 1/4 health ────────────────────────────────────────
         } else if (/Execute units under 1\/4 health/i.test(reveal)) {
           let count = 0;
-          for (const tp of game.players) tp.laneEnemyReserve = tp.laneEnemyReserve.filter(e => { if (toInt((e as any).HP) <= 10) { count++; return false; } return true; });
+          for (const tp of game.players) {
+            const kept: EnemyCard[] = []; const killed: number[] = [];
+            tp.laneEnemyReserve.forEach((e, i) => { if (toInt((e as any).HP) <= 10) { count++; killed.push(i); } else kept.push(e); });
+            tp.laneEnemyReserve = kept;
+            // Rebuild revealed indices: remove killed indices, shift remaining down.
+            const _as = new Set<number>();
+            for (const ri of tp.revealedEnemyIndices) {
+              const below = killed.filter(ki => ki < ri).length;
+              if (!killed.includes(ri)) _as.add(ri - below);
+            }
+            tp.revealedEnemyIndices = _as;
+          }
           csLog(count > 0 ? `executed ${count} enemy/enemies (HP ≤ 10)` : `no enemies below threshold`);
         // ── halve HP of all enemies ─────────────────────────────────────────
         } else if (/Half the HP of all units/i.test(reveal)) {
@@ -2451,6 +2505,8 @@ export class GameEngine {
     for (const p of game.players) {
       const n = perPlayerCounts.get(p.seatIndex)!;
       p.laneEnemyReserve = shuffled.slice(idx, idx + n);
+      // Clear revealed indices each round — the enemy array is completely rebuilt here.
+      p.revealedEnemyIndices = new Set<number>();
       idx += n;
     }
 
@@ -2474,6 +2530,8 @@ export class GameEngine {
       }
       for (let i = 0; i < laneRevealCount; i++) {
         game.revealedEnemyNames.add(p.laneEnemyReserve[i].Name);
+        // Mark scouted enemies as face-up (permanently revealed for the rest of this round).
+        p.revealedEnemyIndices.add(i);
       }
     }
 
@@ -2495,6 +2553,14 @@ export class GameEngine {
         const idx2 = p.laneEnemyReserve.indexOf(e);
         if (idx2 >= 0) {
           p.laneEnemyReserve.splice(idx2, 1);
+          // Shift revealed indices: remove idx2, decrement all indices above it.
+          const afterSplice = new Set<number>();
+          for (const ri of p.revealedEnemyIndices) {
+            if (ri < idx2) afterSplice.add(ri);
+            else if (ri > idx2) afterSplice.add(ri - 1);
+            // ri === idx2 → killed, drop it
+          }
+          p.revealedEnemyIndices = afterSplice;
           this.log(`  [Python] Killed scouted ${e.Name} (${(e as any).Rank ?? "?"}) in ${p.name}'s lane`);
           pythonKills++;
         }
@@ -2520,6 +2586,7 @@ export class GameEngine {
       const targetPlayer = game.players.find((p) => p.seatIndex === game.eradicatorCannonLaneSeat) ?? game.players[0];
       if (targetPlayer.laneEnemyReserve.length > 0) {
         const killed = targetPlayer.laneEnemyReserve.shift()!;
+        shiftRevealedIndices(targetPlayer);
         this.log(`  [Eradicator Cannon] Active: killed ${killed.Name} (non-boss) from ${targetPlayer.name}'s lane.`);
       } else {
         this.log(`  [Eradicator Cannon] Active: no non-boss enemy in ${targetPlayer.name}'s lane to kill.`);
@@ -2562,8 +2629,20 @@ export class GameEngine {
     if (!underminerActive && (game.locationUpgradesBuilt["Battlefield"] ?? []).some((c) => c.Name === "Defense Turrets")) {
       for (const p of game.players) {
         const before = p.laneEnemyReserve.length;
-        p.laneEnemyReserve = p.laneEnemyReserve.filter((e) => toInt(e.HP) > 5);
-        const killed = before - p.laneEnemyReserve.length;
+        const killedIndices = new Set<number>();
+        const kept: EnemyCard[] = [];
+        p.laneEnemyReserve.forEach((e, i) => { if (toInt(e.HP) > 5) kept.push(e); else killedIndices.add(i); });
+        p.laneEnemyReserve = kept;
+        const killed = before - kept.length;
+        // Rebuild revealed indices: remove killed slots, shift remaining down.
+        if (killedIndices.size > 0) {
+          const _as = new Set<number>();
+          for (const ri of p.revealedEnemyIndices) {
+            const below = Array.from(killedIndices).filter(ki => ki < ri).length;
+            if (!killedIndices.has(ri)) _as.add(ri - below);
+          }
+          p.revealedEnemyIndices = _as;
+        }
         if (killed > 0) this.log(`  [Defense Turrets passive] ${p.name}'s lane: ${killed} enemy/enemies killed on reveal (HP ≤ 5).`);
       }
     }
@@ -2611,7 +2690,37 @@ export class GameEngine {
         this.log(`  [${front.Name}] Reveal blocked (${p.name}'s lane has Smoke Launcher — directed targeting denied)`);
         continue;
       }
-      // Reveal prevention: player effects can grant prevention charges. Unpreventable reveals
+      // Ability Interception A: MCP "Slapper" — front enemy of a suppressed lane cannot use abilities.
+      if (!oracleAlive && game.enemyAbilitySuppressedSeats.has(p.seatIndex)) {
+        this.log(`  [MCP "Slapper"] Reveal suppressed in ${p.name}'s lane (enemy abilities blocked this round)`);
+        continue;
+      }
+      // Ability Interception B: Stealth Buggy / Stealth Tank directed-ability immunity.
+      // Reveals are directed (target this lane), so they are blocked when the active unit has stealth_immunity.
+      if (!oracleAlive && game.directedAbilityImmuneLanes.has(p.seatIndex)) {
+        // Check first-cancel budget (Stealth Buggy/Tank cancel 1st ability per round).
+        const cancelBudget = game.firstAbilityCancelPerLane.get(p.seatIndex) ?? 0;
+        if (cancelBudget > 0) {
+          game.firstAbilityCancelPerLane.set(p.seatIndex, cancelBudget - 1);
+          this.log(`  [Stealth] ${p.name}'s lane: reveal from ${front.Name} cancelled (1st-ability cancel; ${cancelBudget - 1} remaining)`);
+        } else {
+          this.log(`  [Stealth] ${p.name}'s lane: reveal from ${front.Name} blocked (directed-ability immunity)`);
+        }
+        continue;
+      }
+      // Ability Interception C: EMP "Slayer" redirect — all enemy abilities must target Slayer's lane.
+      // If Slayer is active in a different lane, redirect this reveal to fire against Slayer's lane.
+      let revealTarget = p; // default: directed effects target this lane's player
+      if (!oracleAlive) {
+        const slayerLane = game.players.find(
+          (tp) => tp.active?.card.Name === 'EMP "Slayer"' && tp.seatIndex !== p.seatIndex
+        );
+        if (slayerLane) {
+          this.log(`  [EMP "Slayer"] Reveal from ${front.Name} redirected from ${p.name}'s lane to ${slayerLane.name}'s Slayer lane`);
+          // Re-target directed effects at Slayer's lane instead of p. Fall through to apply the effect.
+          revealTarget = slayerLane;
+        }
+      }      // Reveal prevention: player effects can grant prevention charges. Unpreventable reveals
       // (text contains "cannot be prevented") bypass this check. Oracle passive blocks all prevention.
       const revealCanBePrevented = !oracleAlive && !/cannot be prevented/i.test(reveal);
       if (revealCanBePrevented && game.revealPreventionCharges > 0) {
@@ -2636,10 +2745,10 @@ export class GameEngine {
 
       // Wasp: "Stun enemies in adjacent lane"
       if (/stun.*adjacent/i.test(reveal)) {
-        for (const seat of adjacentSeats(game, p.seatIndex)) {
+        for (const seat of adjacentSeats(game, revealTarget.seatIndex)) {
           tempState.pendingPlayerStunSeats.add(seat);
         }
-        this.log(`  [${front.Name}] Reveal: stun player active in adjacent lanes`);
+        this.log(`  [${front.Name}] Reveal: stun player active in adjacent lanes (target: ${revealTarget.name})`);
       }
 
       // Oblivion Walker: "Gains 30 attack" — add 30 to card Damage before combat.
@@ -2677,20 +2786,20 @@ export class GameEngine {
       const flatUnitDmgMatch = reveal.match(/^deal (\d+) damage to unit$/i);
       if (flatUnitDmgMatch) {
         const dmg = parseInt(flatUnitDmgMatch[1]);
-        if (p.active) {
-          dealPreCombatDamage(p.active, dmg);
-          applyRevealDeaths(p);
-          this.log(`  [${front.Name}] Reveal: ${dmg} damage to active unit in ${p.name}'s lane`);
+        if (revealTarget.active) {
+          dealPreCombatDamage(revealTarget.active, dmg);
+          applyRevealDeaths(revealTarget);
+          this.log(`  [${front.Name}] Reveal: ${dmg} damage to active unit in ${revealTarget.name}'s lane`);
         }
       }
 
       // Alpha Storm Claw: "Attack 6 times" — pre-combat 6-hit to the active player unit in this lane.
       if (/^attack 6 times/i.test(reveal)) {
-        if (p.active) {
-          for (let hit = 0; hit < 6; hit++) dealPreCombatDamage(p.active, frontDmg);
-          applyRevealDeaths(p);
+        if (revealTarget.active) {
+          for (let hit = 0; hit < 6; hit++) dealPreCombatDamage(revealTarget.active, frontDmg);
+          applyRevealDeaths(revealTarget);
         }
-        this.log(`  [${front.Name}] Reveal: ${frontDmg}×6 to active unit in ${p.name}'s lane`);
+        this.log(`  [${front.Name}] Reveal: ${frontDmg}×6 to active unit in ${revealTarget.name}'s lane`);
       }
 
       // Alpha Ravager: "Gain 3 Multistrike" — multiply card damage by 3 before combat starts.
@@ -2747,7 +2856,15 @@ export class GameEngine {
 
       // Generic: "Move this unit to reserve" — rotate front enemy to back of queue.
       if (/move this unit to reserve/i.test(reveal)) {
+        const rotLen = p.laneEnemyReserve.length;
         p.laneEnemyReserve.push(p.laneEnemyReserve.shift()!);
+        // Rotate revealed indices: shift all down by 1 (front→back), old index 0 maps to last slot.
+        const rotated = new Set<number>();
+        for (const ri of p.revealedEnemyIndices) {
+          rotated.add(ri === 0 ? rotLen - 1 : ri - 1);
+        }
+        // Index 0 was always considered revealed; after rotate it shifted to last slot, already captured above.
+        p.revealedEnemyIndices = rotated;
         this.log(`  [${front.Name}] Reveal: moved to reserve, ${p.laneEnemyReserve[0]?.Name ?? "none"} now active`);
       }
 
@@ -2778,10 +2895,10 @@ export class GameEngine {
       // Lancer: "Deal 2x attack damage to active and reserve units in this lane"
       if (/deal 2x attack damage to active and reserve/i.test(reveal)) {
         const dmg = frontDmg * 2;
-        const units = [...(p.active ? [p.active] : []), ...p.reserve];
+        const units = [...(revealTarget.active ? [revealTarget.active] : []), ...revealTarget.reserve];
         for (const ui of units) dealPreCombatDamage(ui, dmg);
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to all ${units.length} unit(s) in ${p.name}'s lane`);
-        applyRevealDeaths(p);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to all ${units.length} unit(s) in ${revealTarget.name}'s lane`);
+        applyRevealDeaths(revealTarget);
       }
 
       // Hound / War Hound: "Deal N damage to lowest HP unit" — targets lowest-curHp player unit globally.
@@ -2823,12 +2940,12 @@ export class GameEngine {
       // Tank Killer: "If active unit is a Vehicle or Mech, Kill it."
       if (/if active unit is a vehicle or mech.*kill it/i.test(reveal)) {
         const mechTypes = new Set(["vehicle", "mech"]);
-        if (p.active && mechTypes.has(((p.active.card as any).Type ?? "").toLowerCase())) {
-          p.active.curHp = 0;
-          applyRevealDeaths(p);
-          this.log(`  [${front.Name}] Reveal: killed Vehicle/Mech unit in ${p.name}'s lane`);
+        if (revealTarget.active && mechTypes.has(((revealTarget.active.card as any).Type ?? "").toLowerCase())) {
+          revealTarget.active.curHp = 0;
+          applyRevealDeaths(revealTarget);
+          this.log(`  [${front.Name}] Reveal: killed Vehicle/Mech unit in ${revealTarget.name}'s lane`);
         } else {
-          this.log(`  [${front.Name}] Reveal: no Vehicle/Mech active unit in ${p.name}'s lane`);
+          this.log(`  [${front.Name}] Reveal: no Vehicle/Mech active unit in ${revealTarget.name}'s lane`);
         }
       }
 
@@ -2837,10 +2954,10 @@ export class GameEngine {
       const flatActiveDmgMatch = reveal.match(/^deal (\d+) damage to active unit/im);
       if (flatActiveDmgMatch && !/2x|all lanes|active and reserve/i.test(reveal)) {
         const dmg = parseInt(flatActiveDmgMatch[1]);
-        if (p.active) {
-          const dealt = dealPreCombatDamage(p.active, dmg);
-          this.log(`  [${front.Name}] Reveal: ${dealt} damage to active unit ${p.active.card.Name}`);
-          applyRevealDeaths(p);
+        if (revealTarget.active) {
+          const dealt = dealPreCombatDamage(revealTarget.active, dmg);
+          this.log(`  [${front.Name}] Reveal: ${dealt} damage to active unit ${revealTarget.active.card.Name}`);
+          applyRevealDeaths(revealTarget);
         }
       }
 
@@ -2897,21 +3014,21 @@ export class GameEngine {
       const reserveDmgMatch = reveal.match(/deal (\d+) damage to reserve/i);
       if (reserveDmgMatch) {
         const dmg = parseInt(reserveDmgMatch[1]);
-        for (const ui of p.reserve) dealPreCombatDamage(ui, dmg);
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to each reserve unit in ${p.name}'s lane`);
-        applyRevealDeaths(p);
+        for (const ui of revealTarget.reserve) dealPreCombatDamage(ui, dmg);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to each reserve unit in ${revealTarget.name}'s lane`);
+        applyRevealDeaths(revealTarget);
       }
 
       // Demo Squad: "Deal 2x attack damage to active unit, Deal half that to adjacent lanes"
       if (/deal 2x attack damage to active unit.*deal half that to adjacent/i.test(reveal)) {
         const dmg = frontDmg * 2;
-        if (p.active) { dealPreCombatDamage(p.active, dmg); applyRevealDeaths(p); }
+        if (revealTarget.active) { dealPreCombatDamage(revealTarget.active, dmg); applyRevealDeaths(revealTarget); }
         const halfDmg = Math.floor(dmg / 2);
-        for (const seat of adjacentSeats(game, p.seatIndex)) {
+        for (const seat of adjacentSeats(game, revealTarget.seatIndex)) {
           const adjP = game.players.find((tp) => tp.seatIndex === seat);
           if (adjP?.active) { dealPreCombatDamage(adjP.active, halfDmg); applyRevealDeaths(adjP); }
         }
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to ${p.name}'s active; ${halfDmg} splash to adjacent lanes`);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to ${revealTarget.name}'s active; ${halfDmg} splash to adjacent lanes`);
       }
 
       // Knights / Plasma Crab: "Gain N Shield" (front enemy self-shields via pendingEnemyActiveShields).
@@ -3042,7 +3159,10 @@ export class GameEngine {
         }
         if (targetP && targetP.seatIndex !== p.seatIndex) {
           p.laneEnemyReserve.shift();
+          shiftRevealedIndices(p);
+          // The moved enemy becomes index 0 in target lane — mark it revealed there too.
           targetP.laneEnemyReserve.unshift(front);
+          targetP.revealedEnemyIndices = new Set([0, ...Array.from(targetP.revealedEnemyIndices).map(i => i + 1)]);
           this.log(`  [${front.Name}] Reveal: moved to ${targetP.name}'s lane (lowest Dmg active)`);
         } else {
           this.log(`  [${front.Name}] Reveal: already in lowest-damage lane, no swap`);
@@ -3055,7 +3175,10 @@ export class GameEngine {
         const targetP = game.players[roll];
         if (targetP.seatIndex !== p.seatIndex) {
           p.laneEnemyReserve.shift();
+          shiftRevealedIndices(p);
+          // The moved enemy becomes index 0 in target lane — mark it revealed there too.
           targetP.laneEnemyReserve.unshift(front);
+          targetP.revealedEnemyIndices = new Set([0, ...Array.from(targetP.revealedEnemyIndices).map(i => i + 1)]);
           this.log(`  [${front.Name}] Reveal: D4=${roll + 1}, moved to ${targetP.name}'s lane`);
         } else {
           this.log(`  [${front.Name}] Reveal: D4=${roll + 1}, rolled own lane — no move`);
@@ -3070,6 +3193,10 @@ export class GameEngine {
           const tmp = p.laneEnemyReserve;
           p.laneEnemyReserve = targetP.laneEnemyReserve;
           targetP.laneEnemyReserve = tmp;
+          // Swap revealed indices to match the swapped queues.
+          const tmpRevealed = p.revealedEnemyIndices;
+          p.revealedEnemyIndices = targetP.revealedEnemyIndices;
+          targetP.revealedEnemyIndices = tmpRevealed;
           this.log(`  [${front.Name}] Reveal: D4=${roll + 1}, swapped enemy queue with ${targetP.name}'s lane`);
         } else {
           this.log(`  [${front.Name}] Reveal: D4=${roll + 1}, rolled own lane — no swap`);
@@ -3472,11 +3599,13 @@ export class GameEngine {
     const preCombatActive = new Map(game.players.map((p) => [p.seatIndex, p.active]));
     const preCombatReserve = new Map(game.players.map((p) => [p.seatIndex, p.reserve]));
     const preCombatEnemies = new Map(game.players.map((p) => [p.seatIndex, p.laneEnemyReserve]));
+    const preCombatRevealedIndices = new Map(game.players.map((p) => [p.seatIndex, p.revealedEnemyIndices]));
     if (hasNonIdentityAssignment) {
       for (const p of game.players) {
         p.active = preCombatActive.get(p.controlledLaneSeat) ?? null;
         p.reserve = preCombatReserve.get(p.controlledLaneSeat) ?? [];
         p.laneEnemyReserve = preCombatEnemies.get(p.controlledLaneSeat) ?? [];
+        p.revealedEnemyIndices = preCombatRevealedIndices.get(p.controlledLaneSeat) ?? new Set<number>();
       }
     }
 
@@ -3582,6 +3711,7 @@ export class GameEngine {
             const eHp = toInt(targetP.laneEnemyReserve[0].HP) - rdsDmg;
             if (eHp <= 0) {
               const killed = targetP.laneEnemyReserve.shift()!;
+              shiftRevealedIndices(targetP);
               this.log(`  [Remote Drop Soldier] Deploy burst killed ${killed.Name} in ${targetP.name}'s lane (${rdsDmg} dmg)`);
             } else {
               (targetP.laneEnemyReserve[0] as any).HP = String(eHp);
@@ -3633,6 +3763,7 @@ export class GameEngine {
           for (const lp of [p, tgt]) {
             if (lp.laneEnemyReserve.length && toInt(lp.laneEnemyReserve[0].HP) <= qdmg) {
               const killed = lp.laneEnemyReserve.shift();
+              shiftRevealedIndices(lp);
               this.log(`  [MG Quad] Swap burst killed ${killed?.Name} in ${lp.name}'s lane.`);
             }
           }
@@ -3665,6 +3796,7 @@ export class GameEngine {
               const eHpAfter = eHpBefore - atk;
               if (eHpAfter <= 0) {
                 const killed = lp.laneEnemyReserve.shift()!;
+                shiftRevealedIndices(lp);
                 this.log(`  [ATV] ${lp.active.card.Name}'s free attack killed ${killed.Name} in ${lp.name}'s lane (${atk} dmg)`);
               } else {
                 (lp.laneEnemyReserve[0] as any).HP = String(eHpAfter);
@@ -3793,6 +3925,9 @@ export class GameEngine {
       const allEnemyCards = game.players.flatMap((tp) => tp.laneEnemyReserve);
       for (const ec of allEnemyCards) {
         if (game.suppressedPassiveEnemyNames.has(ec.Name)) continue;
+        // MCP "Slapper": enemy abilities from suppressed lanes are blocked.
+        const ecLane = game.players.find((tp) => tp.laneEnemyReserve.includes(ec));
+        if (ecLane && game.enemyAbilitySuppressedSeats.has(ecLane.seatIndex)) continue;
         const tags = classifyEnemy(ec);
         // Cleric of Steel: "All enemies gain 4 armor" — applies to active enemy in every lane.
         if (tags.has("all_enemies_gain_armor") && eCombatants[0]) eCombatants[0].armor += 4;
@@ -3911,6 +4046,7 @@ export class GameEngine {
         }
         eCombatants.shift();
         p.laneEnemyReserve.shift();
+        shiftRevealedIndices(p);
       }
       if (!eCombatants.length) {
         this.log(`  ${p.name}: no enemies this lane (clean).`);
@@ -4119,17 +4255,19 @@ export class GameEngine {
         }
       }
       const needsOnAfterPlayerAttack = hasSplashPlayer || hasAllLanesPlayer || hasLaneHeal || firesaleTargetSeat >= 0;
+      // MCP "Slapper": when this lane's enemies are ability-suppressed, null out mid-combat enemy passives too.
+      const laneSuppressed = game.enemyAbilitySuppressedSeats.has(p.seatIndex);
       laneRuns.push({ p, pUnits, pCombatants, eCombatants, pq: pCombatants, eq: eCombatants, opts: {
         bonusPlayerDmgPerAttack: tagTeamBonus + combatStimsBonus,
         onFirstPlayerDeath: ynpCb,
         doubleFirstAttack: whitesDoubleFirst,
         onEnemyKill: punchCb,
-        onEnemyAttack: nightmareAttackCb ?? scoutAttackCb,
-        onAfterEnemyAttack: splashCb,
-        perExchangeInfantryDoT: emitterDoT,
-        perExchangeNonMechDoT: totemDoT,
-        splashAllyOnPlayerAttack: puppeteerActive,
-        enemyGroupAttack: blackRailGroupAttack,
+        onEnemyAttack: laneSuppressed ? undefined : (nightmareAttackCb ?? scoutAttackCb),
+        onAfterEnemyAttack: laneSuppressed ? undefined : splashCb,
+        perExchangeInfantryDoT: laneSuppressed ? 0 : emitterDoT,
+        perExchangeNonMechDoT: laneSuppressed ? 0 : totemDoT,
+        splashAllyOnPlayerAttack: laneSuppressed ? false : puppeteerActive,
+        enemyGroupAttack: laneSuppressed ? undefined : blackRailGroupAttack,
         deathCloakFloor: p.laneEnemyReserve.some((e) => e.Name === "Death Cloak" && !game.suppressedPassiveEnemyNames.has(e.Name)),
         stackAttacksOnSameTarget: p.laneEnemyReserve.some((e) => e.Name === "Alpha Storm Claw" && !game.suppressedPassiveEnemyNames.has(e.Name)),
         sharedShieldPool,
@@ -4223,6 +4361,16 @@ export class GameEngine {
             lane.pq = result.playerSurvivors;
             lane.eq = result.enemySurvivors;
             lane.totalShieldsAbsorbed += result.totalShieldsAbsorbed;
+            // Landmines: deal 5 damage to an enemy that just promoted to the front of the queue.
+            if ((lane.p as any).landminesActive && lane.eq.length > 0 && lane.eq[0].name !== preEName) {
+              const promoted = lane.eq[0];
+              promoted.curHp -= 5;
+              this.log(`  [Landmines] ${promoted.name} promoted to active in ${lane.p.name}'s lane — takes 5 damage (${promoted.curHp} HP left)`);
+              if (promoted.curHp <= 0) {
+                lane.eq.shift();
+                this.log(`  [Landmines] ${promoted.name} killed by landmine on entry`);
+              }
+            }
             // Soul Eater passive: absorb half stats of any player unit that died this exchange.
             const newDeadPlayers = prevPq.filter((c) => !result.playerSurvivors.includes(c));
             if (newDeadPlayers.length > 0) {
@@ -4589,6 +4737,12 @@ export class GameEngine {
       const ghostEvadeUnits: UnitInstance[] = [];
       pUnits.forEach((ui, i) => {
         const c = pCombatants[i];
+        // Field Medic may have already been inserted at the front of newUnits when it intercepted
+        // the active's death; skip re-insertion here to avoid duplicates.
+        if (newUnits.includes(ui)) {
+          if (playerSurvivors.includes(c)) { ui.curHp = c.curHp; ui.curShields = c.curShields; }
+          return;
+        }
         if (playerSurvivors.includes(c)) {
           ui.curHp = c.curHp;
           ui.curShields = c.curShields;
@@ -4641,6 +4795,20 @@ export class GameEngine {
           ui.curHp = Math.max(1, Math.floor(ui.maxHp / 2));
           newUnits.push(ui);
           this.log(`  [We Can Rebuild Them] ${ui.card.Name} rebuilt at ${ui.curHp} HP (paid ${toInt(ui.card["Tech Cost"])} Tech)`);
+        } else if (
+          !annihilationNoSaves && !c.deletedByEnemy &&
+          ui.equipped.some((g) => (g as any).Name === "Stasis Suit")
+        ) {
+          // Stasis Suit passive: on death, destroy ALL equipped gear permanently (do not return to
+          // gearPool — the gear is gone), then return the unit to the owning player's unitHand.
+          // We push to unitHand directly here (rather than calling returnUnitToHand) because p.active
+          // and p.reserve are still the pre-combat arrays during this forEach; they're overwritten by
+          // newUnits at the end of the block, so modifying them here would be a no-op.
+          applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
+          applyDeathStun(tempState, p, ui, (t) => this.log(t));
+          ui.equipped = [];
+          p.unitHand.push(ui);
+          this.log(`  [Stasis Suit] ${p.name}'s ${ui.card.Name} died — all gear destroyed, unit returned to hand`);
         } else if (!annihilationNoSaves && !c.deletedByEnemy && tryChronostasisSave(game, p, ui, (t) => this.log(t))) {
           newUnits.push(ui);
         } else if (!annihilationNoSaves && !c.deletedByEnemy && tryReviveOnce(game, p, ui, (t) => this.log(t))) {
@@ -4690,12 +4858,33 @@ export class GameEngine {
         } else {
           applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
           applyDeathStun(tempState, p, ui, (t) => this.log(t));
-          const realGear = ui.equipped.filter((g) => "Rank Name" in (g as any)) as import("./data.js").GearCard[];
-          if (realGear.length) {
-            ui.equipped = ui.equipped.filter((g) => !("Rank Name" in (g as any)));
-            this.returnOrRecycleGear(game, p, realGear);
+          // Field Medic passive: "Once per turn: When in reserve and Active unit would Die, if space
+          // is available at the medbay move the active unit there instead of graveyard." Fires only
+          // when the dying unit is the lane's active (pUnits[0]), Field Medic is in reserve, and
+          // medBay has capacity. Field Medic is then promoted to active (added to front of newUnits).
+          const isActiveUnit = pUnits.indexOf(ui) === 0;
+          const fieldMedicIdx = isActiveUnit
+            ? pUnits.slice(1).findIndex((u) => u.card.Name === "Field Medic")
+            : -1;
+          const fieldMedicKey = `FieldMedic-${p.seatIndex}`;
+          if (fieldMedicIdx >= 0 && canUseEffect(game, fieldMedicKey, 1)) {
+            recordEffectUse(game, fieldMedicKey);
+            const fieldMedic = pUnits[1 + fieldMedicIdx];
+            // Return dying active to unit hand (not medbay).
+            p.unitHand.push(ui);
+            p.stats.deaths += 1;
+            game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
+            this.log(`  [Field Medic] Intercepts death: ${ui.card.Name} returned to hand`);
+            // Promote Field Medic to active by inserting at front of newUnits (only if not already there).
+            if (!newUnits.includes(fieldMedic)) newUnits.unshift(fieldMedic);
+          } else {
+            const realGear = ui.equipped.filter((g) => "Rank Name" in (g as any)) as import("./data.js").GearCard[];
+            if (realGear.length) {
+              ui.equipped = ui.equipped.filter((g) => !("Rank Name" in (g as any)));
+              this.returnOrRecycleGear(game, p, realGear);
+            }
+            this.retireOrGraveyard(p, ui);
           }
-          this.retireOrGraveyard(p, ui);
         }
       });
       p.active = newUnits.length ? newUnits[0] : null;

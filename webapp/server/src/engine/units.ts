@@ -48,6 +48,7 @@ const UNIT_KEYWORD_RULES: [string, string[]][] = [
   ["counter_after_enemy_hit", ["attacks an additional time after enemy attacks"]],
   ["attacks_every_other", ["attacks every 2nd round", "attacks every 2nd hit", "only attacks every 2nd"]],
   ["mobile", ["mobile", "can move between lanes", "can change lanes"]],
+  ["stealth_immunity", ["cannot be targeted by abilities", "cancel 1st enemy ability"]],
 ];
 
 const unitTagCache = new Map<string, Set<string>>();
@@ -256,6 +257,30 @@ export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, gam
       if (org > 0) p.res.Organic += org;
       if (tech > 0) p.res.Tech += tech;
       if (alien > 0) p.res.Alien += alien;
+    }
+    // Stealth Buggy / Stealth Tank: "Cannot be targeted by abilities, Cancel 1st enemy ability per round"
+    // When active in the lane, grant directed-ability immunity to this seat and set a first-cancel budget of 1.
+    if (tags.has("stealth_immunity") && ui === p.active && game) {
+      game.directedAbilityImmuneLanes.add(p.seatIndex);
+      game.firstAbilityCancelPerLane.set(p.seatIndex, (game.firstAbilityCancelPerLane.get(p.seatIndex) ?? 0) + 1);
+    }
+    // AMP2 "Overwatch": "When not active in combat, Deny abilities targeting other lanes"
+    // When Overwatch is in reserve (not active), add all OTHER lanes to directedAbilityImmuneLanes.
+    if (ui.card.Name === 'AMP2 "Overwatch"' && ui !== p.active && game) {
+      for (const otherP of game.players) {
+        if (otherP.seatIndex !== p.seatIndex) {
+          game.directedAbilityImmuneLanes.add(otherP.seatIndex);
+        }
+      }
+    }
+    // MCP "Slapper": "Target Enemy cannot trigger activated abilities this round"
+    // Auto-fires during precombat: suppress the most-enemy enemy lane this round.
+    if (ui.card.Name === 'MCP "Slapper"' && ui === p.active && game) {
+      const enemies = game.players.filter((q) => q.seatIndex !== p.seatIndex && q.laneEnemyReserve.length > 0);
+      const target = enemies.sort((a, b) => b.laneEnemyReserve.length - a.laneEnemyReserve.length)[0];
+      if (target) {
+        game.enemyAbilitySuppressedSeats.add(target.seatIndex);
+      }
     }
   }
   // Front Line Commander: "Boosts Damage of other units by this unit's attack when Active"

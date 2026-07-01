@@ -4,6 +4,7 @@ import { eventSeverity } from "./events.js";
 import { RANK_NUM } from "./constants.js";
 import { canActivateAbility, canAfford, canUseEffect, GEAR_COST_KEYS, grantShields, healUnit, makeUnitInstance, pay, recordAbilityActivation, recordEffectUse, weakestPlayer, type RoundTempState } from "./state.js";
 import type { GamePlayer, GameState, UnitInstance } from "./types.js";
+import { returnUnitToHand } from "./planningActions.js";
 
 /** Name-keyed dispatch tables, ported 1:1 from Working/sim.py -- Gear has fewer cards with more
  * genuinely distinct effects than Units/Enemies, so it's dispatched by exact name rather than
@@ -294,13 +295,9 @@ function applyGearActive(
       break;
     }
     case "Landmines": {
-      let landmineTargets = 0;
-      w.laneEnemyReserve = w.laneEnemyReserve.map((e) => {
-        const cur = toInt((e as any).pendingDamage ?? 0);
-        landmineTargets++;
-        return { ...e, pendingDamage: String(cur + 5) } as any;
-      });
-      log("  [Landmines] ${p.name} marked ${landmineTargets} reserve enemies with 5 pending damage on entry");
+      // Set a flag on the player; game.ts deals 5 damage to each enemy when it promotes to the front.
+      (p as any).landminesActive = true;
+      log(`  [Landmines] ${p.name} activated Landmines — enemies take 5 damage on promotion to active`);
       break;
     }
     case "Artillery Strike":
@@ -360,21 +357,33 @@ function applyGearActive(
       }
       break;
     }
-    case "Stasis Suit":
+    case "Stasis Suit": {
+      // Active: destroy this Stasis Suit (permanently — not to gearPool), then return a target
+      // friendly unit to hand. Bot target: the unit with the lowest HP ratio across ALL players' lanes.
       ui.equipped = ui.equipped.filter((g) => (g as any).Name !== "Stasis Suit");
-      p.res.Organic += 2;
+      // Collect units from all players (not just the activating player's own lane).
+      const allFriendly = game.players.flatMap(q => [...(q.active ? [q.active] : []), ...q.reserve]);
+      if (allFriendly.length > 0) {
+        const target = allFriendly.reduce((best, u) =>
+          (u.curHp / u.maxHp) < (best.curHp / best.maxHp) ? u : best
+        );
+        // Find the player who owns the target so we return it to the right hand.
+        const targetOwner = game.players.find(q => q.active === target || q.reserve.includes(target)) ?? p;
+        returnUnitToHand(game, targetOwner, target, log);
+        log(`  [Stasis Suit active] ${p.name} targets ${target.card.Name} in ${targetOwner.name}'s lane (${target.curHp}/${target.maxHp} HP)`);
+      }
       break;
+    }
     case "Apocalypse Rounds":
       tempState.tempBuff(ui, { Damage: toInt(ui.card.Damage) });
       break;
     case "Emergency Extractor": {
-      if (ui.curHp < Math.floor(ui.maxHp / 2)) {
-        const owned = unitsOf(p);
-        if (owned.includes(ui)) {
-          if (p.active === ui) p.active = p.reserve.length ? p.reserve[0] : null;
-          else p.reserve = p.reserve.filter((u) => u !== ui);
-          p.gearHand.push(...ui.equipped.filter((g) => "Name" in (g as any)));
-        }
+      // Active: return the equipped unit (this unit) and all its gear (gear stays attached,
+      // including this Emergency Extractor) to the owning player's unitHand.
+      // The guard (HP < half) that gates auto-activation lives in the caller loop above.
+      if (unitsOf(p).includes(ui)) {
+        returnUnitToHand(game, p, ui, log);
+        log(`  [Emergency Extractor] ${p.name}'s ${ui.card.Name} extracted to hand with all gear`);
       }
       break;
     }
