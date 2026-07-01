@@ -12,7 +12,7 @@ import {
   scoutValue,
 } from "./state.js";
 import { tacticianBypassesRankCheck, tacticianDiscountedCost, tacticianRankCeiling } from "./tactician.js";
-import type { GamePlayer, GameState } from "./types.js";
+import type { GamePlayer, GameState, UnitInstance } from "./types.js";
 
 /** Single source of truth for the buy/equip/build/activate mutations used during a round's
  * Planning stage -- shared by BotDecisionProvider (Stage 2-4's heuristics, now just a caller of
@@ -370,6 +370,34 @@ export function chessmasterReassignMutation(
   else toPlayer.reserve.push(ui);
   ui.reassignedThisRound = true;
   log(`  [Chessmaster Reassign] ${ui.card.Name} moved from ${fromPlayer.name}'s lane to ${toPlayer.name}'s lane`);
+  return true;
+}
+
+/** Move a mobile-tagged unit from one player's lane to another during the planning phase.
+ * If the unit was active in the source lane, promotes reserve[0] to active there.
+ * The unit goes to active in target lane if empty, otherwise to reserve. */
+export function moveMobileUnitMutation(
+  game: GameState,
+  fromP: GamePlayer,
+  toP: GamePlayer,
+  ui: UnitInstance,
+  log: (t: string) => void
+): boolean {
+  // Remove from source lane
+  if (fromP.active === ui) {
+    fromP.active = fromP.reserve.shift() ?? null;
+  } else {
+    const idx = fromP.reserve.indexOf(ui);
+    if (idx < 0) return false;
+    fromP.reserve.splice(idx, 1);
+  }
+  // Place in target lane
+  if (!toP.active) {
+    toP.active = ui;
+  } else {
+    toP.reserve.push(ui);
+  }
+  log(`  [Mobile] ${fromP.name}'s ${ui.card.Name} moved to ${toP.name}'s lane`);
   return true;
 }
 

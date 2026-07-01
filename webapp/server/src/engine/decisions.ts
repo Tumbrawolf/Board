@@ -1,4 +1,4 @@
-import { ENEMY_RANK_NUM, GEAR_HAND_LIMIT, LOCATIONS, RANK_NUM, type EnemyRank, type Location } from "./constants.js";
+﻿import { ENEMY_RANK_NUM, GEAR_HAND_LIMIT, LOCATIONS, RANK_NUM, type EnemyRank, type Location } from "./constants.js";
 import type { CommandCard, EventCard, GearCard, UnitCard } from "./data.js";
 import type { EnemyCard } from "./data.js";
 import { isMildEvent } from "./events.js";
@@ -20,8 +20,10 @@ import {
   rerollableGear,
   quartermasterRerollMutation,
   sacrificeForDiscountMutation,
+  moveMobileUnitMutation,
 } from "./planningActions.js";
 import { lanePower, reorderActive } from "./state.js";
+import { classifyUnit } from "./units.js";
 import type { GamePlayer, GameState } from "./types.js";
 
 export type CommandCardChoice = "build" | "activate" | "skip";
@@ -379,6 +381,23 @@ export class BotDecisionProvider implements DecisionProvider {
    * one call site in game.ts. Command Card decisions are deliberately NOT made here (returns an
    * empty map) -- a bot still decides those live, in game.ts's Phase 2, exactly as before. */
   async runPlanningWindow(player: GamePlayer, game: GameState, ctx: PlanningWindowCtx): Promise<Map<string, CommandCardChoice>> {
+    // Mobile units: move this player's mobile units to better lanes during planning
+    {
+      const allUnits = [...(player.active ? [player.active] : []), ...player.reserve];
+      for (const ui of allUnits) {
+        if (!classifyUnit(ui.card).has("mobile")) continue;
+        const candidates = game.players.filter(q => q !== player);
+        if (!candidates.length) break;
+        const emptyLane = candidates.find(q => !q.active);
+        const target = emptyLane ?? candidates.reduce((best, q) =>
+          q.laneEnemyReserve.length < best.laneEnemyReserve.length ? q : best
+        , candidates[0]);
+        if (target) {
+          moveMobileUnitMutation(game, player, target, ui, ctx.log);
+          break; // one move per player per round
+        }
+      }
+    }
     // Conscript-family sacrifice: spend a sacrifice unit from reserve to discount next purchase.
     if (!player.nextRecruitmentDiscount) {
       const hasSacrifice = player.reserve.some((u) => SACRIFICE_UNIT_NAMES_BOT.has(u.card.Name));

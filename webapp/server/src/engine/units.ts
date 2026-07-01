@@ -47,6 +47,7 @@ const UNIT_KEYWORD_RULES: [string, string[]][] = [
   ["buff_lane_dmg_armor", ["friendly units get +10 damage"]],
   ["counter_after_enemy_hit", ["attacks an additional time after enemy attacks"]],
   ["attacks_every_other", ["attacks every 2nd round", "attacks every 2nd hit", "only attacks every 2nd"]],
+  ["mobile", ["mobile", "can move between lanes", "can change lanes"]],
 ];
 
 const unitTagCache = new Map<string, Set<string>>();
