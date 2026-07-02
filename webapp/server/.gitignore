@@ -5,3 +5,10 @@ data.sqlite-journal
 data.sqlite-wal
 data.sqlite-shm
 *.log
+test_40.ts
+test_diag.mjs
+test_diag.ts
+test_n2.mjs
+test_n3.mjs
+test_quick.ts
+test_single.mjs
