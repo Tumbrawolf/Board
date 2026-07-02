@@ -335,7 +335,13 @@ export function equipGearOntoActiveMutation(game: GameState, p: GamePlayer, g: a
   }
   const cost = RANK_NUM[g["Rank Name"]] ?? 1;
   const fieldTestingBuilt = (game.locationUpgradesBuilt["Armory"] ?? []).some((c) => c.Name === "Field Testing");
-  if (!fieldTestingBuilt) {
+  // Armed and Ready: "Your next Equip during combat is free" — consume the one-shot seat flag.
+  const armedAndReadyFree = game.armedAndReadySeats?.has(p.seatIndex) ?? false;
+  if (armedAndReadyFree) {
+    game.armedAndReadySeats.delete(p.seatIndex);
+    log(`  [Armed and Ready] ${p.name}'s next gear equip is free — consuming charge`);
+  }
+  if (!fieldTestingBuilt && !armedAndReadyFree) {
     // Command Requisition: shortfall can come out of the command pool too, same as shop purchases.
     const commandReq = commandRequisitionActive(game);
     if (p.res.Tech + (commandReq ? game.commandPool.Tech : 0) < cost) {
@@ -356,8 +362,9 @@ export function equipGearOntoActiveMutation(game: GameState, p: GamePlayer, g: a
   p.stats.gearEquipped += 1;
   if (g.Name === "Recon Satellite") p.hasReconSatellite = true;
   if (g.Name === "Last Stand Beacon") p.hasLastStandBeacon = true;
+  const costLabel = fieldTestingBuilt ? "free via Field Testing" : armedAndReadyFree ? "free via Armed and Ready" : `Tech -${cost}`;
   log(
-    `  ${p.name} equips ${g.Name} (${fieldTestingBuilt ? "free via Field Testing" : `Tech -${cost}`}) (Dmg+${toInt(g.Damage)} HP+${toInt(g.HP)} Arm+${toInt(g.Armor)} Shd+${toInt(g.Shields)})`
+    `  ${p.name} equips ${g.Name} (${costLabel}) (Dmg+${toInt(g.Damage)} HP+${toInt(g.HP)} Arm+${toInt(g.Armor)} Shd+${toInt(g.Shields)})`
   );
   return true;
 }

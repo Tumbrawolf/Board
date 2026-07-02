@@ -196,6 +196,8 @@ export interface BossActive {
   shieldBonus: number; // tracked for fidelity with sim.py -- never actually consumed in combat there either
   armorBonus: number;
   healsOnKill: number;
+  /** Containment Block Sealed: boss is contained — occupies all unit slots but cannot attack. */
+  contained?: boolean;
 }
 
 export interface GameState {
@@ -624,4 +626,21 @@ export interface GameState {
   enemyAbilitySuppressedSeats: Set<number>;
   /** Pending mid-combat mobile unit move: set by bot between exchanges. Human version is deferred to client UI. */
   pendingMobileMoves: Array<{ fromSeatIndex: number; toSeatIndex: number; unitId: string }>;
+
+  // ── Unit-specific mechanic flags ─────────────────────────────────────────────────────────────
+
+  /** Toxin Tank: enemy identifiers ("${seatIndex}-${card.Name}") hit by Toxin Tank this combat.
+   * These enemies cannot activate abilities; if killed while infected they are permanently deleted
+   * (not returned to any pool). Reset each round. */
+  toxinTankInfectedEnemies: Set<string>;
+  /** Laser Designator gear: seat indices of lanes where this gear is currently equipped.
+   * Other friendly units (without long_range) may cross-lane attack INTO these lanes. Reset each round. */
+  laserDesignatedLanes: Set<number>;
+  /** Heavy Tank (player, Major): seat indices where the per-round ability-negate has already fired. Reset each round. */
+  heavyTankNegatedThisRound: Set<number>;
+  /** Recon Bike: unit IDs of shop units deployed by Recon Bike's once-per-turn ability. Destroyed at end of combat. */
+  reconBikeDeployedUnitIds: Set<string>;
+  /** MCP B1 "Spotter": true when Spotter is the active scout this round. While true, all friendly
+   * unit attacks may also hit enemy reserves. Reset each round. */
+  spotterScoutActive: boolean;
 }

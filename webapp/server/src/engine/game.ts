@@ -445,6 +445,11 @@ export class GameEngine {
       firstAbilityCancelPerLane: new Map(),
       enemyAbilitySuppressedSeats: new Set(),
       pendingMobileMoves: [],
+      toxinTankInfectedEnemies: new Set(),
+      laserDesignatedLanes: new Set(),
+      heavyTankNegatedThisRound: new Set(),
+      reconBikeDeployedUnitIds: new Set(),
+      spotterScoutActive: false,
     };
 
     refillShopUnit(this.game);
@@ -514,8 +519,13 @@ export class GameEngine {
         if (roll <= game.enemyProgress) {
           if (!game.bossDeck.length) game.bossDeck = shuffle(loadGameData().bosses);
           const card = game.bossDeck.pop()!;
-          game.bossActive = { card, hpCur: toInt(card.HP), tierReached: 0, dmgBonus: 0, shieldBonus: 0, armorBonus: 0, healsOnKill: 0 };
-          this.log(`  [BOSS SPAWN] Rolled ${roll} <= EnemyProg ${game.enemyProgress} -> ${card.Name} appears!`);
+          const bossContained = game.canContainBosses;
+          game.bossActive = { card, hpCur: toInt(card.HP), tierReached: 0, dmgBonus: 0, shieldBonus: 0, armorBonus: 0, healsOnKill: 0, contained: bossContained };
+          if (bossContained) {
+            this.log(`  [BOSS SPAWN] ${card.Name} appears but is CONTAINED — occupies all unit slots, cannot attack`);
+          } else {
+            this.log(`  [BOSS SPAWN] Rolled ${roll} <= EnemyProg ${game.enemyProgress} -> ${card.Name} appears!`);
+          }
         } else {
           this.log(`  [Boss check] Rolled ${roll} > EnemyProg ${game.enemyProgress} -> no boss this round.`);
         }
@@ -637,6 +647,12 @@ export class GameEngine {
     game.directedAbilityImmuneLanes = new Set();
     game.firstAbilityCancelPerLane = new Map();
     game.enemyAbilitySuppressedSeats = new Set();
+    // Per-round unit mechanic flags.
+    game.toxinTankInfectedEnemies = new Set();
+    game.laserDesignatedLanes = new Set();
+    game.heavyTankNegatedThisRound = new Set();
+    game.reconBikeDeployedUnitIds = new Set();
+    game.spotterScoutActive = false;
     // Reset lane assignments to identity each round (commander re-assigns below after Event pick).
     for (const p of game.players) p.controlledLaneSeat = p.seatIndex;
     // Silence in no mans land: restore any units benched last round back to reserve.
@@ -5019,7 +5035,12 @@ export class GameEngine {
             const realGear = ui.equipped.filter((g) => "Rank Name" in (g as any)) as import("./data.js").GearCard[];
             if (realGear.length) {
               ui.equipped = ui.equipped.filter((g) => !("Rank Name" in (g as any)));
-              this.returnOrRecycleGear(game, p, realGear);
+              // Demo Truck: "Delete gear on death" — gear is permanently destroyed, not returned.
+              if (ui.card.Name !== "Demo Truck") {
+                this.returnOrRecycleGear(game, p, realGear);
+              } else {
+                this.log(`  [Demo Truck] Gear deleted on death: ${realGear.map((g) => (g as any).Name).join(", ")}`);
+              }
             }
             this.retireOrGraveyard(p, ui);
           }
@@ -5037,11 +5058,23 @@ export class GameEngine {
           this.log(`  [Pack Mule] Transferred ${(transferred as any).Name ?? "gear"} to new active ${p.active.card.Name}`);
         }
       }
-      // Exploitation: unit survived combat but is marked to die after attacking.
+      // Exploitation / Demo Truck: unit survived combat but is marked to die after attacking.
       if (p.active && tempState.mustDieAfterCombat.has(p.active.id)) {
-        this.log(`  [Exploitation] ${p.active.card.Name} dies after attacking`);
+        const dyingUnit = p.active;
+        const isDemoTruck = dyingUnit.card.Name === "Demo Truck";
+        this.log(`  [${isDemoTruck ? "Demo Truck" : "Exploitation"}] ${dyingUnit.card.Name} dies after attacking`);
+        // Demo Truck: explode on death before removing from play.
+        if (isDemoTruck) {
+          applyExplodeOnDeath(game, p, dyingUnit, (t) => this.log(t));
+          // Delete gear — do not return to supply.
+          const realGear = dyingUnit.equipped.filter((g) => "Rank Name" in (g as any));
+          if (realGear.length) {
+            dyingUnit.equipped = dyingUnit.equipped.filter((g) => !("Rank Name" in (g as any)));
+            this.log(`  [Demo Truck] Gear deleted on self-sacrifice: ${realGear.map((g) => (g as any).Name).join(", ")}`);
+          }
+        }
         p.stats.deaths += 1;
-        this.retireOrGraveyard(p, p.active);
+        this.retireOrGraveyard(p, dyingUnit);
         p.active = p.reserve.length ? p.reserve[0] : null;
         p.reserve = p.reserve.length > 1 ? p.reserve.slice(1) : [];
       }
@@ -5157,8 +5190,10 @@ export class GameEngine {
       }
     }
 
-    if (game.bossActive) {
+    if (game.bossActive && !game.bossActive.contained) {
       resolveBossExchange(game, (t) => this.log(t), (p, ui) => this.retireOrGraveyard(p, ui));
+    } else if (game.bossActive?.contained) {
+      this.log(`  [Contained Boss] ${game.bossActive.card.Name} is contained — skipping boss exchange`);
     }
 
     const containableLanes = lanesWithKill.filter((p) => !deleteOnKillLanes.has(p.seatIndex));
