@@ -636,7 +636,28 @@ export class BotDecisionProvider implements DecisionProvider {
   }
 
   // Bots don't need to wait — resolve immediately so the server-side loop isn't blocked.
-  async waitForCombatAck(_game: GameState, _snapshot: CombatRoundSnapshot): Promise<void> {
+  // Also queue any mid-combat mobile unit moves: if a lane is being overrun, move a mobile
+  // unit from a safer lane to help. Moves are queued here and processed in game.ts between exchanges.
+  async waitForCombatAck(game: GameState, _snapshot: CombatRoundSnapshot): Promise<void> {
+    for (const player of game.players) {
+      if (!player.active && player.reserve.length === 0) continue; // this lane already has no units
+      const allUnits = [...(player.active ? [player.active] : []), ...player.reserve];
+      for (const ui of allUnits) {
+        if (!classifyUnit(ui.card).has('mobile')) continue;
+        if (player.mobileMovedUnitIds.has(ui.id)) continue;
+        // Find a lane that is overrun (no active unit) but still has enemies to fight.
+        const overrunLane = game.players.find(q =>
+          q !== player && !q.active && q.reserve.length === 0 && q.laneEnemyReserve.length > 0
+        );
+        if (!overrunLane) continue;
+        game.pendingMobileMoves.push({
+          fromSeatIndex: player.seatIndex,
+          toSeatIndex: overrunLane.seatIndex,
+          unitId: ui.id,
+        });
+        break; // one move queued per player per exchange
+      }
+    }
     return;
   }
 

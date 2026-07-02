@@ -156,7 +156,7 @@ export class Combatant {
   trampleExcess = false;
   /** Trample keyword: overkill damage from player attacks carries into the next enemy in queue. */
   trample = false;
-  /** TMRG / Crushing Advance: trample damage chains through ALL reserve enemies, not just the next one. */
+  /** Crushing Advance mission: trample damage chains through ALL reserve enemies, not just the next one. */
   trampleUnlimited = false;
   /** Long Range / "can target any lane when attacking": when the player's own lane is cleared of
    * enemies, this unit's attacks redirect to the front enemy in the highest-threat adjacent lane. */

@@ -1,4 +1,4 @@
-﻿import {
+﻿﻿import {
   COMMAND_HAND_SIZE,
   COMMANDER_HAND_SIZE,
   ENEMY_RANK_NUM,
@@ -259,6 +259,7 @@ export class GameEngine {
       honorableDischargeUnit: null,
       unitHand: [],
       revealedEnemyIndices: new Set<number>(),
+      mobileMovedUnitIds: new Set<string>(),
     }));
 
     const leaderIdx = Math.floor(Math.random() * players.length);
@@ -442,6 +443,7 @@ export class GameEngine {
       directedAbilityImmuneLanes: new Set(),
       firstAbilityCancelPerLane: new Map(),
       enemyAbilitySuppressedSeats: new Set(),
+      pendingMobileMoves: [],
     };
 
     refillShopUnit(this.game);
@@ -3810,6 +3812,9 @@ export class GameEngine {
     }
 
     // Phase 1: pre-combat setup per lane (build combatants and options, push to laneRuns).
+    // Clear per-combat mobile-move tracking so the once-per-combat limit resets each new combat.
+    for (const p of game.players) p.mobileMovedUnitIds.clear();
+    game.pendingMobileMoves = [];
     for (const p of game.players) {
       const titanAliveForLane = game.players.some((tp) => tp.laneEnemyReserve.some((e) => e.Name === "Titan" && !game.suppressedPassiveEnemyNames.has("Titan")));
       if (tempState.abilityBlockedSeats.has(p.seatIndex)) {
@@ -4587,6 +4592,61 @@ export class GameEngine {
             }
             break; // one execute per exchange round
           }
+        }
+        // Between exchanges: process any pending mid-combat mobile unit moves (once per combat per unit).
+        while (game.pendingMobileMoves.length > 0) {
+          const move = game.pendingMobileMoves.shift()!;
+          const fromPlayer = game.players[move.fromSeatIndex];
+          const toPlayer = game.players[move.toSeatIndex];
+          if (!fromPlayer || !toPlayer) continue;
+          // Already used move this combat?
+          if (fromPlayer.mobileMovedUnitIds.has(move.unitId)) continue;
+          // Find and remove unit from source lane.
+          let unit: UnitInstance | null = null;
+          let fromSlot: 'active' | 'reserve' = 'active';
+          if (fromPlayer.active?.id === move.unitId) {
+            unit = fromPlayer.active;
+            fromSlot = 'active';
+          } else {
+            const idx = fromPlayer.reserve.findIndex(u => u.id === move.unitId);
+            if (idx >= 0) { unit = fromPlayer.reserve.splice(idx, 1)[0]; fromSlot = 'reserve'; }
+          }
+          if (!unit) continue;
+          // Mark as moved this combat (enforces once-per-combat limit).
+          fromPlayer.mobileMovedUnitIds.add(move.unitId);
+          // Remove from active slot if needed, promote reserve.
+          if (fromSlot === 'active') {
+            fromPlayer.active = fromPlayer.reserve.shift() ?? null;
+          }
+          // Also remove its combatant from the source laneRun queue.
+          const fromLaneRun = laneRuns.find(lr => lr.p === fromPlayer);
+          if (fromLaneRun) {
+            const combIdx = fromLaneRun.pUnits.indexOf(unit);
+            if (combIdx >= 0) {
+              const removedC = fromLaneRun.pCombatants[combIdx];
+              fromLaneRun.pq = fromLaneRun.pq.filter(c => c !== removedC);
+            }
+          }
+          // Place unit in destination lane.
+          if (!toPlayer.active) {
+            toPlayer.active = unit;
+          } else {
+            toPlayer.reserve.push(unit);
+          }
+          // Inject a fresh combatant at the FRONT of the destination laneRun queue so the unit
+          // takes over as active attacker immediately next exchange.
+          const toLaneRun = laneRuns.find(lr => lr.p === toPlayer);
+          if (toLaneRun) {
+            const newC = combatantFromUnit(unit);
+            applyGearCombatMods(newC, unit, this.effectiveCommanderRank(), toPlayer, game.playerProgress);
+            applyUnitCombatMods(newC, unit);
+            applyEventCombatMods(game, newC, false, unit);
+            applyBossBoardWideMods(game, newC, false);
+            toLaneRun.pq.unshift(newC);
+            toLaneRun.pCombatants.push(newC);
+            toLaneRun.pUnits.push(unit);
+          }
+          this.log(`  [Mobile] ${unit.card.Name} mid-combat move: ${fromPlayer.name} to ${toPlayer.name}`);
         }
         // Emit this round's exchange data to all clients and wait for ack (or skip/pause resolution).
         if (laneSnapshots.length > 0) {

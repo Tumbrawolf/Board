@@ -415,6 +415,17 @@ export function moveMobileUnitMutation(
   return true;
 }
 
+/** Queue a mid-combat mobile unit move. The engine processes pendingMobileMoves between exchanges.
+ * Human clients call this during a combat pause; bots call via waitForCombatAck. */
+export function midCombatMobileMutation(
+  game: GameState,
+  fromSeatIndex: number,
+  toSeatIndex: number,
+  unitId: string
+): void {
+  game.pendingMobileMoves.push({ fromSeatIndex, toSeatIndex, unitId });
+}
+
 export function buyGearMutation(game: GameState, p: GamePlayer, choice: GearCard, log: (t: string) => void) {
   const isFreeType = game.shopGearFreeType === (choice as any).Type || game.shopGearFreeType === "any";
   const gType = (choice as any).Type as string;

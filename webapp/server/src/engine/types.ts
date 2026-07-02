@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   BossCard,
   CommandCard,
   EnemyCard,
@@ -43,7 +43,7 @@ export interface GamePlayer {
   res: ResourcePool;
   active: UnitInstance | null;
   reserve: UnitInstance[];
-  /** Units removed from reserve during "Silence in no mans land" so bots can meet the ≤1
+  /** Units removed from reserve during "Silence in no mans land" so bots can meet the â‰¤1
    * reserve condition without permanently losing the units. Restored to reserve at round start. */
   benchedUnits: UnitInstance[];
   /** Units sent to Medical Bay instead of dying. Each worker placed at Medical Bay retrieves one
@@ -68,12 +68,12 @@ export interface GamePlayer {
    * Set by Barracks Detail / Armory Detail / etc. mission instants. Persistent. */
   workerDoubleLocations: Set<string>;
   /** Mission instants: permanent per-round free gear-equip credit rate. Added to nextGearFreeCount
-   * each round. "1 Free equip per turn" → 1, "2 Free equips per turn" → 2, etc. */
+   * each round. "1 Free equip per turn" â†’ 1, "2 Free equips per turn" â†’ 2, etc. */
   freeEquipsPerRound: number;
   /** Free equip credits available this round (one-shot mission grants + per-round reloads from
    * freeEquipsPerRound). Decremented on each free equip use. Reset to freeEquipsPerRound each round. */
   nextGearFreeCount: number;
-  /** One-shot free unit credits. "Your next unit is free" → 1, "next 2 units are free" → 2. */
+  /** One-shot free unit credits. "Your next unit is free" â†’ 1, "next 2 units are free" â†’ 2. */
   nextUnitFreeCount: number;
   /** Highest rank that the next free-unit credit covers. 0 = none. "Your next Rank 3 unit is free"
    * sets this to 3; consumed on the next unit purchase of that rank or lower. */
@@ -173,6 +173,8 @@ export interface GamePlayer {
    * Index 0 is always implicitly revealed (next-in-line). Cleared and re-populated each round when
    * the hoard is built. Persists within a round as enemies are killed/shifted. */
   revealedEnemyIndices: Set<number>;
+  /** Mobile units that have already switched lanes this combat (once per combat limit). */
+  mobileMovedUnitIds: Set<string>;
 }
 
 export interface GameSettings {
@@ -265,9 +267,9 @@ export interface GameState {
    * recent enemy card killed in normal lane combat (Boss kills and contained enemies don't set
    * this, only the everyday per-lane Combat Cycle). Consumed (set back to null) once revived. */
   lastKilledEnemy: EnemyCard | null;
-  /** Enemy cards killed during the current round's combat — rotated to enemiesKilledLastRound at round start. */
+  /** Enemy cards killed during the current round's combat â€” rotated to enemiesKilledLastRound at round start. */
   enemiesKilledThisRound: EnemyCard[];
-  /** Enemy cards killed last round — available for Reanimator's reveal. */
+  /** Enemy cards killed last round â€” available for Reanimator's reveal. */
   enemiesKilledLastRound: EnemyCard[];
   /** Number of pending reveal-prevention charges available to players this round. Each preventable
    * enemy reveal consumes one charge and is fully skipped. Reveals whose text contains
@@ -276,7 +278,7 @@ export interface GameState {
   revealPreventionCharges: number;
   /** Enemy card Names whose passive effects are suppressed this round. Covers both keyword-driven
    * passives (applyEnemyCombatMods) and all manual passive check sites. Reset each round.
-   * No current player card populates this set — it is scaffolded for a future passive-suppression
+   * No current player card populates this set â€” it is scaffolded for a future passive-suppression
    * mechanic. The Oracle's own passive ("enemies cannot have their abilities prevented") blocks
    * reveal prevention but does not interact with this set. */
   suppressedPassiveEnemyNames: Set<string>;
@@ -329,7 +331,7 @@ export interface GameState {
   gunsmithFreeWeaponUsedSeats: Set<number>;
   /** The Bulwark resource: 1st armor purchase per round is free. Tracks which seats have used it. Reset each round. */
   bulwarkFreeArmorUsedSeats: Set<number>;
-  /** Tracks which players have already had their Reclaimer passive ("1st item to recycle → hand")
+  /** Tracks which players have already had their Reclaimer passive ("1st item to recycle â†’ hand")
    * fire this round. Reset each round. */
   reclaimerPassiveFiredThisRound: Set<number>;
   /** Forced Contribution reward/penalty accumulator: each point adds +1 Organic income per
@@ -343,8 +345,8 @@ export interface GameState {
    * income. Stacks if reward fires multiple times. */
   locationAlienBonus: number;
   /** Persistent flat surcharge added to each resource's cost for all shop purchases (units and
-   * gear). Cheap Knockoffs penalty → .Tech += 2, Food Shortage → .Organic += 2,
-   * Tax Fault → .Alien += 2. Stacks each time a penalty fires. */
+   * gear). Cheap Knockoffs penalty â†’ .Tech += 2, Food Shortage â†’ .Organic += 2,
+   * Tax Fault â†’ .Alien += 2. Stacks each time a penalty fires. */
   shopCostBonus: ResourcePool;
   /** Assigned Posts' "Roll Dice to select locations" -- one location rolled per seatIndex when
    * the Event becomes active. Normally cleared at the next round's Event-flag reset like every
@@ -382,7 +384,7 @@ export interface GameState {
   shadowSowerActive: boolean;
   /** The Chessmaster Tactician's Active -- cloned EnemyCard references that were swapped this
    * round. Any enemy whose reference is in this Set gets Combatant.takesDoubleDamage = true,
-   * so player attacks deal 2× damage to it. Reset each round. */
+   * so player attacks deal 2Ã— damage to it. Reset each round. */
   chessmasterDoubledEnemies: Set<EnemyCard>;
   /** Contained enemy pool -- moved from GameEngine's private field so Tactician actives (The
    * Jailer), Events, and future mechanics can read/modify it without extra parameters. Fed by
@@ -392,7 +394,7 @@ export interface GameState {
   combatStimsUsedThisRound: boolean;
   /** Combat Stims active: damage amount chosen by the player before dispatch (0 = not set). */
   combatStimsPendingDmg: number;
-  /** Countermeasures passive: per-lane remaining ability-prevention budget this round (seatIndex → count). */
+  /** Countermeasures passive: per-lane remaining ability-prevention budget this round (seatIndex â†’ count). */
   laneAbilityPreventions: Map<number, number>;
   /** Countermeasures active: lanes where ALL enemy abilities are fully suppressed this round. */
   laneAbilitiesFullySuppressed: Set<number>;
@@ -505,17 +507,17 @@ export interface GameState {
   /** Parity (0 or 1) that determines which rounds the every-other-round forced change fires.
    * Set to (roundNum + 1) % 2 when the penalty first fires. */
   commanderEveryOtherRoundParity: number;
-  /** Isolation Orders Completion Reward: permanent solo income bonus — each worker alone at a
+  /** Isolation Orders Completion Reward: permanent solo income bonus â€” each worker alone at a
    * location grants +isolationSoloBonus of the player's lowest resource. Stacks per pass. */
   isolationSoloBonus: number;
-  /** Isolation Orders Failure Penalty: permanent co-location penalty — each co-located worker
+  /** Isolation Orders Failure Penalty: permanent co-location penalty â€” each co-located worker
    * costs isolationSharingPenalty of that location's primary resource. Stacks per failure. */
   isolationSharingPenalty: number;
   /** Saboteur Investigation Completion Reward: bonus upgrades drawn from the deck and placed at
    * each location beyond the normal slot cap. Per-location count so canBuildCard can exclude
    * them from the regular-upgrade tally when checking the slot limit. */
   locationBonusUpgradesCount: Record<Location, number>;
-  /** Saboteur Investigation / Capacity Threshold Failure Penalty: permanent cumulative −1 to the
+  /** Saboteur Investigation / Capacity Threshold Failure Penalty: permanent cumulative âˆ’1 to the
    * effective upgrade slot cap at every location. Stacks each time a penalty fires. */
   locationUpgradeLimitPenalty: number;
   /** Renovations round effect: built upgrades at each location, temporarily moved aside while the
@@ -532,7 +534,7 @@ export interface GameState {
    * stripped from their locations and returned to the command deck. */
   renovationEndOfRoundStrip: boolean;
   /** Annihilation Clause Completion Reward: enemies killed by a player whose rank exceeds the
-   * current enemy tier rank have deleteOnKill set — they skip containment. Permanent once set. */
+   * current enemy tier rank have deleteOnKill set â€” they skip containment. Permanent once set. */
   annihilationEnemiesDeletedByHigherRank: boolean;
   /** Annihilation Clause Failure Penalty: allies killed by enemies of higher tier than the player's
    * rank bypass all saves (Chronostasis, doctor, revive). Permanent once set. */
@@ -556,14 +558,14 @@ export interface GameState {
    * Used to update maxAbilitiesDeniedInRound after each round. */
   abilitiesDeniedThisRound: Map<number, number>;
 
-  // ── Mission instant / gear / unit mechanic flags ──────────────────────────────────────────────
+  // â”€â”€ Mission instant / gear / unit mechanic flags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Night Vision reveal: names of enemies scouted/revealed this round.
    * Night Vision's free attack only fires against these. Reset each round. */
   revealedEnemyNames: Set<string>;
   /** Flawless Assault instant: seat indices whose unit deaths this round return to game.shopUnits. Reset each round. */
   flawlessAssaultSeats: Set<number>;
-  /** Strategic Recall instant: next round unit deaths → benchedUnits (retired) instead of destroyed. Consumed at next combat phase start. */
+  /** Strategic Recall instant: next round unit deaths â†’ benchedUnits (retired) instead of destroyed. Consumed at next combat phase start. */
   strategicRecallActive: boolean;
   /** Command Central instant: seat indices that may play command cards even when not commander. Persistent. */
   commandCentralSeats: Set<number>;
@@ -587,7 +589,7 @@ export interface GameState {
   impenetrableSeats: Set<number>;
   /** Mission Failure instant: prevent the next event failure penalty. Consumed on next failure. */
   missionEventFailurePrevented: boolean;
-  /** Medical Emergency instant: when > 0, overrides the default med-bay slot cap (default 2 → this value). */
+  /** Medical Emergency instant: when > 0, overrides the default med-bay slot cap (default 2 â†’ this value). */
   medBaySlotCapOverride: number;
   /** Mission enemy-stun carry: seat indices whose front enemy starts next combat stunned.
    * Set by Total Suppression / Shock and Awe instants; merged into tempState.pendingEnemyStunSeats
@@ -606,7 +608,7 @@ export interface GameState {
    * Persistent. When the current commander is in this set, rotation is blocked unless overridden. */
   ironGripSeats: Set<number>;
 
-  // ── Ability Interception flags (Stealth Buggy/Tank, MCP Slapper, EMP Slayer) ─────────────────
+  // â”€â”€ Ability Interception flags (Stealth Buggy/Tank, MCP Slapper, EMP Slayer) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   /** Ability Interception: seat indices where directed (targeted) enemy abilities are blocked this
    * round. Set by Stealth Buggy/Tank "cannot be targeted by abilities" passive when active.
@@ -618,4 +620,6 @@ export interface GameState {
   /** Ability Interception: seat indices whose front enemy's abilities are fully suppressed this round
    * (MCP "Slapper" targeting). Covers both activated and passive effects in that lane. Reset each round. */
   enemyAbilitySuppressedSeats: Set<number>;
+  /** Pending mid-combat mobile unit move: set by bot between exchanges. Human version is deferred to client UI. */
+  pendingMobileMoves: Array<{ fromSeatIndex: number; toSeatIndex: number; unitId: string }>;
 }
