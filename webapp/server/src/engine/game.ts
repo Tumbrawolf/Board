@@ -2482,6 +2482,11 @@ export class GameEngine {
       for (const sp of game.players) { sp.res.Organic += sO; sp.res.Tech += sT; sp.res.Alien += sA; }
       if (scout.card.Name === "Civilian Survivalist") revealCount += 1;
       if (scout.card.Name === '"Python"') { revealCount *= 2; scoutIsPython = true; }
+      // MCP B1 "Spotter": when Spotter is the active scout, all player attacks may hit enemy reserves.
+      if (scout.card.Name === 'MCP B1 "Spotter"') {
+        game.spotterScoutActive = true;
+        this.log(`  [MCP B1 "Spotter"] Active scout: all player units gain trample (damage carries through to reserve enemies)`);
+      }
       if (scout.card.Name === 'AMP "Surveyor"') {
         // Doubles own resource generation; provides no enemy reveal.
         game.commandPool.Organic += sO;
@@ -2715,6 +2720,11 @@ export class GameEngine {
         this.log(`  [MCP "Slapper"] Reveal suppressed in ${p.name}'s lane (enemy abilities blocked this round)`);
         continue;
       }
+      // Ability Interception A2: Toxin Tank — enemies hit by Toxin Tank cannot activate abilities.
+      if (!oracleAlive && game.toxinTankInfectedEnemies.has(`${p.seatIndex}-${front.Name}`)) {
+        this.log(`  [Toxin Tank] ${front.Name}'s reveal suppressed (unit infected by Toxin Tank)`);
+        continue;
+      }
       // Ability Interception B: Stealth Buggy / Stealth Tank directed-ability immunity.
       // Reveals are directed (target this lane), so they are blocked when the active unit has stealth_immunity.
       if (!oracleAlive && game.directedAbilityImmuneLanes.has(p.seatIndex)) {
@@ -2775,6 +2785,10 @@ export class GameEngine {
       game.revealedEnemyNames.add(front.Name);
       game.enemyAbilitiesActivated += 1;
       const frontDmg = toInt((front as any).Damage);
+      // Field Intelligence: "Reduce Enemy Ability damage by half when this unit is in reserve."
+      // Halves all reveal-ability damage dealt to player units this iteration when any player has
+      // Field Intelligence sitting in their reserve.
+      const fieldIntelHalve = game.players.some((q) => q.reserve.some((u) => u.card.Name === 'Field Intelligence'));
 
       // Wasp: "Stun enemies in adjacent lane"
       if (/stun.*adjacent/i.test(reveal)) {
@@ -2818,21 +2832,22 @@ export class GameEngine {
       // Scarab Tank: "Deal 50 damage to unit" — flat damage to active unit in this lane.
       const flatUnitDmgMatch = reveal.match(/^deal (\d+) damage to unit$/i);
       if (flatUnitDmgMatch) {
-        const dmg = parseInt(flatUnitDmgMatch[1]);
+        const dmg = Math.floor(parseInt(flatUnitDmgMatch[1]) / (fieldIntelHalve ? 2 : 1));
         if (revealTarget.active) {
           dealPreCombatDamage(revealTarget.active, dmg);
           applyRevealDeaths(revealTarget);
-          this.log(`  [${front.Name}] Reveal: ${dmg} damage to active unit in ${revealTarget.name}'s lane`);
+          this.log(`  [${front.Name}] Reveal: ${dmg} damage to active unit in ${revealTarget.name}'s lane${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
         }
       }
 
       // Alpha Storm Claw: "Attack 6 times" — pre-combat 6-hit to the active player unit in this lane.
       if (/^attack 6 times/i.test(reveal)) {
+        const aSCDmg = Math.floor(frontDmg / (fieldIntelHalve ? 2 : 1));
         if (revealTarget.active) {
-          for (let hit = 0; hit < 6; hit++) dealPreCombatDamage(revealTarget.active, frontDmg);
+          for (let hit = 0; hit < 6; hit++) dealPreCombatDamage(revealTarget.active, aSCDmg);
           applyRevealDeaths(revealTarget);
         }
-        this.log(`  [${front.Name}] Reveal: ${frontDmg}×6 to active unit in ${revealTarget.name}'s lane`);
+        this.log(`  [${front.Name}] Reveal: ${aSCDmg}×6 to active unit in ${revealTarget.name}'s lane${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
       }
 
       // Alpha Ravager: "Gain 3 Multistrike" — multiply card damage by 3 before combat starts.
@@ -2843,12 +2858,13 @@ export class GameEngine {
 
       // Titan: "Deal 15 damage to active units 3 times" — 3 hits × 15 to all active player units.
       if (/deal 15 damage to active units 3 times/i.test(reveal)) {
+        const titanHitDmg = Math.floor(15 / (fieldIntelHalve ? 2 : 1));
         for (const tp of game.players) {
           if (!tp.active) continue;
-          for (let hit = 0; hit < 3; hit++) dealPreCombatDamage(tp.active, 15);
+          for (let hit = 0; hit < 3; hit++) dealPreCombatDamage(tp.active, titanHitDmg);
           applyRevealDeaths(tp);
         }
-        this.log(`  [${front.Name}] Reveal: 15×3 damage to all active player units`);
+        this.log(`  [${front.Name}] Reveal: ${titanHitDmg}×3 damage to all active player units${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
       }
 
       // Crown Splitter: "Half HP of all infantry" — halve curHp of every infantry player unit.
@@ -2866,25 +2882,26 @@ export class GameEngine {
 
       // Young Ravager: "Attack every lane once" — deals card attack damage to active unit in every lane.
       if (/^attack every lane once/i.test(reveal)) {
+        const yrDmg = Math.floor(frontDmg / (fieldIntelHalve ? 2 : 1));
         for (const target of game.players) {
           if (target.active) {
-            dealPreCombatDamage(target.active, frontDmg);
+            dealPreCombatDamage(target.active, yrDmg);
             applyRevealDeaths(target);
           }
         }
-        this.log(`  [${front.Name}] Reveal: ${frontDmg} damage to active unit in every lane`);
+        this.log(`  [${front.Name}] Reveal: ${yrDmg} damage to active unit in every lane${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
       }
 
       // Grunt: "Deal 2x attack damage to all lanes" — hits active unit in every lane.
       if (/deal 2x attack damage to all lanes/i.test(reveal)) {
-        const dmg = frontDmg * 2;
+        const dmg = Math.floor(frontDmg * 2 / (fieldIntelHalve ? 2 : 1));
         for (const target of game.players) {
           if (target.active) {
             dealPreCombatDamage(target.active, dmg);
             applyRevealDeaths(target);
           }
         }
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to active unit in every lane`);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to active unit in every lane${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
       }
 
       // Generic: "Move this unit to reserve" — rotate front enemy to back of queue.
@@ -2920,8 +2937,9 @@ export class GameEngine {
         // AMP "Surveyor": "Cannot be targeted by enemy effects" — immune to reveal-based scout attacks.
         const scoutIsImmune = scout && /cannot be targeted by enemy/i.test(`${(scout.card as any)["Bonus Effects"] ?? ""}`);
         if (scout && !scoutIsImmune) {
-          dealPreCombatDamage(scout, frontDmg * 2);
-          this.log(`  [${front.Name}] Reveal: ${frontDmg * 2} damage to scout ${scout.card.Name}`);
+          const scoutDmg = Math.floor(frontDmg * 2 / (fieldIntelHalve ? 2 : 1));
+          dealPreCombatDamage(scout, scoutDmg);
+          this.log(`  [${front.Name}] Reveal: ${scoutDmg} damage to scout ${scout.card.Name}${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
         } else if (scoutIsImmune) {
           this.log(`  [${front.Name}] Reveal: scout damage blocked by ${scout!.card.Name} immunity`);
         } else {
@@ -2931,17 +2949,17 @@ export class GameEngine {
 
       // Lancer: "Deal 2x attack damage to active and reserve units in this lane"
       if (/deal 2x attack damage to active and reserve/i.test(reveal)) {
-        const dmg = frontDmg * 2;
+        const dmg = Math.floor(frontDmg * 2 / (fieldIntelHalve ? 2 : 1));
         const units = [...(revealTarget.active ? [revealTarget.active] : []), ...revealTarget.reserve];
         for (const ui of units) dealPreCombatDamage(ui, dmg);
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to all ${units.length} unit(s) in ${revealTarget.name}'s lane`);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to all ${units.length} unit(s) in ${revealTarget.name}'s lane${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
         applyRevealDeaths(revealTarget);
       }
 
       // Hound / War Hound: "Deal N damage to lowest HP unit" — targets lowest-curHp player unit globally.
       const lowestHpDmgMatch = reveal.match(/deal (\d+) damage to lowest.{0,20}hp unit/i);
       if (lowestHpDmgMatch) {
-        const dmg = parseInt(lowestHpDmgMatch[1]);
+        const dmg = Math.floor(parseInt(lowestHpDmgMatch[1]) / (fieldIntelHalve ? 2 : 1));
         let target: UnitInstance | null = null;
         let lowestCurHp = Infinity;
         for (const tp of game.players) {
@@ -2951,7 +2969,7 @@ export class GameEngine {
         }
         if (target) {
           const dealt = dealPreCombatDamage(target, dmg);
-          this.log(`  [${front.Name}] Reveal: ${dealt} damage to lowest-HP unit ${target.card.Name}`);
+          this.log(`  [${front.Name}] Reveal: ${dealt} damage to lowest-HP unit ${target.card.Name}${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
           for (const tp of game.players) applyRevealDeaths(tp);
         }
       }
@@ -2959,7 +2977,7 @@ export class GameEngine {
       // Sniper Squad: "Deal N damage to Highest health unit"
       const highestHpDmgMatch = reveal.match(/deal (\d+) damage to highest.{0,20}(?:health|hp) unit/i);
       if (highestHpDmgMatch) {
-        const dmg = parseInt(highestHpDmgMatch[1]);
+        const dmg = Math.floor(parseInt(highestHpDmgMatch[1]) / (fieldIntelHalve ? 2 : 1));
         let target: UnitInstance | null = null;
         let highestCurHp = -1;
         for (const tp of game.players) {
@@ -2969,7 +2987,7 @@ export class GameEngine {
         }
         if (target) {
           const dealt = dealPreCombatDamage(target, dmg);
-          this.log(`  [${front.Name}] Reveal: ${dealt} damage to highest-HP unit ${target.card.Name}`);
+          this.log(`  [${front.Name}] Reveal: ${dealt} damage to highest-HP unit ${target.card.Name}${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
           for (const tp of game.players) applyRevealDeaths(tp);
         }
       }
@@ -2990,10 +3008,10 @@ export class GameEngine {
       // Guard: must not already be handled by "2x attack damage" patterns above.
       const flatActiveDmgMatch = reveal.match(/^deal (\d+) damage to active unit/im);
       if (flatActiveDmgMatch && !/2x|all lanes|active and reserve/i.test(reveal)) {
-        const dmg = parseInt(flatActiveDmgMatch[1]);
+        const dmg = Math.floor(parseInt(flatActiveDmgMatch[1]) / (fieldIntelHalve ? 2 : 1));
         if (revealTarget.active) {
           const dealt = dealPreCombatDamage(revealTarget.active, dmg);
-          this.log(`  [${front.Name}] Reveal: ${dealt} damage to active unit ${revealTarget.active.card.Name}`);
+          this.log(`  [${front.Name}] Reveal: ${dealt} damage to active unit ${revealTarget.active.card.Name}${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
           applyRevealDeaths(revealTarget);
         }
       }
@@ -3001,29 +3019,29 @@ export class GameEngine {
       // Choke Point: "Deal N damage to Active units" (all lanes, plural).
       const allActiveDmgMatch = reveal.match(/deal (\d+) damage to active units/i);
       if (allActiveDmgMatch) {
-        const dmg = parseInt(allActiveDmgMatch[1]);
+        const dmg = Math.floor(parseInt(allActiveDmgMatch[1]) / (fieldIntelHalve ? 2 : 1));
         for (const tp of game.players) {
           if (tp.active) { dealPreCombatDamage(tp.active, dmg); applyRevealDeaths(tp); }
         }
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to active unit in every lane`);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to active unit in every lane${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
       }
 
       // Burner: "Deal N damage to active infantry" (type-targeted, all lanes).
       const infantryActiveDmgMatch = reveal.match(/deal (\d+) damage to active infantry/i);
       if (infantryActiveDmgMatch) {
-        const dmg = parseInt(infantryActiveDmgMatch[1]);
+        const dmg = Math.floor(parseInt(infantryActiveDmgMatch[1]) / (fieldIntelHalve ? 2 : 1));
         for (const tp of game.players) {
           if (tp.active && ((tp.active.card as any).Type ?? "").toLowerCase() === "infantry") {
             dealPreCombatDamage(tp.active, dmg); applyRevealDeaths(tp);
           }
         }
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to active Infantry unit in every lane`);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to active Infantry unit in every lane${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
       }
 
       // Plasma Artillery: "Deal N damage to each Mech or Vehicle"
       const mechDmgMatch = reveal.match(/deal (\d+) damage to each mech or vehicle/i);
       if (mechDmgMatch) {
-        const dmg = parseInt(mechDmgMatch[1]);
+        const dmg = Math.floor(parseInt(mechDmgMatch[1]) / (fieldIntelHalve ? 2 : 1));
         const mechTypes = new Set(["vehicle", "mech"]);
         for (const tp of game.players) {
           for (const ui of ([tp.active, ...tp.reserve].filter(Boolean) as UnitInstance[])) {
@@ -3031,41 +3049,41 @@ export class GameEngine {
           }
           applyRevealDeaths(tp);
         }
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to all Mech/Vehicle player units`);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to all Mech/Vehicle player units${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
       }
 
       // Inferno Artillery: "Deal N damage to each Infantry"
       const eachInfantryDmgMatch = reveal.match(/deal (\d+) damage to each infantry/i);
       if (eachInfantryDmgMatch) {
-        const dmg = parseInt(eachInfantryDmgMatch[1]);
+        const dmg = Math.floor(parseInt(eachInfantryDmgMatch[1]) / (fieldIntelHalve ? 2 : 1));
         for (const tp of game.players) {
           for (const ui of ([tp.active, ...tp.reserve].filter(Boolean) as UnitInstance[])) {
             if (((ui.card as any).Type ?? "").toLowerCase() === "infantry") dealPreCombatDamage(ui, dmg);
           }
           applyRevealDeaths(tp);
         }
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to all Infantry player units`);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to all Infantry player units${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
       }
 
       // Shadow Knight: "Deal N damage to Reserve in this lane"
       const reserveDmgMatch = reveal.match(/deal (\d+) damage to reserve/i);
       if (reserveDmgMatch) {
-        const dmg = parseInt(reserveDmgMatch[1]);
+        const dmg = Math.floor(parseInt(reserveDmgMatch[1]) / (fieldIntelHalve ? 2 : 1));
         for (const ui of revealTarget.reserve) dealPreCombatDamage(ui, dmg);
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to each reserve unit in ${revealTarget.name}'s lane`);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to each reserve unit in ${revealTarget.name}'s lane${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
         applyRevealDeaths(revealTarget);
       }
 
       // Demo Squad: "Deal 2x attack damage to active unit, Deal half that to adjacent lanes"
       if (/deal 2x attack damage to active unit.*deal half that to adjacent/i.test(reveal)) {
-        const dmg = frontDmg * 2;
+        const dmg = Math.floor(frontDmg * 2 / (fieldIntelHalve ? 2 : 1));
         if (revealTarget.active) { dealPreCombatDamage(revealTarget.active, dmg); applyRevealDeaths(revealTarget); }
         const halfDmg = Math.floor(dmg / 2);
         for (const seat of adjacentSeats(game, revealTarget.seatIndex)) {
           const adjP = game.players.find((tp) => tp.seatIndex === seat);
           if (adjP?.active) { dealPreCombatDamage(adjP.active, halfDmg); applyRevealDeaths(adjP); }
         }
-        this.log(`  [${front.Name}] Reveal: ${dmg} damage to ${revealTarget.name}'s active; ${halfDmg} splash to adjacent lanes`);
+        this.log(`  [${front.Name}] Reveal: ${dmg} damage to ${revealTarget.name}'s active; ${halfDmg} splash to adjacent lanes${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
       }
 
       // Knights / Plasma Crab: "Gain N Shield" (front enemy self-shields via pendingEnemyActiveShields).
@@ -3336,7 +3354,7 @@ export class GameEngine {
           }
         }
         if (topUnit && topPlayer) {
-          const raw = 60;
+          const raw = Math.floor(60 / (fieldIntelHalve ? 2 : 1));
           const hpBefore = topUnit.curHp;
           dealPreCombatDamage(topUnit, raw);
           const overkill = Math.max(0, -topUnit.curHp);
@@ -3344,9 +3362,9 @@ export class GameEngine {
           if (overkill > 0 && topPlayer.active) {
             dealPreCombatDamage(topPlayer.active, overkill);
             applyRevealDeaths(topPlayer);
-            this.log(`  [${front.Name}] Reveal: 60 to ${topUnit.card.Name}, ${overkill} excess → ${topPlayer.active?.card.Name}`);
+            this.log(`  [${front.Name}] Reveal: ${raw} to ${topUnit.card.Name}, ${overkill} excess → ${topPlayer.active?.card.Name}${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
           } else {
-            this.log(`  [${front.Name}] Reveal: 60 damage to highest-rank unit ${topUnit.card.Name} (was ${hpBefore} HP)`);
+            this.log(`  [${front.Name}] Reveal: ${raw} damage to highest-rank unit ${topUnit.card.Name} (was ${hpBefore} HP)${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
           }
         }
       }
@@ -3366,14 +3384,15 @@ export class GameEngine {
 
       // Storm Claw: "Hit all units 4 times" — deal attack damage 4 times to every player unit in all lanes.
       if (/^hit all units 4 times/i.test(reveal)) {
+        const scHitDmg = Math.floor(frontDmg / (fieldIntelHalve ? 2 : 1));
         for (const tp of game.players) {
           const targets = [tp.active, ...tp.reserve].filter(Boolean) as UnitInstance[];
           for (const ui of targets) {
-            for (let hit = 0; hit < 4; hit++) dealPreCombatDamage(ui, frontDmg);
+            for (let hit = 0; hit < 4; hit++) dealPreCombatDamage(ui, scHitDmg);
           }
           applyRevealDeaths(tp);
         }
-        this.log(`  [${front.Name}] Reveal: ${frontDmg}×4 to all player units in all lanes`);
+        this.log(`  [${front.Name}] Reveal: ${scHitDmg}×4 to all player units in all lanes${fieldIntelHalve ? ' (halved: Field Intelligence)' : ''}`);
       }
 
       // Blood Hunter: "Kill Lowest HP unit" — outright kill the lowest-curHp player unit globally.
@@ -3896,6 +3915,8 @@ export class GameEngine {
       });
       // delete_on_kill: kills in this lane skip containment capture.
       if (p.active && classifyUnit(p.active.card).has("delete_on_kill")) deleteOnKillLanes.add(p.seatIndex);
+      // Toxin Tank (4b): enemies killed by an infected Toxin Tank lane are permanently deleted (skip containment).
+      if (pUnits.some((u) => u.card.Name === "Toxin Tank")) deleteOnKillLanes.add(p.seatIndex);
       // Apply cross-lane pending stuns from reveal effects (e.g. Wasp adjacent-lane stun).
       if (tempState.pendingPlayerStunSeats.has(p.seatIndex) && pCombatants[0]) {
         pCombatants[0].stunned = true;
@@ -3920,6 +3941,10 @@ export class GameEngine {
       if (game.crushingAdvanceSeats.has(p.seatIndex)) {
         for (const c of pCombatants) { c.trample = true; c.trampleUnlimited = true; }
         this.log(`  [Crushing Advance] ${p.name}'s units have unlimited trample this round`);
+      }
+      // MCP B1 "Spotter" active scout: all player units have trample (attacks carry through to reserve enemies).
+      if (game.spotterScoutActive) {
+        for (const c of pCombatants) { if (!c.trample) c.trample = true; }
       }
       // Overrun carryover: surviving enemy from last round keeps its combat stats; skip fresh build.
       const _persisted = this.persistedEnemyCombatants.get(p.seatIndex);
@@ -4305,7 +4330,8 @@ export class GameEngine {
           pUnits.splice(0, pUnits.length, ...newPUnits);
         }
       }
-      const needsOnAfterPlayerAttack = hasSplashPlayer || hasAllLanesPlayer || hasLaneHeal || firesaleTargetSeat >= 0;
+      const hasToxinTank = pUnits.some((u) => u.card.Name === "Toxin Tank");
+      const needsOnAfterPlayerAttack = hasSplashPlayer || hasAllLanesPlayer || hasLaneHeal || firesaleTargetSeat >= 0 || hasToxinTank;
       // MCP "Slapper": when this lane's enemies are ability-suppressed, null out mid-combat enemy passives too.
       const laneSuppressed = game.enemyAbilitySuppressedSeats.has(p.seatIndex);
       laneRuns.push({ p, pUnits, pCombatants, eCombatants, pq: pCombatants, eq: eCombatants, opts: {
@@ -4347,6 +4373,17 @@ export class GameEngine {
             if (targetLR && targetLR.eq.length > 0 && targetLR.eq[0].curHp > 0) {
               targetLR.eq[0].curHp -= 10;
               this.log(`  [AMP2 "Firesale"] 10 damage to ${targetLR.eq[0].name} in ${targetLR.p.name}'s lane`);
+            }
+          }
+          // Toxin Tank: enemies damaged by Toxin Tank cannot activate abilities (infected).
+          if (hasToxinTank && attacker.name === "Toxin Tank" && dmg > 0) {
+            const thisLane = laneRuns.find((lr) => lr.p === p);
+            if (thisLane && thisLane.eq.length > 0) {
+              const infectedKey = `${p.seatIndex}-${thisLane.eq[0].name}`;
+              if (!game.toxinTankInfectedEnemies.has(infectedKey)) {
+                game.toxinTankInfectedEnemies.add(infectedKey);
+                this.log(`  [Toxin Tank] ${thisLane.eq[0].name} infected — abilities suppressed`);
+              }
             }
           }
         } : undefined,
@@ -4707,7 +4744,110 @@ export class GameEngine {
             toLaneRun.pUnits.push(unit);
           }
           this.log(`  [Mobile] ${unit.card.Name} mid-combat move: ${fromPlayer.name} to ${toPlayer.name}`);
+          // Mobile Rockets / Mobile Artillery: deal 5 damage to the active enemy in the destination lane when moving.
+          if (unit.card.Name === "Mobile Rockets" || unit.card.Name === "Mobile Artillery") {
+            const destLane = laneRuns.find((lr) => lr.p === toPlayer);
+            if (destLane && destLane.eq.length > 0) {
+              destLane.eq[0].curHp -= 5;
+              this.log(`  [${unit.card.Name}] Mid-combat move: 5 damage to ${destLane.eq[0].name} in ${toPlayer.name}'s lane`);
+            }
+          }
         }
+        // Bot-activated mid-combat unit abilities (fire once per combat between exchanges).
+        for (const lane of laneRuns) {
+          const lp = lane.p;
+          if (!lp.isBot) continue;
+
+          // ── RDMP "Crater" (Item 1) ────────────────────────────────────────────────────────────
+          // Once per combat: Crater moves to medBay, deals 10 damage to active enemy in own lane
+          // AND 10 damage to own reserve[0]. Bot triggers when own HP < 50% or lane has enemy.
+          if (lp.active?.card.Name === 'RDMP "Crater"') {
+            const craterKey = `${lp.active.id}-crater-active`;
+            if (!game.abilityUsesThisRound.get(craterKey)) {
+              const craterUnit = lp.active;
+              const craterHpLow = craterUnit.curHp < Math.floor(craterUnit.maxHp / 2);
+              if ((craterHpLow || lane.eq.length > 0)) {
+                game.abilityUsesThisRound.set(craterKey, 1);
+                // Move Crater to medBay.
+                lp.medBayUnits.push(craterUnit);
+                lp.active = lp.reserve.shift() ?? null;
+                // Also remove Crater's combatant from the lane queue.
+                const craterC = lane.pq[0];
+                if (craterC && lane.pCombatants[0] === craterC) {
+                  lane.pq.shift();
+                  lane.pCombatants.shift();
+                  lane.pUnits.shift();
+                }
+                // Deal 10 to active enemy in own lane.
+                if (lane.eq.length > 0) {
+                  lane.eq[0].curHp -= 10;
+                  this.log(`  [RDMP "Crater"] Activated: 10 damage to ${lane.eq[0].name}`);
+                }
+                // Deal 10 to own reserve[0] (the unit now promoted or first in reserve after Crater's removal).
+                if (lp.reserve.length > 0) {
+                  lp.reserve[0].curHp = Math.max(0, lp.reserve[0].curHp - 10);
+                  this.log(`  [RDMP "Crater"] Activated: 10 damage to allied reserve ${lp.reserve[0].card.Name}`);
+                }
+                this.log(`  [RDMP "Crater"] ${lp.name}'s Crater moved to medBay (once per combat)`);
+              }
+            }
+          }
+
+          // ── Supply Truck (Item 3) ─────────────────────────────────────────────────────────────
+          // Once per combat: destroy Supply Truck, donate resources to weakest teammate.
+          if (lp.active?.card.Name === 'Supply Truck') {
+            const stKey = `${lp.active.id}-supply-truck-active`;
+            if (!game.abilityUsesThisRound.get(stKey)) {
+              game.abilityUsesThisRound.set(stKey, 1);
+              const stUnit = lp.active;
+              // Remove Supply Truck from active slot.
+              lp.active = lp.reserve.shift() ?? null;
+              lane.pq.shift();
+              if (lane.pCombatants.length > 0) lane.pCombatants.shift();
+              if (lane.pUnits.length > 0) lane.pUnits.shift();
+              // Find target: player with lowest total resources (excluding self).
+              const otherPlayers = game.players.filter((q) => q !== lp);
+              if (otherPlayers.length > 0) {
+                const target = otherPlayers.reduce((a, b) =>
+                  (b.res.Organic + b.res.Tech + b.res.Alien) < (a.res.Organic + a.res.Tech + a.res.Alien) ? b : a
+                );
+                const giveOrg = Math.min(2, lp.res.Organic);
+                const giveTech = Math.min(2, lp.res.Tech);
+                const giveAlien = Math.min(2, lp.res.Alien);
+                lp.res.Organic -= giveOrg;
+                lp.res.Tech -= giveTech;
+                lp.res.Alien -= giveAlien;
+                target.res.Organic += giveOrg;
+                target.res.Tech += giveTech;
+                target.res.Alien += giveAlien;
+                this.log(`  [Supply Truck] ${lp.name} donates O${giveOrg} T${giveTech} A${giveAlien} to ${target.name} (unit destroyed)`);
+              } else {
+                this.log(`  [Supply Truck] ${lp.name} activates Supply Truck (unit destroyed, no teammates to donate to)`);
+              }
+              // Supply Truck is permanently gone — don't add to graveyard or medBay.
+            }
+          }
+
+          // ── Recon Bike (Item 16) ──────────────────────────────────────────────────────────────
+          // Once per combat: deploy lowest-rank shop unit to reserve; destroyed at end of combat.
+          if (lp.active?.card.Name === 'Recon Bike') {
+            const rbKey = `${lp.active.id}-recon-bike-deploy`;
+            if (!game.abilityUsesThisRound.get(rbKey) && game.shopUnits.length > 0) {
+              game.abilityUsesThisRound.set(rbKey, 1);
+              // Find the lowest-rank unit in the shop.
+              const rankOrder = { Conscript: 0, Advanced: 1, Elite: 2, Commander: 3 } as Record<string, number>;
+              const lowestShopUnit = game.shopUnits.reduce((a, b) =>
+                (rankOrder[(a as any).Rank ?? "Conscript"] ?? 0) <= (rankOrder[(b as any).Rank ?? "Conscript"] ?? 0) ? a : b
+              );
+              game.shopUnits.splice(game.shopUnits.indexOf(lowestShopUnit), 1);
+              const deployed = makeUnitInstance(lowestShopUnit as any);
+              game.reconBikeDeployedUnitIds.add(deployed.id);
+              lp.reserve.push(deployed);
+              this.log(`  [Recon Bike] ${lp.name} deploys ${lowestShopUnit.Name} from shop (will be destroyed end of combat)`);
+            }
+          }
+        }
+
         // Emit this round's exchange data to all clients and wait for ack (or skip/pause resolution).
         if (laneSnapshots.length > 0) {
           const snapshot: CombatRoundSnapshot = { roundIndex, lanes: laneSnapshots };
@@ -4797,6 +4937,19 @@ export class GameEngine {
               if ((ENEMY_RANK_NUM[(ek as any).Rank as EnemyRank] ?? 0) > p.rank) {
                 p.stats.aboveRankKills += 1;
               }
+            }
+          }
+          // Field Researcher: "Gain Alien = 1st enemy killed" — once per combat.
+          // When Field Researcher is the active unit and scores a kill, grant Alien = killed enemy's rank number.
+          const frKey = `${p.seatIndex}-field-researcher-kill`;
+          if (pUnits[0]?.card.Name === 'Field Researcher' && !game.abilityUsesThisRound.get(frKey) && killedCombatants.length > 0) {
+            const firstKilledIdx = eCombatants.indexOf(killedCombatants[0]);
+            const firstKilledCard = p.laneEnemyReserve[firstKilledIdx];
+            if (firstKilledCard) {
+              const alienGain = ENEMY_RANK_NUM[(firstKilledCard as any).Rank as EnemyRank] ?? 0;
+              p.res.Alien += alienGain;
+              game.abilityUsesThisRound.set(frKey, 1);
+              this.log(`  [Field Researcher] ${p.name} gains ${alienGain} Alien (= rank of ${firstKilledCard.Name})`);
             }
           }
         }
@@ -5226,6 +5379,27 @@ export class GameEngine {
 
     // Strategic Recall: consume after this combat — effect applies only for one round.
     game.strategicRecallActive = false;
+
+    // Recon Bike (Item 16): destroy all units deployed by Recon Bike's ability at end of combat.
+    if (game.reconBikeDeployedUnitIds.size > 0) {
+      for (const p of game.players) {
+        if (p.active && game.reconBikeDeployedUnitIds.has(p.active.id)) {
+          this.log(`  [Recon Bike] Deployed unit ${p.active.card.Name} destroyed at end of combat`);
+          p.stats.deaths += 1;
+          p.active = p.reserve.length ? p.reserve.shift()! : null;
+        }
+        const before = p.reserve.length;
+        p.reserve = p.reserve.filter((u) => {
+          if (game.reconBikeDeployedUnitIds.has(u.id)) {
+            this.log(`  [Recon Bike] Deployed reserve unit ${u.card.Name} destroyed at end of combat`);
+            p.stats.deaths += 1;
+            return false;
+          }
+          return true;
+        });
+      }
+      game.reconBikeDeployedUnitIds.clear();
+    }
 
     return overrunLanes;
   }

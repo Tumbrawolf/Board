@@ -284,6 +284,12 @@ export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, gam
       game.directedAbilityImmuneLanes.add(p.seatIndex);
       game.firstAbilityCancelPerLane.set(p.seatIndex, (game.firstAbilityCancelPerLane.get(p.seatIndex) ?? 0) + 1);
     }
+    // Heavy Tank (player, Major): "Negate abilities on 1st enemy hit" — cancel one enemy ability per round.
+    // Applies whenever the player Heavy Tank (UnitCard, not EnemyCard) is active in the lane.
+    if (ui.card.Name === 'Heavy Tank' && ui === p.active && game) {
+      game.directedAbilityImmuneLanes.add(p.seatIndex);
+      game.firstAbilityCancelPerLane.set(p.seatIndex, (game.firstAbilityCancelPerLane.get(p.seatIndex) ?? 0) + 1);
+    }
     // RDMP "Mother": "Cannot be targeted by enemy abilities" — applies whenever Mother is in the lane
     // (active or reserve). Grants the full directed-ability immunity for this seat without the
     // first-cancel budget (no cancel clause in Mother's text).

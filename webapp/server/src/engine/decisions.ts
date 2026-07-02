@@ -404,6 +404,20 @@ export class BotDecisionProvider implements DecisionProvider {
       const hasSacrifice = player.reserve.some((u) => SACRIFICE_UNIT_NAMES_BOT.has(u.card.Name));
       if (hasSacrifice) sacrificeForDiscountMutation(game, player, ctx.log);
     }
+    // Researcher: "Once per turn: reduce Alien cost of next Purchase by 2"
+    // Bot auto-triggers when Researcher is active and discount not already set.
+    {
+      const researcherUnit = player.active?.card.Name === 'Researcher' ? player.active
+        : player.reserve.find((u) => u.card.Name === 'Researcher');
+      if (researcherUnit) {
+        const researcherKey = `${researcherUnit.id}-researcher-ability`;
+        if (!game.abilityUsesThisRound.get(researcherKey) && !player.nextRecruitmentDiscount) {
+          game.abilityUsesThisRound.set(researcherKey, 1);
+          player.nextRecruitmentDiscount = { Organic: 0, Tech: 0, Alien: 2 };
+          ctx.log(`  [Researcher] ${player.name}'s Researcher reduces next purchase Alien cost by 2`);
+        }
+      }
+    }
     let bought = 0;
     while (bought < 2) {
       const choice = await this.chooseNextUnitPurchase(player, game, affordableUnits(game, player));

@@ -47,8 +47,9 @@ export function applyGearCombatMods(c: Combatant, ui: UnitInstance, commanderRan
   if ([...names].some((n) => GEAR_FIRST_HIT_FREE.has(n))) c.firstHitPrevented = true;
   // Smoke Pack: "When under Half HP cannot be targeted by abilities" — ability immunity checked
   // at reveal dispatch in game.ts; no combat-stat change here.
-  // Laser Designator: "Other units can target your lane when attacking" — no-op; Long Range already
-  // handles cross-lane targeting for units with the long_range tag; this gear has no additional hook.
+  // Laser Designator: "Other units can target your lane when attacking" — handled post-exchange in
+  // game.ts: the equipped unit's lane is marked as a cross-lane target for all other units in
+  // empty lanes (same mechanism as Long Range, but pull-based instead of push-based).
   if (names.has("Slayer Suit")) c.shieldsOnDmgFraction = 0.25;
   if (names.has("Isolation Field")) c.stripEnemyBoosts = true;
   if ([...names].some((n) => GEAR_DELETE_ON_KILL.has(n))) c.deleteOnKill = true;
