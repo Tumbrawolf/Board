@@ -171,6 +171,14 @@ export class Combatant {
   deleteOnKillIfLowerRank = false;
   /** Rank number for rank-comparison effects (RANK_NUM for player units, ENEMY_RANK_NUM for enemies). */
   combatantRankNum = 0;
+  /** AMP2 "Warthog": true when this combatant is the Warthog unit. */
+  isWarthog = false;
+  /** AMP2 "Warthog": stacks +1 damage per hit on the same enemy target. Resets when enemy changes. */
+  warthogDmgStack = 0;
+  /** AMP2 "Warthog": name of the enemy last hit (to detect enemy change). */
+  warthogLastTargetName = "";
+  /** TRM "Shadow": true when this combatant is the Shadow unit. */
+  isShadow = false;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
@@ -312,6 +320,10 @@ export interface LaneCombatOptions {
   onPlayerStunEnemy?: (count: number) => void;
   /** Siege Tank: when true, skip all stun applications to player combatants. */
   preventPlayerStuns?: boolean;
+  /** TRM "Shadow": called each time a non-reveal mid-combat passive fires in this lane (Emitter DoT,
+   *  Totem, Shard Beast splash, Black Rail group attack, etc.). Shadow deals its attack damage to
+   *  the active enemy as a bonus hit; kills from this effect apply deleteOnKill. */
+  onMidCombatPassiveFire?: (shadow: Combatant, activeEnemy: Combatant) => void;
 }
 
 /** Default: both sides attack simultaneously each exchange — deaths resolve after both attacks land.
@@ -340,6 +352,7 @@ export function resolveLaneCombat(
     onAfterPlayerAttack,
     onPlayerStunEnemy,
     preventPlayerStuns = false,
+    onMidCombatPassiveFire,
   } = options;
   let lastExchange: ExchangeData | undefined;
   const pq = [...playerCombatants];
@@ -373,7 +386,12 @@ export function resolveLaneCombat(
 
   const enemyAttacks = (e: Combatant, p: Combatant, mult: number) => {
     if (e.stunned) { e.stunned = false; return; }
-    if (enemyGroupAttack) { enemyGroupAttack(e, pq); return; }
+    if (enemyGroupAttack) {
+      enemyGroupAttack(e, pq);
+      // TRM "Shadow": fire bonus damage when group-attack passive triggers.
+      if (onMidCombatPassiveFire && pq[0]?.isShadow && eq[0]) onMidCombatPassiveFire(pq[0], eq[0]);
+      return;
+    }
     if (onEnemyAttack) {
       onEnemyAttack(e);
       return;
@@ -407,7 +425,11 @@ export function resolveLaneCombat(
       if (e.shredShieldOnHit > 0) p.curShields = Math.max(0, p.curShields - e.shredShieldOnHit);
       if (e.healSelfFlatOnHit > 0) e.curHp = Math.min(e.hp, e.curHp + e.healSelfFlatOnHit);
       if (p.stunNextAttacker) { e.stunned = true; p.stunNextAttacker = false; if (onPlayerStunEnemy) onPlayerStunEnemy(1); }
-      if (onAfterEnemyAttack) onAfterEnemyAttack(e, eDmg);
+      if (onAfterEnemyAttack) {
+        onAfterEnemyAttack(e, eDmg);
+        // TRM "Shadow": fire bonus damage to active enemy when a mid-combat passive triggers.
+        if (onMidCombatPassiveFire && pq[0]?.isShadow && eq[0]) onMidCombatPassiveFire(pq[0], eq[0]);
+      }
     }
   };
 
@@ -417,12 +439,27 @@ export function resolveLaneCombat(
       p.attacksEveryOtherActive = !p.attacksEveryOtherActive;
       if (!p.attacksEveryOtherActive) return 0; // skip this exchange
     }
+    // AMP2 "Warthog": apply stacked damage bonus before computing damage.
+    if (p.isWarthog && p.warthogDmgStack > 0) p.dmg += p.warthogDmgStack;
     const wasFullHp = e.curHp >= e.hp;
     const eBefore = e.curShields;
     const _bonusDmg = p.bonusDmgNextAttack; p.bonusDmgNextAttack = 0;
     p.dmg += _bonusDmg;
     let pDmg = computeDealt(p, e) * mult * (e.takesDoubleDamage ? 2 : 1);
     p.dmg -= _bonusDmg;
+    // AMP2 "Warthog": undo stack bonus from dmg (applied ephemerally per-attack), then update stack.
+    if (p.isWarthog) {
+      if (p.warthogDmgStack > 0) p.dmg -= p.warthogDmgStack;
+      if (pDmg > 0) {
+        // Hit landed: update stack based on whether target changed.
+        if (p.warthogLastTargetName === e.name) {
+          p.warthogDmgStack += 1;
+        } else {
+          p.warthogDmgStack = 0;
+          p.warthogLastTargetName = e.name;
+        }
+      }
+    }
     // Manipulator passive: redirect half of dealt damage to the first reserve enemy.
     if (e.halvesToReserveOnHit && eq.length > 1) {
       const redirected = Math.floor(pDmg / 2);
@@ -508,6 +545,8 @@ export function resolveLaneCombat(
         else j++;
       }
       if (!pq.length) break;
+      // TRM "Shadow": deal bonus damage to active enemy when a mid-combat passive fires.
+      if (onMidCombatPassiveFire && pq[0]?.isShadow && eq[0]) onMidCombatPassiveFire(pq[0], eq[0]);
     }
     if (perExchangeNonMechDoT > 0) {
       const mechTypes = new Set(["vehicle", "mech", "mechanised"]);
@@ -520,6 +559,8 @@ export function resolveLaneCombat(
         else k++;
       }
       if (!pq.length) break;
+      // TRM "Shadow": deal bonus damage to active enemy when a mid-combat passive fires.
+      if (onMidCombatPassiveFire && pq[0]?.isShadow && eq[0]) onMidCombatPassiveFire(pq[0], eq[0]);
     }
     if (eq[0]) executeCheck(eq[0]);
     if (!pq.length) break;

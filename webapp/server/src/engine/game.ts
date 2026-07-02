@@ -352,6 +352,7 @@ export class GameEngine {
       breakerActive: false,
       plagueActive: false,
       shadowSowerActive: false,
+      chosenScoutIndex: null,
       chessmasterDoubledEnemies: new Set(),
       containedEnemyPool: [],
       freeAbilityNextUse: new Set(),
@@ -591,6 +592,7 @@ export class GameEngine {
     game.breakerActive = false;
     game.plagueActive = false;
     game.shadowSowerActive = false;
+    game.chosenScoutIndex = null;
     game.combatStimsUsedThisRound = false;
     game.combatStimsPendingDmg = 0;
     for (const p of game.players) {
@@ -2451,9 +2453,9 @@ export class GameEngine {
     let scoutIsPython = false;
     game.nightVisionRevealBonus = 0;
     if (game.teamScoutPool.length && !game.shadowSowerActive) {
-      const scout = game.teamScoutPool.reduce((a, b) =>
-        scoutValue(b) > scoutValue(a) ? b : a
-      );
+      const scout = (game.chosenScoutIndex !== null && game.chosenScoutIndex >= 0 && game.chosenScoutIndex < game.teamScoutPool.length)
+        ? game.teamScoutPool[game.chosenScoutIndex]
+        : game.teamScoutPool.reduce((a, b) => scoutValue(b) > scoutValue(a) ? b : a);
       const scoutMult = (game.locationUpgradesBuilt["Containment Block"] ?? []).some((c) => c.Name === "Scouting update") ? 2 : 1;
       const sO = toInt((scout.card as any)["Organic Scout"]) * scoutMult;
       const sT = toInt((scout.card as any)["Tech Scout"]) * scoutMult;
@@ -2710,6 +2712,19 @@ export class GameEngine {
         }
         continue;
       }
+      // Ability Interception C-pre: AMP2 "Warthog" — once per round, negate enemy ability and stun the enemy.
+      // Fires when Warthog is the active unit in this lane during its combat step.
+      if (!oracleAlive && p.active?.card.Name === 'AMP2 "Warthog"') {
+        const warthogKey = `Warthog-${p.seatIndex}`;
+        if (canUseEffect(game, warthogKey, 1)) {
+          recordEffectUse(game, warthogKey);
+          // Stun the front enemy (carry into combat via pendingEnemyStunSeats).
+          tempState.pendingEnemyStunSeats.add(p.seatIndex);
+          p.stats.stunsMade += 1;
+          this.log(`  [AMP2 "Warthog"] Negated ability from ${front.Name} and stunned enemy (once per round)`);
+          continue;
+        }
+      }
       // Ability Interception C: EMP "Slayer" redirect — all enemy abilities must target Slayer's lane.
       // If Slayer is active in a different lane, redirect this reveal to fire against Slayer's lane.
       let revealTarget = p; // default: directed effects target this lane's player
@@ -2886,9 +2901,13 @@ export class GameEngine {
       // Scorpions / Counter Intel: "Deal 2x attack damage to Scout"
       if (/deal 2x attack damage to scout/i.test(reveal)) {
         const scout = game.teamScoutPool[0];
-        if (scout) {
+        // AMP "Surveyor": "Cannot be targeted by enemy effects" — immune to reveal-based scout attacks.
+        const scoutIsImmune = scout && /cannot be targeted by enemy/i.test(`${(scout.card as any)["Bonus Effects"] ?? ""}`);
+        if (scout && !scoutIsImmune) {
           dealPreCombatDamage(scout, frontDmg * 2);
           this.log(`  [${front.Name}] Reveal: ${frontDmg * 2} damage to scout ${scout.card.Name}`);
+        } else if (scoutIsImmune) {
+          this.log(`  [${front.Name}] Reveal: scout damage blocked by ${scout!.card.Name} immunity`);
         } else {
           this.log(`  [${front.Name}] Reveal: no scout assigned, effect wasted`);
         }
@@ -4076,7 +4095,9 @@ export class GameEngine {
             }
           }
         : undefined;
-      const scoutTarget = !game.shadowSowerActive ? (game.teamScoutPool[0] ?? null) : null;
+      const _rawScout = !game.shadowSowerActive ? (game.teamScoutPool[0] ?? null) : null;
+      // AMP "Surveyor": "Cannot be targeted by enemy effects" — immune to all scout-targeting attacks.
+      const scoutTarget = (_rawScout && /cannot be targeted by enemy/i.test(`${(_rawScout.card as any)["Bonus Effects"] ?? ""}`)) ? null : _rawScout;
       const scoutAttackCb = (eCombatants[0] && (eCombatants[0] as any).targetsScout && scoutTarget)
         ? (attacker: Combatant) => {
             dealPreCombatDamage(scoutTarget, attacker.dmg);
@@ -4306,6 +4327,20 @@ export class GameEngine {
         } : undefined,
         preventPlayerStuns: !!(game as any)._siegeTankActive,
         onPlayerStunEnemy: (count) => { p.stats.stunsMade += count; },
+        // TRM "Shadow": deal attack damage to active enemy each time a non-reveal mid-combat passive fires.
+        onMidCombatPassiveFire: p.active?.card.Name === 'TRM "Shadow"'
+          ? (shadow: Combatant, activeEnemy: Combatant) => {
+              if (shadow.curHp <= 0 || activeEnemy.curHp <= 0) return;
+              const dealt = shadow.dmg;
+              activeEnemy.curHp -= dealt;
+              this.log(`  [TRM "Shadow"] Deals ${dealt} to ${activeEnemy.name} on ability trigger (${activeEnemy.curHp} HP left)`);
+              // Bonus: units killed by this effect are Deleted (skip containment for this lane).
+              if (activeEnemy.curHp <= 0) {
+                deleteOnKillLanes.add(p.seatIndex);
+                this.log(`  [TRM "Shadow"] ${activeEnemy.name} killed by Shadow's ability trigger — marked for Delete`);
+              }
+            }
+          : undefined,
       }, totalShieldsAbsorbed: 0, pActiveStartHp: pCombatants[0]?.curHp ?? 0 });
     }
 
@@ -4915,6 +4950,30 @@ export class GameEngine {
           }
           newUnits.push(ui); // will be placed in reserve after active is determined
           this.log(`  [Supply Truck] Returned to reserve (deck) instead of dying.`);
+        } else if (
+          !annihilationNoSaves && !c.deletedByEnemy &&
+          (ui.card.Name === "Automated Combat Drone" || ui.card.Name === "Automated Recon Drone")
+        ) {
+          // Automated Combat Drone / Automated Recon Drone: "On Death Return unit to Shop"
+          // Strip gear (drones don't keep gear on death), then push card back to the purchasable shop.
+          // If the shop is already at capacity, fall back to the unit deck (shuffled back in).
+          applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
+          applyDeathStun(tempState, p, ui, (t) => this.log(t));
+          const realGear2 = ui.equipped.filter((g) => "Rank Name" in (g as any)) as import("./data.js").GearCard[];
+          if (realGear2.length) {
+            ui.equipped = ui.equipped.filter((g) => !("Rank Name" in (g as any)));
+            this.returnOrRecycleGear(game, p, realGear2);
+          }
+          ui.curHp = ui.maxHp;
+          if (game.shopUnits.length < (game.unitShopCap ?? 3)) {
+            game.shopUnits.push(ui.card);
+            this.log(`  [${ui.card.Name}] Returned to shop on death`);
+          } else {
+            game.unitDeck.push(ui.card);
+            this.log(`  [${ui.card.Name}] Shop full — returned to unit deck on death`);
+          }
+          p.stats.deaths += 1;
+          game.deathsThisRound.set(p.seatIndex, (game.deathsThisRound.get(p.seatIndex) ?? 0) + 1);
         } else {
           applyExplodeOnDeath(game, p, ui, (t) => this.log(t));
           applyDeathStun(tempState, p, ui, (t) => this.log(t));

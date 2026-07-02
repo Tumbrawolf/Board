@@ -603,3 +603,22 @@ export function nonCommanderActivateCardMutation(
   log(`  [Active Effect] ${loc}: ${actor.name} (non-commander) activates ${card.Name} -> ${card["Active Effect"]}`);
   dispatch(card, loc);
 }
+/** Donate a unit from a player's unitHand to the team scout pool during planning.
+ * Useful for units that were returned to hand mid-combat but are better utilized as scouts. */
+export function donateToScoutPoolMutation(
+  game: GameState, p: GamePlayer, unitId: string, log: (s: string) => void
+) {
+  const idx = p.unitHand.findIndex(u => u.id === unitId);
+  if (idx < 0) return;
+  const unit = p.unitHand.splice(idx, 1)[0];
+  game.teamScoutPool.push(unit);
+  log(`[Scout] ${p.name} donated ${unit.card.Name} from hand to scout pool`);
+}
+
+/** Commander player picks the active scout by index into teamScoutPool.
+ * If the index is valid, game.chosenScoutIndex is set; otherwise it is left as-is (auto). */
+export function chooseScoutMutation(game: GameState, scoutIndex: number) {
+  if (scoutIndex >= 0 && scoutIndex < game.teamScoutPool.length) {
+    game.chosenScoutIndex = scoutIndex;
+  }
+}

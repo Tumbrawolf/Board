@@ -21,6 +21,7 @@ import {
   quartermasterRerollMutation,
   sacrificeForDiscountMutation,
   moveMobileUnitMutation,
+  donateToScoutPoolMutation,
 } from "./planningActions.js";
 import { lanePower, reorderActive } from "./state.js";
 import { classifyUnit } from "./units.js";
@@ -409,6 +410,14 @@ export class BotDecisionProvider implements DecisionProvider {
       if (!choice) break;
       buyUnitMutation(game, player, choice, ctx.log);
       bought += 1;
+    }
+
+    // Scout pool donation: donate any Scout-typed units from unitHand to the team scout pool.
+    // Units returned to hand mid-combat that are tagged Scout are better utilized in the pool.
+    for (const ui of [...player.unitHand]) {
+      if ((ui.card as any).Type?.includes('Scout')) {
+        donateToScoutPoolMutation(game, player, ui.id, ctx.log);
+      }
     }
 
     const pendingHand = [...player.gearHand];

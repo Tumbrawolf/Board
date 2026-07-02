@@ -108,6 +108,10 @@ export function applyUnitCombatMods(c: Combatant, ui: UnitInstance) {
   if (ui.card.Name === 'RDMP "Glass"' || ui.card.Name === 'RDMP "Impailer"') c.trampleExcess = true;
   // Plasma Tank: gain shields equal to enemy shields destroyed on each attack.
   if (ui.card.Name === "Plasma Tank") c.gainShieldsEqualToShieldsDestroyed = true;
+  // AMP2 "Warthog": consecutive damage stacking — flag the combatant for inline stack logic in combat.ts.
+  if (ui.card.Name === 'AMP2 "Warthog"') c.isWarthog = true;
+  // TRM "Shadow": deals attack damage to active enemy on non-reveal ability triggers — flag for game.ts.
+  if (ui.card.Name === 'TRM "Shadow"') c.isShadow = true;
 }
 
 /** "Revive once without Gear if no reserves in lane" (Rambo) -- a per-unit, once-per-game save
@@ -263,6 +267,12 @@ export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, gam
     if (tags.has("stealth_immunity") && ui === p.active && game) {
       game.directedAbilityImmuneLanes.add(p.seatIndex);
       game.firstAbilityCancelPerLane.set(p.seatIndex, (game.firstAbilityCancelPerLane.get(p.seatIndex) ?? 0) + 1);
+    }
+    // RDMP "Mother": "Cannot be targeted by enemy abilities" — applies whenever Mother is in the lane
+    // (active or reserve). Grants the full directed-ability immunity for this seat without the
+    // first-cancel budget (no cancel clause in Mother's text).
+    if (ui.card.Name === 'RDMP "Mother"' && game) {
+      game.directedAbilityImmuneLanes.add(p.seatIndex);
     }
     // AMP2 "Overwatch": "When not active in combat, Deny abilities targeting other lanes"
     // When Overwatch is in reserve (not active), add all OTHER lanes to directedAbilityImmuneLanes.

@@ -382,6 +382,8 @@ export interface GameState {
   plagueActive: boolean;
   /** Shadow Sower passive: blocks scout pool effects and scout-targeting enemy mods while alive. */
   shadowSowerActive: boolean;
+  /** Index into teamScoutPool of the unit chosen as active scout for this round. Null = auto (highest rank). */
+  chosenScoutIndex: number | null;
   /** The Chessmaster Tactician's Active -- cloned EnemyCard references that were swapped this
    * round. Any enemy whose reference is in this Set gets Combatant.takesDoubleDamage = true,
    * so player attacks deal 2Ã— damage to it. Reset each round. */
