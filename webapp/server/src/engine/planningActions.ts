@@ -412,6 +412,20 @@ export function moveMobileUnitMutation(
     toP.reserve.push(ui);
   }
   log(`  [Mobile] ${fromP.name}'s ${ui.card.Name} moved to ${toP.name}'s lane`);
+  // Mobile Rockets / Mobile Artillery: deal 5 damage to the active enemy in the destination lane.
+  if (ui.card.Name === "Mobile Rockets" || ui.card.Name === "Mobile Artillery") {
+    if (toP.laneEnemyReserve.length > 0) {
+      const frontEnemy = toP.laneEnemyReserve[0];
+      const newHp = Math.max(0, toInt(frontEnemy.HP) - 5);
+      if (newHp <= 0) {
+        toP.laneEnemyReserve.shift();
+        log(`  [${ui.card.Name}] Move deals 5 damage — kills ${frontEnemy.Name} in ${toP.name}'s lane`);
+      } else {
+        toP.laneEnemyReserve[0] = { ...frontEnemy, HP: String(newHp) };
+        log(`  [${ui.card.Name}] Move deals 5 damage to ${toP.laneEnemyReserve[0].Name} in ${toP.name}'s lane (${newHp} HP left)`);
+      }
+    }
+  }
   return true;
 }
 

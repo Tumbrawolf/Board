@@ -3764,7 +3764,7 @@ export class GameEngine {
       for (const p of game.players) {
         if (swapped.has(p) || !p.active) continue;
         const cardName = p.active.card.Name;
-        if (cardName !== "Battle Buggy" && cardName !== "APC" && cardName !== "MG Quad") continue;
+        if (cardName !== "Battle Buggy" && cardName !== "APC" && cardName !== "MG Quad" && cardName !== "Heavy APC") continue;
         // EMP "Behemoth" is immovable — cannot be swapped.
         if (isImmovable(p.active)) continue;
         const swapperUnit = p.active;
@@ -3778,6 +3778,8 @@ export class GameEngine {
         swapped.add(p); swapped.add(tgt);
         // APC: 10 shields to both moved units.
         if (cardName === "APC") { p.active.curShields += 10; tgt.active.curShields += 10; }
+        // Heavy APC: 15 shields to both swapped units.
+        if (cardName === "Heavy APC") { p.active.curShields += 15; tgt.active.curShields += 15; }
         // MG Quad: deal 2× damage to front enemy in each of the two swapped lanes.
         if (cardName === "MG Quad") {
           const qdmg = toInt((swapperUnit.card as any).Damage) * 2;
@@ -4229,7 +4231,14 @@ export class GameEngine {
         if (splashDmg <= 0) return;
         for (const seat of adjacentSeats(game, p.seatIndex)) {
           const adjLane = laneRuns.find((lr) => lr.p.seatIndex === seat);
-          if (adjLane && adjLane.eq.length > 0) adjLane.eq[0].curHp -= splashDmg;
+          if (adjLane && adjLane.eq.length > 0) {
+            adjLane.eq[0].curHp -= splashDmg;
+            // Flamethrower: also apply full armor-shred to splash target (not halved).
+            if (attacker.shredArmor > 0 && adjLane.eq[0].armor > 0) {
+              const shredded = Math.min(attacker.shredArmor, adjLane.eq[0].armor);
+              adjLane.eq[0].armor -= shredded;
+            }
+          }
         }
       } : undefined;
       // Technician family (lane_heal): heal vehicles/mechs in lane by N HP after each player attack.
@@ -4849,6 +4858,16 @@ export class GameEngine {
           !ui.charges['ghostEvadeUsed']
         ) {
           // ARV / AMP2 "Ghost": evade death once per combat — move to bottom of reserve.
+          // AMP2 "Ghost" bonus: before retreating, deal one attack to the enemy that killed it.
+          if (ui.card.Name === 'AMP2 "Ghost"' && enemySurvivors.length > 0 && enemySurvivors[0].curHp > 0) {
+            const ghostAtk = toInt(ui.card.Damage);
+            enemySurvivors[0].curHp -= ghostAtk;
+            this.log(`  [AMP2 "Ghost"] Bonus attack before retreating: ${ghostAtk} damage to ${enemySurvivors[0].name}`);
+            if (enemySurvivors[0].curHp <= 0) {
+              this.log(`  [AMP2 "Ghost"] Bonus attack kills ${enemySurvivors[0].name}`);
+              enemySurvivors.shift();
+            }
+          }
           ui.charges['ghostEvadeUsed'] = 1;
           ui.curHp = 1;
           ghostEvadeUnits.push(ui);

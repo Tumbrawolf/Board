@@ -179,6 +179,8 @@ export class Combatant {
   warthogLastTargetName = "";
   /** TRM "Shadow": true when this combatant is the Shadow unit. */
   isShadow = false;
+  /** Demolitions: deal 2× damage to enemies that have armor > 0. */
+  doubleVsArmoredEnemy = false;
 
   constructor(card: UnitCard | EnemyCard) {
     this.name = card.Name;
@@ -446,6 +448,8 @@ export function resolveLaneCombat(
     const _bonusDmg = p.bonusDmgNextAttack; p.bonusDmgNextAttack = 0;
     p.dmg += _bonusDmg;
     let pDmg = computeDealt(p, e) * mult * (e.takesDoubleDamage ? 2 : 1);
+    // Demolitions: deal 2× damage to enemies with armor (before this attack's shred, armor is the current value).
+    if (p.doubleVsArmoredEnemy && e.armor > 0 && pDmg > 0) pDmg *= 2;
     p.dmg -= _bonusDmg;
     // AMP2 "Warthog": undo stack bonus from dmg (applied ephemerally per-attack), then update stack.
     if (p.isWarthog) {

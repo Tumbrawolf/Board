@@ -112,6 +112,8 @@ export function applyUnitCombatMods(c: Combatant, ui: UnitInstance) {
   if (ui.card.Name === 'AMP2 "Warthog"') c.isWarthog = true;
   // TRM "Shadow": deals attack damage to active enemy on non-reveal ability triggers — flag for game.ts.
   if (ui.card.Name === 'TRM "Shadow"') c.isShadow = true;
+  // Demolitions: 2× damage to enemies that have armor.
+  if (ui.card.Name === "Demolitions") c.doubleVsArmoredEnemy = true;
 }
 
 /** "Revive once without Gear if no reserves in lane" (Rambo) -- a per-unit, once-per-game save
@@ -191,6 +193,20 @@ export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, gam
     if (tags.has("once_per_combat_heal")) {
       const healAmt = ui.card.Name === "Combat Medic" ? 10 : ui.card.Name === 'MCP "Doc"' ? 30 : 4;
       healUnit(ui, healAmt, game);
+      // Combat Medic: deal heal amount (10) as damage to the front enemy in this lane.
+      if (ui.card.Name === "Combat Medic" && p.laneEnemyReserve.length > 0) {
+        const frontEnemy = p.laneEnemyReserve[0];
+        const newHp = Math.max(0, toInt(frontEnemy.HP) - 10);
+        if (newHp <= 0) {
+          p.laneEnemyReserve.shift();
+        } else {
+          p.laneEnemyReserve[0] = { ...frontEnemy, HP: String(newHp) };
+        }
+      }
+      // MCP "Doc": grant 15 shields (half of 30) to the healed unit.
+      if (ui.card.Name === 'MCP "Doc"') {
+        ui.curShields = (ui.curShields ?? 0) + 15;
+      }
     }
     if (tags.has("precombat_shield")) ui.curShields += 5;
     if (tags.has("lane_heal")) {
@@ -297,5 +313,9 @@ export function applyPrecombatUnit(p: GamePlayer, tempState: RoundTempState, gam
   if (p.active && classifyUnit(p.active.card).has("boost_others_damage")) {
     const boost = toInt(p.active.card.Damage);
     for (const u of p.reserve) tempState.tempBuff(u, { Damage: boost });
+  }
+  // Demo Truck: "after attacking sacrifice this unit" — mark to die after combat.
+  if (p.active && p.active.card.Name === "Demo Truck") {
+    tempState.mustDieAfterCombat.add(p.active.id);
   }
 }
