@@ -13,6 +13,11 @@
   import LeadershipCrisisPanel from "./LeadershipCrisisPanel.svelte";
   import PerfectInfoPanel from "./PerfectInfoPanel.svelte";
   import CombatPanel from "./CombatPanel.svelte";
+  import ChessmasterReassignPanel from "./ChessmasterReassignPanel.svelte";
+  import ChessmasterConsentPanel from "./ChessmasterConsentPanel.svelte";
+  import MissionTargetPanel from "./MissionTargetPanel.svelte";
+  import MissionResourceSplitPanel from "./MissionResourceSplitPanel.svelte";
+  import GearOfferConsentPanel from "./GearOfferConsentPanel.svelte";
   import RulesPage from "./RulesPage.svelte";
   import FirstUseTip from "./FirstUseTip.svelte";
   import LandingPage from "./LandingPage.svelte";
@@ -402,8 +407,8 @@
                 {/if}
               </div>
               <p class="hint">
-                Stage 3: when it's your turn to place a worker, you'll get to pick the location
-                yourself. Everything else (shopping, equipping, Command Cards) still plays itself.
+                Human players control worker placement, shopping, gear equipping, Command Cards, and
+                all mid-round prompts (missions, gear offers, Chessmaster, etc.).
               </p>
             </section>
 
@@ -452,6 +457,11 @@
               <GearDiscardPanel />
               <LaneAssignmentPanel />
               <PerfectInfoPanel />
+              <ChessmasterReassignPanel />
+              <ChessmasterConsentPanel />
+              <MissionTargetPanel />
+              <MissionResourceSplitPanel />
+              <GearOfferConsentPanel />
 
               {#if gameSnapshot}
                 <div class="trackers">
