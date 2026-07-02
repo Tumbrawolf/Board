@@ -177,7 +177,14 @@ export function affordableUnits(game: GameState, p: GamePlayer): UnitCard[] {
       for (const k of UNIT_COST_KEYS) halved[k] = Math.ceil(toInt(halved[k]) / 2);
       return canAffordIncludingCommand(game, p, halved, UNIT_COST_KEYS);
     }
-    return canAffordIncludingCommand(game, p, tacticianDiscountedCost(p, u, "unit", game), UNIT_COST_KEYS);
+    const costCard = tacticianDiscountedCost(p, u, "unit", game);
+    if (canAffordIncludingCommand(game, p, costCard, UNIT_COST_KEYS)) return true;
+    // Researcher: once per turn -2 Alien on next purchase — show units only affordable with this discount.
+    if (p.active?.card.Name === 'Researcher' && !game.abilityUsesThisRound.get(`researcher-discount-${p.seatIndex}`)) {
+      const withDiscount: any = { ...costCard, 'Alien Cost': String(Math.max(0, toInt((costCard as any)['Alien Cost']) - 2)) };
+      return canAffordIncludingCommand(game, p, withDiscount, UNIT_COST_KEYS);
+    }
+    return false;
   });
 }
 
@@ -191,7 +198,14 @@ export function affordableGear(game: GameState, p: GamePlayer): GearCard[] {
     if (p.tactician?.Name === "The Bulwark" && gType === "Armor" && !game.bulwarkFreeArmorUsedSeats.has(p.seatIndex)) return true;
     // Mission free gear credits
     if (p.nextGearFreeCount > 0) return true;
-    return canAffordIncludingCommand(game, p, tacticianDiscountedCost(p, g as any, "gear", game), GEAR_COST_KEYS);
+    const costCard = tacticianDiscountedCost(p, g as any, "gear", game);
+    if (canAffordIncludingCommand(game, p, costCard, GEAR_COST_KEYS)) return true;
+    // Researcher: once per turn -2 Alien on next purchase.
+    if (p.active?.card.Name === 'Researcher' && !game.abilityUsesThisRound.get(`researcher-discount-${p.seatIndex}`)) {
+      const withDiscount: any = { ...costCard, 'Alien Cost': String(Math.max(0, toInt((costCard as any)['Alien Cost']) - 2)) };
+      return canAffordIncludingCommand(game, p, withDiscount, GEAR_COST_KEYS);
+    }
+    return false;
   });
 }
 
@@ -211,7 +225,16 @@ export function buyUnitMutation(game: GameState, p: GamePlayer, choice: UnitCard
     p.nextUnitFreeCount--;
     log(`  [Free Unit] ${p.name}'s ${choice.Name} is free (${p.nextUnitFreeCount} credit(s) remaining)`);
   } else {
-    const base = tacticianDiscountedCost(p, choice, "unit", game);
+    const _rawBase = tacticianDiscountedCost(p, choice, "unit", game);
+    const _rKey = `researcher-discount-${p.seatIndex}`;
+    const _researcherApplied = p.active?.card.Name === 'Researcher' && !game.abilityUsesThisRound.get(_rKey);
+    const base: any = _researcherApplied
+      ? { ..._rawBase, 'Alien Cost': String(Math.max(0, toInt((_rawBase as any)['Alien Cost']) - 2)) }
+      : _rawBase;
+    if (_researcherApplied) {
+      game.abilityUsesThisRound.set(_rKey, 1);
+      log(`  [Researcher] ${p.name}'s Alien cost reduced by 2 (once per turn)`);
+    }
     if (p.nextRecruitmentDiscount) {
       const disc = p.nextRecruitmentDiscount;
       p.nextRecruitmentDiscount = null;
@@ -463,7 +486,17 @@ export function buyGearMutation(game: GameState, p: GamePlayer, choice: GearCard
     p.nextGearFreeCount--;
     log(`  [Free Equip] ${p.name}'s ${(choice as any).Name} is free (${p.nextGearFreeCount} credit(s) remaining)`);
   } else if (!isFreeType) {
-    payIncludingCommand(game, p, tacticianDiscountedCost(p, choice as any, "gear", game), GEAR_COST_KEYS);
+    const _gRawBase = tacticianDiscountedCost(p, choice as any, "gear", game);
+    const _gRKey = `researcher-discount-${p.seatIndex}`;
+    const _gResearcher = p.active?.card.Name === 'Researcher' && !game.abilityUsesThisRound.get(_gRKey);
+    const _gBase: any = _gResearcher
+      ? { ..._gRawBase, 'Alien Cost': String(Math.max(0, toInt((_gRawBase as any)['Alien Cost']) - 2)) }
+      : _gRawBase;
+    if (_gResearcher) {
+      game.abilityUsesThisRound.set(_gRKey, 1);
+      log(`  [Researcher] ${p.name}'s Alien cost reduced by 2 (once per turn)`);
+    }
+    payIncludingCommand(game, p, _gBase, GEAR_COST_KEYS);
   }
   game.shopGear.splice(game.shopGear.indexOf(choice as any), 1);
   refillShopGear(game);
