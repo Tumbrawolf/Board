@@ -2716,8 +2716,8 @@ export class GameEngine {
       // Fires when Warthog is the active unit in this lane during its combat step.
       if (!oracleAlive && p.active?.card.Name === 'AMP2 "Warthog"') {
         const warthogKey = `Warthog-${p.seatIndex}`;
-        if (canUseEffect(game, warthogKey, 1)) {
-          recordEffectUse(game, warthogKey);
+        if (!game.abilityUsesThisRound.get(warthogKey)) {
+          game.abilityUsesThisRound.set(warthogKey, 1);
           // Stun the front enemy (carry into combat via pendingEnemyStunSeats).
           tempState.pendingEnemyStunSeats.add(p.seatIndex);
           p.stats.stunsMade += 1;
